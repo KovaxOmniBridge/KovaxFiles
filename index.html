@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./public/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ManipuladorLocal - Otimização de PDF para Tribunais e Conversor Local</title>
+    <meta name="description" content="Ferramenta estática 100% local para compactar PDFs para PJe, TJSP, TRF, converter HEIC do iPhone, DOCX e MP4 sem enviar arquivos para servidores." />
+    
+    <!-- Content Security Policy (CSP Restritivo - 0 Upload Externo) -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://cdnjs.cloudflare.com https://unpkg.com blob: data:; worker-src 'self' blob:; object-src 'none';" />
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Compiled CSS -->
+    <link rel="stylesheet" href="./dist/styles.css" />
+  </head>
+  <body class="bg-slate-950 text-slate-100 antialiased font-sans">
+    <div id="root"></div>
+    <script type="module" src="./dist/app.js"></script>
+  </body>
+</html>

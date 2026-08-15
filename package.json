@@ -1,0 +1,45 @@
+{
+  "name": "manipuladorarquivos",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/index.css -o ./dist/styles.css --minify",
+    "build:js": "esbuild src/main.tsx --bundle --outfile=dist/app.js --minify --jsx=automatic --loader:.tsx=tsx --loader:.ts=ts --define:process.env.NODE_ENV=\"\\\"production\\\"\"",
+    "build": "npm run build:css && npm run build:js",
+    "watch:css": "tailwindcss -i ./src/index.css -o ./dist/styles.css --watch",
+    "watch:js": "esbuild src/main.tsx --bundle --outfile=dist/app.js --watch --jsx=automatic --loader:.tsx=tsx --loader:.ts=ts --define:process.env.NODE_ENV=\"\\\"development\\\"\"",
+    "watch": "concurrently \"npm run watch:css\" \"npm run watch:js\"",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "docx": "^9.7.1",
+    "docx-preview": "^0.4.0",
+    "file-saver": "^2.0.5",
+    "heic2any": "^0.0.4",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "jszip": "^3.10.1",
+    "lucide-react": "^1.30.0",
+    "mammoth": "^1.12.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.0.0",
+    "@types/file-saver": "^2.0.7",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "concurrently": "^9.1.2",
+    "esbuild": "^0.25.0",
+    "oxlint": "^1.75.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~6.0.2"
+  }
+}

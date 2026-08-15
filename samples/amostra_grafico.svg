@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+  <rect width="800" height="500" rx="16" fill="#0F172A"/>
+  <circle cx="400" cy="200" r="120" fill="none" stroke="#0284C7" stroke-width="12" stroke-dasharray="10 15"/>
+  <circle cx="400" cy="200" r="80" fill="#1E293B" stroke="#38BDF8" stroke-width="4"/>
+  <path d="M 360 200 L 390 230 L 450 170" fill="none" stroke="#4ADE80" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="400" y="370" font-family="Inter, sans-serif" font-size="26" font-weight="bold" fill="#F8FAFC" text-anchor="middle">Plataforma 100% Local &amp; Segura</text>
+  <text x="400" y="410" font-family="Inter, sans-serif" font-size="16" fill="#94A3B8" text-anchor="middle">Teste de Conversão de Vetor SVG para PNG e PDF</text>
+</svg>
