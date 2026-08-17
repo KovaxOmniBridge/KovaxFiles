@@ -2,54 +2,61 @@
 
 @layer base {
   body {
-    background-color: #020617;
-    color: #f8fafc;
+    background-color: #f8fafc;
+    color: #0f172a;
     font-family: 'Inter', system-ui, sans-serif;
     min-height: 100vh;
     background-image: 
-      radial-gradient(at 10% 10%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-      radial-gradient(at 90% 20%, rgba(168, 85, 247, 0.12) 0px, transparent 50%),
-      radial-gradient(at 50% 90%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+      radial-gradient(at 10% 10%, rgba(37, 99, 235, 0.04) 0px, transparent 50%),
+      radial-gradient(at 90% 20%, rgba(99, 102, 241, 0.04) 0px, transparent 50%),
+      radial-gradient(at 50% 90%, rgba(16, 185, 129, 0.03) 0px, transparent 50%);
     background-attachment: fixed;
   }
 }
 
-/* Glassmorphism Cards */
+/* Executive Light Cards */
 .glass-panel {
-  background-color: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(24px);
-  border: 1px solid rgba(30, 41, 59, 0.8);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
   border-radius: 1rem;
 }
 
 .glass-card {
-  background-color: rgba(30, 41, 59, 0.4);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(51, 65, 85, 0.5);
-  transition: all 0.3s ease;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
   border-radius: 0.75rem;
 }
 
 .glass-card:hover {
-  border-color: rgba(99, 102, 241, 0.5);
+  border-color: #3b82f6;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: #f1f5f9;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(51, 65, 85, 0.8);
-  border-radius: 4px;
+  background: #cbd5e1;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.8);
+  background: #94a3b8;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

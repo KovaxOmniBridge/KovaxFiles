@@ -81,22 +81,22 @@ export function App() {
     : 0;
 
   return (
-    <div className="min-h-screen flex flex-col font-sans">
+    <div className="min-h-screen flex flex-col font-sans bg-slate-50 text-slate-900">
       <Navbar activeTab={activeTab} onTabChange={setActiveTab} onOpenCompliance={() => setIsComplianceOpen(true)} />
 
-      <main className="flex-1 w-[92vw] max-w-[92vw] mx-auto px-2 sm:px-4 lg:px-6 pt-8 pb-16">
+      <main className="flex-1 w-[96vw] max-w-[96vw] mx-auto px-2 sm:px-4 lg:px-6 pt-6 sm:pt-8 pb-16">
         {activeTab === 'converter' && (
           <>
             {/* Hero Title Header */}
-            <div className="text-center max-w-3xl mx-auto mb-10">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-4 shadow-inner">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                100% Processamento Local na Máquina • Zero Upload • Limite 2 GB por arquivo
+            <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-10 px-2">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold mb-4 shadow-xs">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>100% Processamento Local • Zero Upload • Limite 2 GB por arquivo</span>
               </div>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4 leading-tight">
-                Conversor, Compressor & <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-emerald-400 bg-clip-text text-transparent">Otimizador Universal</span> Local
+              <h2 className="text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-3 sm:mb-4 leading-tight">
+                Conversor, Compressor & <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 bg-clip-text text-transparent">Otimizador Universal</span>
               </h2>
-              <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
+              <p className="text-slate-600 text-xs sm:text-base leading-relaxed">
                 Compacte PDFs para Tribunais (PJe/TJSP), converta imagens HEIC, WebP e AVIF, documentos Word/PDF e transcodifique mídias com múltiplos Web Workers locais.
               </p>
             </div>
@@ -111,10 +111,10 @@ export function App() {
 
             {/* Rejection Alert for >2GB Files */}
             {rejectedFilesError && (
-              <div className="mb-6 p-4 rounded-2xl bg-amber-950/40 border border-amber-500/50 flex items-start space-x-3 text-amber-300 text-xs shadow-lg animate-fadeIn">
-                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-start space-x-3 text-amber-900 text-xs shadow-xs animate-fadeIn">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="font-bold block text-white text-sm mb-1">Aviso de Limite de Arquivo (2 GB Max):</strong>
+                  <strong className="font-bold block text-amber-950 text-sm mb-1">Aviso de Limite de Arquivo (2 GB Max):</strong>
                   <p className="leading-relaxed">{rejectedFilesError}</p>
                 </div>
               </div>
@@ -135,50 +135,50 @@ export function App() {
                 />
 
                 {/* Batch Processing Controls Bar */}
-                <div className="glass-panel p-4 sm:p-6 mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 mb-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
                   
                   {/* Left Info Metrics */}
-                  <div className="flex items-center space-x-4 text-xs">
+                  <div className="flex items-center space-x-4 text-xs w-full md:w-auto justify-between md:justify-start">
                     <div>
-                      <span className="text-slate-400 block">Total na Fila:</span>
-                      <strong className="text-white text-sm font-mono">{items.length} arquivos</strong>
+                      <span className="text-slate-500 block">Total na Fila:</span>
+                      <strong className="text-slate-900 text-sm font-mono">{items.length} arquivos</strong>
                     </div>
 
-                    <div className="h-8 w-[1px] bg-slate-800" />
+                    <div className="h-8 w-[1px] bg-slate-200" />
 
                     <div>
-                      <span className="text-slate-400 block">Concluídos:</span>
-                      <strong className="text-emerald-400 text-sm font-mono">{completedCount} / {items.length}</strong>
+                      <span className="text-slate-500 block">Concluídos:</span>
+                      <strong className="text-emerald-700 text-sm font-mono">{completedCount} / {items.length}</strong>
                     </div>
 
                     {completedCount > 0 && totalSavedPercent > 0 && (
                       <>
-                        <div className="h-8 w-[1px] bg-slate-800" />
+                        <div className="h-8 w-[1px] bg-slate-200" />
                         <div>
-                          <span className="text-slate-400 block">Espaço Economizado:</span>
-                          <strong className="text-purple-300 text-sm font-mono">-{totalSavedPercent}%</strong>
+                          <span className="text-slate-500 block">Espaço Economizado:</span>
+                          <strong className="text-indigo-700 text-sm font-mono">-{totalSavedPercent}%</strong>
                         </div>
                       </>
                     )}
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex items-center flex-wrap gap-3 w-full md:w-auto justify-end">
+                  <div className="flex items-center flex-wrap gap-2.5 w-full md:w-auto justify-end">
                     
                     <button
                       onClick={clearAll}
                       disabled={isProcessing}
-                      className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white text-xs font-semibold border border-slate-800 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition-colors disabled:opacity-50 flex items-center gap-1.5"
                       title="Limpar fila e auto-destruir memória RAM temporária"
                     >
-                      <Trash2 className="w-4 h-4 text-red-400" />
+                      <Trash2 className="w-4 h-4 text-red-600" />
                       Limpar Fila & RAM
                     </button>
 
                     {completedCount > 0 && (
                       <button
                         onClick={downloadAllAsZip}
-                        className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-950 flex items-center gap-2 transition-all"
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 flex items-center gap-2 transition-all"
                       >
                         <Download className="w-4 h-4" />
                         Baixar Todos (.ZIP)
@@ -189,10 +189,10 @@ export function App() {
                       <button
                         onClick={convertAllImagesToPdf}
                         disabled={isProcessing}
-                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-950 flex items-center gap-2 transition-all disabled:opacity-50"
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 flex items-center gap-2 transition-all disabled:opacity-50"
                         title="Juntar todas as fotos/imagens da fila em um único arquivo PDF multipáginas"
                       >
-                        <FileText className="w-4 h-4 text-blue-200" />
+                        <FileText className="w-4 h-4 text-blue-100" />
                         Juntar Fotos ➔ PDF Único
                       </button>
                     )}
@@ -200,7 +200,7 @@ export function App() {
                     <button
                       onClick={processBatch}
                       disabled={isProcessing || items.every((i) => i.status === 'completed')}
-                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-500 hover:opacity-90 text-white text-xs font-bold shadow-xl shadow-indigo-950 flex items-center gap-2 transition-all disabled:opacity-50"
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 hover:opacity-95 text-white text-xs font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all disabled:opacity-50"
                     >
                       {isProcessing ? (
                         <>

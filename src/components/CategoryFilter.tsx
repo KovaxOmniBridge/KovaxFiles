@@ -34,17 +34,17 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
           <button
             key={tab.id}
             onClick={() => onSelectCategory(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-200 border ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-200 border ${
               isActive
-                ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/30'
-                : 'bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
             }`}
           >
             {tab.icon}
             <span>{tab.label}</span>
             <span
               className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                isActive ? 'bg-indigo-950 text-indigo-200' : 'bg-slate-800 text-slate-400'
+                isActive ? 'bg-blue-800 text-white' : 'bg-slate-100 text-slate-600'
               }`}
             >
               {count}

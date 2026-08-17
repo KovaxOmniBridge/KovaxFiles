@@ -1,5 +1,5 @@
-import React from 'react';
-import { ShieldCheck, HardDrive, FileCheck2, Cpu, FileCheck, Sparkles, EyeOff, Bot } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShieldCheck, HardDrive, FileCheck2, Cpu, FileCheck, Sparkles, EyeOff, Bot, Menu, X } from 'lucide-react';
 import { OfflineBadge } from './OfflineBadge';
 
 export type AppTabType = 'converter' | 'signer' | 'sanitizer' | 'redactor' | 'local-ai';
@@ -11,16 +11,26 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange, onOpenCompliance }) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const tabs: { id: AppTabType; label: string; icon: React.ReactNode; color: string }[] = [
+    { id: 'converter', label: 'Conversor & Otimizador', icon: <Cpu className="w-4 h-4" />, color: 'from-blue-600 to-indigo-600' },
+    { id: 'signer', label: 'Assinador PAdES / ICP-Brasil', icon: <FileCheck className="w-4 h-4" />, color: 'from-indigo-600 to-violet-600' },
+    { id: 'sanitizer', label: 'Higienizador EXIF/GPS', icon: <Sparkles className="w-4 h-4" />, color: 'from-emerald-600 to-teal-600' },
+    { id: 'redactor', label: 'Tarjador LGPD / PII', icon: <EyeOff className="w-4 h-4" />, color: 'from-violet-600 to-purple-600' },
+    { id: 'local-ai', label: 'Analisador & Comparador IA Local', icon: <Bot className="w-4 h-4" />, color: 'from-blue-600 via-indigo-600 to-emerald-600' },
+  ];
+
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-xl shadow-xs">
+      <div className="w-[96vw] max-w-[96vw] mx-auto px-2 sm:px-4 lg:px-6 h-16 sm:h-20 flex items-center justify-between">
         
         {/* Logo & Brand */}
         <div className="flex items-center space-x-3">
           <div className="relative">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-emerald-400 p-0.5 shadow-lg shadow-indigo-500/20">
-              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-                <HardDrive className="w-6 h-6 text-indigo-400" />
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-emerald-500 p-0.5 shadow-md shadow-blue-500/10">
+              <div className="w-full h-full bg-white rounded-[10px] flex items-center justify-center">
+                <HardDrive className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
               </div>
             </div>
             <span className="absolute -top-1 -right-1 flex h-3 w-3">
@@ -31,101 +41,111 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange, onOpenCo
 
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="text-xl font-extrabold tracking-tight text-white font-sans">
-                Manipulador<span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-emerald-400 bg-clip-text text-transparent">Local</span>
+              <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 font-sans">
+                Kovax<span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 bg-clip-text text-transparent">Files</span>
               </h1>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                v2.0 Enterprise
+              <span className="hidden xs:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                Enterprise
               </span>
             </div>
-            <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              100% Local na Máquina • Jurídico, Governo & Saúde
+            <p className="text-[11px] sm:text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="truncate">100% Client-Side • Zero Upload</span>
             </p>
           </div>
         </div>
 
-        {/* Offline Badge & Compliance Action */}
-        <div className="flex items-center space-x-3">
-          
+        {/* Desktop Controls */}
+        <div className="hidden md:flex items-center space-x-3">
           <OfflineBadge />
 
           <button
             onClick={onOpenCompliance}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-bold transition-all shadow-md"
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-semibold transition-all shadow-xs"
             title="Verificar relatório de auditoria e conformidade de TI"
           >
-            <FileCheck2 className="w-4 h-4 text-emerald-400" />
-            <span className="hidden sm:inline">Relatório de Conformidade (TI)</span>
+            <FileCheck2 className="w-4 h-4 text-emerald-600" />
+            <span>Relatório de Conformidade (TI)</span>
           </button>
+        </div>
 
+        {/* Mobile Hamburger Toggle */}
+        <div className="flex md:hidden items-center space-x-2">
+          <OfflineBadge />
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-2 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-all"
+            aria-label="Alternar Menu"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
 
       </div>
 
-      {/* Corporate Tab Switcher - All 5 tabs visible without scrollbar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between sm:justify-start gap-1.5 border-t border-slate-900 py-2">
-        <button
-          onClick={() => onTabChange('converter')}
-          className={`px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'converter'
-              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-950'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <Cpu className="w-3.5 h-3.5" />
-          Conversor & Otimizador
-        </button>
-
-        <button
-          onClick={() => onTabChange('signer')}
-          className={`px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'signer'
-              ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-950'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <FileCheck className="w-3.5 h-3.5 text-indigo-300" />
-          Assinador PAdES / ICP-Brasil
-        </button>
-
-        <button
-          onClick={() => onTabChange('sanitizer')}
-          className={`px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'sanitizer'
-              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-950'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-          Higienizador EXIF/GPS
-        </button>
-
-        <button
-          onClick={() => onTabChange('redactor')}
-          className={`px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'redactor'
-              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-950'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <EyeOff className="w-3.5 h-3.5 text-purple-300" />
-          Tarjador LGPD / PII
-        </button>
-
-        <button
-          onClick={() => onTabChange('local-ai')}
-          className={`px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'local-ai'
-              ? 'bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-500 text-white shadow-lg shadow-indigo-950'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <Bot className="w-3.5 h-3.5 text-indigo-300" />
-          Analisador & Comparador IA Local
-        </button>
+      {/* Desktop Navigation Tabs */}
+      <div className="hidden md:block w-[96vw] max-w-[96vw] mx-auto px-2 sm:px-4 lg:px-6 border-t border-slate-100 py-2">
+        <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => onTabChange(tab.id)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap shadow-xs ${
+                  isActive
+                    ? `bg-gradient-to-r ${tab.color} text-white shadow-blue-500/20`
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent hover:border-slate-200'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
+      {/* Mobile Drawer Navigation Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-slate-200 bg-white px-4 py-3 space-y-2 shadow-lg animate-in slide-in-from-top duration-200">
+          <div className="space-y-1">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    onTabChange(tab.id);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                    isActive
+                      ? `bg-gradient-to-r ${tab.color} text-white shadow-md`
+                      : 'text-slate-700 hover:bg-slate-100 border border-slate-100'
+                  }`}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="pt-2 border-t border-slate-100">
+            <button
+              onClick={() => {
+                onOpenCompliance();
+                setMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold"
+            >
+              <FileCheck2 className="w-4 h-4 text-emerald-600" />
+              <span>Relatório de Conformidade (TI)</span>
+            </button>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

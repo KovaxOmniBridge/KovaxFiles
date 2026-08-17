@@ -111,34 +111,34 @@ export const DigitalSignerTab: React.FC = () => {
     <div className="max-w-5xl mx-auto space-y-6">
 
       {/* Header Banner */}
-      <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-indigo-500/20 bg-gradient-to-br from-slate-900 via-indigo-950/20 to-slate-900 relative overflow-hidden">
-        <div className="flex items-start justify-between relative z-10 gap-4">
+      <div className="bg-white border border-slate-200 p-6 sm:p-8 rounded-3xl shadow-sm relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-start justify-between relative z-10 gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-bold mb-3">
-              <ShieldCheck className="w-4 h-4" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-xs font-bold mb-3">
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
               PAdES / ICP-Brasil • Formulários AcroForms • Trilha de Auditoria Criptográfica
             </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
               Assinador Digital & Formulários Interativos
             </h2>
-            <p className="text-slate-400 text-sm max-w-2xl leading-relaxed">
+            <p className="text-slate-600 text-xs sm:text-sm max-w-2xl leading-relaxed">
               Assine digitalmente PDFs com carimbo PAdES e integridade SHA-256 ou preencha formulários interativos (AcroForms) 100% localmente sem expor dados.
             </p>
           </div>
-          <div className="w-14 h-14 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
-            <Lock className="w-7 h-7" />
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+            <Lock className="w-6 h-6 sm:w-7 sm:h-7" />
           </div>
         </div>
       </div>
 
       {/* Sub-tab Navigation */}
-      <div className="flex items-center space-x-2 border-b border-slate-800 pb-3">
+      <div className="flex items-center space-x-2 border-b border-slate-200 pb-3 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveSubTab('signer')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
             activeSubTab === 'signer'
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
           <FileCheck className="w-4 h-4" />
@@ -147,10 +147,10 @@ export const DigitalSignerTab: React.FC = () => {
 
         <button
           onClick={() => setActiveSubTab('acroform')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
             activeSubTab === 'acroform'
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
           <FormInput className="w-4 h-4" />
@@ -164,7 +164,7 @@ export const DigitalSignerTab: React.FC = () => {
           {!file ? (
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 bg-slate-900/40 hover:bg-slate-900/60 rounded-3xl p-10 text-center cursor-pointer transition-all duration-300 group"
+              className="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-white hover:bg-slate-50 rounded-3xl p-8 sm:p-10 text-center cursor-pointer transition-all duration-300 group shadow-xs"
             >
               <input
                 ref={fileInputRef}
@@ -173,31 +173,31 @@ export const DigitalSignerTab: React.FC = () => {
                 className="hidden"
                 onChange={handleFileSelect}
               />
-              <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mx-auto mb-4 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 mx-auto mb-4 group-hover:scale-110 transition-transform">
                 <FileCheck className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-1">Selecione ou arraste o arquivo PDF para assinar</h3>
-              <p className="text-xs text-slate-400">Validação instantânea de assinaturas e carimbo PAdES com selo de autenticidade</p>
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mb-1">Selecione ou arraste o arquivo PDF para assinar</h3>
+              <p className="text-xs text-slate-500">Validação instantânea de assinaturas e carimbo PAdES com selo de autenticidade</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
               {/* File & Inspection Summary Column */}
-              <div className="md:col-span-1 glass-panel p-5 rounded-2xl space-y-4">
-                <div className="flex items-center space-x-3 border-b border-slate-800 pb-3">
-                  <FileText className="w-8 h-8 text-indigo-400 shrink-0" />
+              <div className="md:col-span-1 bg-white border border-slate-200 p-5 rounded-2xl space-y-4 shadow-xs">
+                <div className="flex items-center space-x-3 border-b border-slate-100 pb-3">
+                  <FileText className="w-8 h-8 text-blue-600 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <h4 className="text-sm font-bold text-white truncate">{file.name}</h4>
-                    <span className="text-xs text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                    <h4 className="text-sm font-bold text-slate-900 truncate">{file.name}</h4>
+                    <span className="text-xs text-slate-500">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-xs text-slate-400 block mb-1">Status da Assinatura no Arquivo:</span>
+                  <span className="text-xs text-slate-500 block mb-1">Status da Assinatura no Arquivo:</span>
                   {signatureInfo?.hasSignature ? (
-                    <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs space-y-1">
-                      <div className="flex items-center gap-1.5 font-bold text-emerald-400">
-                        <CheckCircle2 className="w-4 h-4" />
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-emerald-700">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         Assinatura Existente Válida!
                       </div>
                       <p><strong>Assinante:</strong> {signatureInfo.signerName}</p>
@@ -205,8 +205,8 @@ export const DigitalSignerTab: React.FC = () => {
                       <p><strong>Data:</strong> {signatureInfo.signedAt}</p>
                     </div>
                   ) : (
-                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-xs flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                       <span>Arquivo ainda sem assinatura digital gravada.</span>
                     </div>
                   )}
@@ -214,46 +214,46 @@ export const DigitalSignerTab: React.FC = () => {
 
                 <button
                   onClick={() => { setFile(null); setSignedBlobUrl(null); }}
-                  className="w-full py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-semibold border border-slate-800 transition-colors"
+                  className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors"
                 >
                   Trocar de Arquivo PDF
                 </button>
               </div>
 
               {/* Signer Options & Execution Column */}
-              <div className="md:col-span-2 glass-panel p-6 rounded-2xl space-y-5">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Key className="w-5 h-5 text-indigo-400" />
+              <div className="md:col-span-2 bg-white border border-slate-200 p-6 rounded-2xl space-y-5 shadow-xs">
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Key className="w-5 h-5 text-blue-600" />
                   Configurações de Assinatura PAdES & Trilha de Auditoria
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs text-slate-400 block mb-1">Nome do Assinante / Razão Social:</label>
+                    <label className="text-xs text-slate-600 block mb-1 font-semibold">Nome do Assinante / Razão Social:</label>
                     <input
                       type="text"
                       value={signerName}
                       onChange={(e) => setSignerName(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-indigo-500 outline-none"
+                      className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:border-blue-500 outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs text-slate-400 block mb-1">CPF ou CNPJ do Certificado:</label>
+                    <label className="text-xs text-slate-600 block mb-1 font-semibold">CPF ou CNPJ do Certificado:</label>
                     <input
                       type="text"
                       value={cpfCnpj}
                       onChange={(e) => setCpfCnpj(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-indigo-500 outline-none"
+                      className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:border-blue-500 outline-none"
                     />
                   </div>
 
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Posição do Carimbo Visual PAdES:</label>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-slate-600 block mb-1 font-semibold">Posição do Carimbo Visual PAdES:</label>
                     <select
                       value={stampPosition}
                       onChange={(e) => setStampPosition(e.target.value as StampPositionType)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-indigo-500 outline-none font-semibold text-emerald-300"
+                      className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:border-blue-500 outline-none font-semibold text-blue-700"
                     >
                       <option value="auto">✨ Automático Jurídico Anti-Sobreposição (Página Dedicada - 0% Colisão)</option>
                       <option value="dedicated_page">Página Dedicada: Termo de Encerramento e Assinatura Digital</option>
@@ -263,20 +263,20 @@ export const DigitalSignerTab: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Motivo / Declaração Jurídica:</label>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-slate-600 block mb-1 font-semibold">Motivo / Declaração Jurídica:</label>
                     <input
                       type="text"
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-indigo-500 outline-none"
+                      className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:border-blue-500 outline-none"
                     />
                   </div>
                 </div>
 
                 {isProcessing && (
-                  <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/40 flex items-center space-x-3 text-indigo-300 text-xs animate-pulse">
-                    <Cpu className="w-4 h-4 animate-spin text-indigo-400" />
+                  <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 flex items-center space-x-3 text-blue-800 text-xs animate-pulse">
+                    <Cpu className="w-4 h-4 animate-spin text-blue-600" />
                     <span>{statusMessage}</span>
                   </div>
                 )}
@@ -285,21 +285,21 @@ export const DigitalSignerTab: React.FC = () => {
                   <button
                     onClick={handleSign}
                     disabled={isProcessing}
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-500 hover:opacity-95 text-white font-bold text-xs shadow-lg shadow-indigo-950 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-95 text-white font-bold text-xs shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                   >
                     <FileCheck className="w-4 h-4" />
                     Assinar PDF Localmente com Carimbo PAdES
                   </button>
                 ) : (
-                  <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 space-y-3">
-                    <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
-                      <CheckCircle2 className="w-5 h-5" />
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-3">
+                    <div className="flex items-center gap-2 text-emerald-800 text-xs font-bold">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                       PDF Assinado com Trilha de Auditoria Gravada na Memória RAM!
                     </div>
                     <a
                       href={signedBlobUrl}
                       download={`${file.name.replace(/\.pdf$/i, '')}_assinado.pdf`}
-                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-950 flex items-center justify-center gap-2 transition-all block text-center"
+                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-2 transition-all block text-center"
                     >
                       <Download className="w-4 h-4" />
                       Baixar Documento PDF Assinado (.pdf)
@@ -320,7 +320,7 @@ export const DigitalSignerTab: React.FC = () => {
           {!formFile ? (
             <div
               onClick={() => formFileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 bg-slate-900/40 hover:bg-slate-900/60 rounded-3xl p-10 text-center cursor-pointer transition-all duration-300 group"
+              className="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-white hover:bg-slate-50 rounded-3xl p-8 sm:p-10 text-center cursor-pointer transition-all duration-300 group shadow-xs"
             >
               <input
                 ref={formFileInputRef}
@@ -329,62 +329,62 @@ export const DigitalSignerTab: React.FC = () => {
                 className="hidden"
                 onChange={handleFormFileSelect}
               />
-              <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mx-auto mb-4 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 mx-auto mb-4 group-hover:scale-110 transition-transform">
                 <FormInput className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-1">Selecione o PDF com Formulário Interativo</h3>
-              <p className="text-xs text-slate-400">Detecção automática de campos de texto, checkboxes e menus suspensos</p>
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mb-1">Selecione o PDF com Formulário Interativo</h3>
+              <p className="text-xs text-slate-500">Detecção automática de campos de texto, checkboxes e menus suspensos</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
               {/* Form File Column */}
-              <div className="md:col-span-1 glass-panel p-5 rounded-2xl space-y-4">
-                <div className="flex items-center space-x-3 border-b border-slate-800 pb-3">
-                  <FileText className="w-8 h-8 text-indigo-400 shrink-0" />
+              <div className="md:col-span-1 bg-white border border-slate-200 p-5 rounded-2xl space-y-4 shadow-xs">
+                <div className="flex items-center space-x-3 border-b border-slate-100 pb-3">
+                  <FileText className="w-8 h-8 text-blue-600 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <h4 className="text-sm font-bold text-white truncate">{formFile.name}</h4>
-                    <span className="text-xs text-slate-400">{(formFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                    <h4 className="text-sm font-bold text-slate-900 truncate">{formFile.name}</h4>
+                    <span className="text-xs text-slate-500">{(formFile.size / 1024 / 1024).toFixed(2)} MB</span>
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-1">
-                  <p className="font-bold text-indigo-400">{formStatusMessage}</p>
-                  <p className="text-[10px] text-slate-400">Total de campos detectados: {detectedFields.length}</p>
+                <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-slate-700 space-y-1">
+                  <p className="font-bold text-blue-800">{formStatusMessage}</p>
+                  <p className="text-[10px] text-slate-500">Total de campos detectados: {detectedFields.length}</p>
                 </div>
 
                 <div className="pt-2 space-y-2">
-                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={flattenForm}
                       onChange={(e) => setFlattenForm(e.target.checked)}
-                      className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0"
+                      className="rounded bg-white border-slate-300 text-blue-600 focus:ring-0"
                     />
-                    <span>Achatar formulário (Flatten) ao salvar</span>
+                    <span className="font-semibold">Achatar formulário (Flatten) ao salvar</span>
                   </label>
                   <p className="text-[10px] text-slate-500">Impede a edição posterior dos dados preenchidos no PDF.</p>
                 </div>
 
                 <button
                   onClick={() => { setFormFile(null); setFilledBlobUrl(null); }}
-                  className="w-full py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-semibold border border-slate-800 transition-colors"
+                  className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors"
                 >
                   Trocar de PDF
                 </button>
               </div>
 
               {/* Interactive Dynamic Form Column */}
-              <div className="md:col-span-2 glass-panel p-6 rounded-2xl space-y-5">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Edit3 className="w-5 h-5 text-indigo-400" />
+              <div className="md:col-span-2 bg-white border border-slate-200 p-6 rounded-2xl space-y-5 shadow-xs">
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Edit3 className="w-5 h-5 text-blue-600" />
                   Preenchimento dos Campos de Formulário
                 </h3>
 
                 {detectedFields.length === 0 ? (
                   <div className="text-center py-10 space-y-2">
-                    <AlertCircle className="w-8 h-8 text-amber-400 mx-auto" />
-                    <p className="text-xs text-slate-300 font-bold">Nenhum campo interativo de AcroForm foi encontrado neste arquivo.</p>
+                    <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" />
+                    <p className="text-xs text-slate-900 font-bold">Nenhum campo interativo de AcroForm foi encontrado neste arquivo.</p>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto">
                       Se este for um formulário escaneado, utilize a aba de IA Local ou Redação para aplicar carimbos e textos sobre o PDF.
                     </p>
@@ -392,16 +392,16 @@ export const DigitalSignerTab: React.FC = () => {
                 ) : (
                   <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
                     {detectedFields.map((field, idx) => (
-                      <div key={idx} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
-                        <label className="text-xs font-bold text-indigo-300 block font-mono">{field.name}:</label>
+                      <div key={idx} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                        <label className="text-xs font-bold text-blue-800 block font-mono">{field.name}:</label>
 
                         {field.type === 'checkbox' ? (
-                          <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer pt-1">
+                          <label className="flex items-center gap-2 text-xs text-slate-800 cursor-pointer pt-1">
                             <input
                               type="checkbox"
                               checked={Boolean(formValues[field.name])}
                               onChange={(e) => setFormValues((prev) => ({ ...prev, [field.name]: e.target.checked }))}
-                              className="rounded bg-slate-900 border-slate-700 text-indigo-600"
+                              className="rounded bg-white border-slate-300 text-blue-600"
                             />
                             <span>Marcar caixa de seleção</span>
                           </label>
@@ -409,7 +409,7 @@ export const DigitalSignerTab: React.FC = () => {
                           <select
                             value={String(formValues[field.name] || '')}
                             onChange={(e) => setFormValues((prev) => ({ ...prev, [field.name]: e.target.value }))}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-xs outline-none"
+                            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs outline-none"
                           >
                             <option value="">Selecione uma opção...</option>
                             {field.options.map((opt, oIdx) => (
@@ -421,7 +421,7 @@ export const DigitalSignerTab: React.FC = () => {
                             type="text"
                             value={String(formValues[field.name] || '')}
                             onChange={(e) => setFormValues((prev) => ({ ...prev, [field.name]: e.target.value }))}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-xs outline-none"
+                            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs outline-none"
                             placeholder="Preencha o valor..."
                           />
                         )}
@@ -431,8 +431,8 @@ export const DigitalSignerTab: React.FC = () => {
                 )}
 
                 {isFillingForm && (
-                  <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/40 flex items-center space-x-3 text-indigo-300 text-xs animate-pulse">
-                    <Cpu className="w-4 h-4 animate-spin text-indigo-400" />
+                  <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 flex items-center space-x-3 text-blue-800 text-xs animate-pulse">
+                    <Cpu className="w-4 h-4 animate-spin text-blue-600" />
                     <span>{formStatusMessage}</span>
                   </div>
                 )}
@@ -441,21 +441,21 @@ export const DigitalSignerTab: React.FC = () => {
                   <button
                     onClick={handleFillForm}
                     disabled={isFillingForm}
-                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-950 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                   >
                     <Download className="w-4 h-4" />
                     Preencher e Gerar PDF Modificado
                   </button>
                 ) : (
-                  <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 space-y-3">
-                    <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
-                      <CheckCircle2 className="w-5 h-5" />
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-3">
+                    <div className="flex items-center gap-2 text-emerald-800 text-xs font-bold">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                       Formulário Preenchido e Salvo na Memória RAM!
                     </div>
                     <a
                       href={filledBlobUrl}
                       download={`${formFile.name.replace(/\.pdf$/i, '')}_preenchido.pdf`}
-                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-950 flex items-center justify-center gap-2 transition-all block text-center"
+                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-2 transition-all block text-center"
                     >
                       <Download className="w-4 h-4" />
                       Baixar PDF Preenchido (.pdf)

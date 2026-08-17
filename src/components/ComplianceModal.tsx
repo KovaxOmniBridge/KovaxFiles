@@ -27,29 +27,29 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({ isOpen, onClos
   const downloadManifestJson = () => {
     const manifest = networkAuditLogger.generateComplianceManifest();
     const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
-    saveAs(blob, `Manifesto_Compliance_TI_ManipuladorLocal_${Date.now()}.json`);
+    saveAs(blob, `Manifesto_Compliance_TI_KovaxFiles_${Date.now()}.json`);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-      <div className="glass-panel w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border-emerald-500/40 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-3xl flex flex-col border border-slate-200 shadow-xl">
         
         {/* Header */}
-        <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+        <div className="p-4 sm:p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-inner">
+            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-xs">
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h3 className="text-lg font-extrabold text-white">
+                <h3 className="text-lg font-extrabold text-slate-900">
                   Relatório de Conformidade & Auditoria Local (TI)
                 </h3>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wide">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wide">
                   LGPD Compliant
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500">
                 Manifesto técnico auditável em tempo real provando a ausência de envio de arquivos para servidores.
               </p>
             </div>
@@ -57,158 +57,133 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({ isOpen, onClos
 
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-xs">
           
-          {/* Main Security Status Badge */}
-          <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 ${
-            isCompliant
-              ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
-              : 'bg-amber-950/30 border-amber-500/40 text-amber-300'
-          }`}>
-            <div className="flex items-center space-x-3">
-              <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
-              <div>
-                <h4 className="text-base font-bold text-white">
-                  {isCompliant ? 'VERIFICADO: 0 (Zero) Envio de Arquivos para Servidores Externos' : 'Aviso de Auditoria'}
-                </h4>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  Todas as operações de PDF, imagens e vídeos foram processadas estritamente na memória RAM local via Web Workers.
-                </p>
-              </div>
-            </div>
-
-            <div className="shrink-0 bg-emerald-950/80 px-3 py-1.5 rounded-xl border border-emerald-500/30 font-mono text-xs font-bold text-emerald-300">
-              STATUS: 100% SECURE
-            </div>
-          </div>
-
-          {/* Core Technical Proof Pillars */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            
-            <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
-              <div className="flex items-center space-x-2 text-indigo-400 mb-2">
-                <ServerOff className="w-4 h-4" />
-                <h5 className="text-xs font-bold text-white">Requisições Externas</h5>
-              </div>
-              <p className="text-2xl font-extrabold font-mono text-emerald-400">0 Bytes</p>
-              <p className="text-[11px] text-slate-400 mt-1">Payload de arquivos transmitidos via fetch/XHR.</p>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
-              <div className="flex items-center space-x-2 text-purple-400 mb-2">
-                <Lock className="w-4 h-4" />
-                <h5 className="text-xs font-bold text-white">Auto-Destruição RAM</h5>
-              </div>
-              <p className="text-2xl font-extrabold font-mono text-purple-300">{activeMemoryBlobs} Blobs</p>
-              <p className="text-[11px] text-slate-400 mt-1">Blobs temporários ativos na RAM (limpos ao fechar).</p>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
-              <div className="flex items-center space-x-2 text-emerald-400 mb-2">
-                <Cpu className="w-4 h-4" />
-                <h5 className="text-xs font-bold text-white">Arquitetura</h5>
-              </div>
-              <p className="text-sm font-bold text-white mt-1">GitHub Pages Static</p>
-              <p className="text-[11px] text-slate-400 mt-1">WebAssembly & Web Workers locais.</p>
-            </div>
-
-          </div>
-
-          {/* Network Interceptor Log Audit Table */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-400" />
-                Log Auditável de Chamadas de Rede (Network Inspector)
+          {/* Main Status Callout */}
+          <div
+            className={`p-4 rounded-2xl border flex items-start space-x-3 ${
+              isCompliant
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-red-50 border-red-200 text-red-900'
+            }`}
+          >
+            <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-extrabold text-sm mb-1">
+                {isCompliant
+                  ? 'Status de Segurança: 100% VÁLIDO E LOCAL (ZERO VAZAMENTO)'
+                  : 'Aviso: Requisição Externa Detectada'}
               </h4>
-              <span className="text-xs text-slate-400 font-mono">
-                {logs.length} requisições registradas nesta sessão
-              </span>
+              <p className="text-xs leading-relaxed">
+                Todas as chamadas de API de rede (`fetch` e `XMLHttpRequest`) foram monitoradas pelo audit logger nativo.
+                <strong> Zero bytes de arquivos ou dados confidenciais foram transmitidos.</strong>
+              </p>
+            </div>
+          </div>
+
+          {/* Key Security Pillars Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex items-center space-x-2 text-blue-600 font-bold">
+                <ServerOff className="w-4 h-4" />
+                <span>Zero Servidor Externo</span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                Processamento feito no motor WebAssembly do seu próprio navegador.
+              </p>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/90 overflow-hidden">
-              <div className="max-h-60 overflow-y-auto">
-                <table className="w-full text-left text-xs font-sans">
-                  <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-mono sticky top-0">
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex items-center space-x-2 text-indigo-600 font-bold">
+                <Cpu className="w-4 h-4" />
+                <span>Gerenciador de Memória RAM</span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                Blobs temporários ativos na RAM no momento: <strong className="font-mono text-indigo-700">{activeMemoryBlobs}</strong>
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex items-center space-x-2 text-emerald-600 font-bold">
+                <Lock className="w-4 h-4" />
+                <span>Conformidade LGPD/GDPR</span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                Auditoria compatível com requisitos de sigilo da OAB e Órgãos Públicos.
+              </p>
+            </div>
+
+          </div>
+
+          {/* Network Request Interception Log Table */}
+          <div className="space-y-2">
+            <h4 className="font-extrabold text-slate-900 text-xs flex items-center justify-between">
+              <span>Registro de Requisições de Rede Interceptadas ({logs.length})</span>
+              <span className="text-[10px] text-slate-500 font-normal">Monitorado via Web Audit API</span>
+            </h4>
+
+            {logs.length === 0 ? (
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center text-slate-500 text-xs">
+                Nenhuma requisição de rede externa foi feita durante esta sessão.
+              </div>
+            ) : (
+              <div className="max-h-[200px] overflow-y-auto border border-slate-200 rounded-2xl overflow-hidden">
+                <table className="w-full text-left border-collapse font-mono text-[11px]">
+                  <thead className="bg-slate-100 text-slate-700 font-bold">
                     <tr>
-                      <th className="p-2.5">Horário</th>
-                      <th className="p-2.5">Tipo</th>
-                      <th className="p-2.5">Método</th>
-                      <th className="p-2.5">Destino URL</th>
-                      <th className="p-2.5">Payload Arquivo</th>
-                      <th className="p-2.5">Status de Segurança</th>
+                      <th className="p-2.5 border-b border-slate-200">Hora</th>
+                      <th className="p-2.5 border-b border-slate-200">Método</th>
+                      <th className="p-2.5 border-b border-slate-200">URL</th>
+                      <th className="p-2.5 border-b border-slate-200">Status TI</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
-                    {logs.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-4 text-center text-slate-500 font-sans">
-                          Nenhuma chamada de rede foi realizada até o momento. Total isolamento.
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {logs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50">
+                        <td className="p-2.5 text-slate-500">{log.timestamp.split('T')[1]?.split('.')[0]}</td>
+                        <td className="p-2.5 font-bold text-blue-600">{log.method}</td>
+                        <td className="p-2.5 text-slate-800 truncate max-w-[300px]">{log.url}</td>
+                        <td className="p-2.5">
+                          {log.hasFilePayload ? (
+                            <span className="text-red-600 font-bold">⚠️ Payload Suspeito</span>
+                          ) : (
+                            <span className="text-emerald-600 font-bold">✓ Seguro (Sem Dados)</span>
+                          )}
                         </td>
                       </tr>
-                    ) : (
-                      logs.map((log) => (
-                        <tr key={log.id} className="hover:bg-slate-800/40 transition-colors">
-                          <td className="p-2.5 text-slate-400">{log.timestamp}</td>
-                          <td className="p-2.5 text-indigo-300">{log.type}</td>
-                          <td className="p-2.5 font-bold text-white">{log.method}</td>
-                          <td className="p-2.5 text-slate-300 truncate max-w-xs" title={log.url}>
-                            {log.url}
-                          </td>
-                          <td className="p-2.5 font-bold text-emerald-400">
-                            {log.bytesSent} bytes
-                          </td>
-                          <td className="p-2.5">
-                            {log.status === 'blocked_upload' ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] bg-red-500/20 text-red-300 border border-red-500/30">
-                                BLOQUEADO
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                APROVADO ESTÁTICO
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
                   </tbody>
                 </table>
               </div>
-            </div>
+            )}
           </div>
 
         </div>
 
-        {/* Footer */}
-        <div className="p-4 sm:p-6 border-t border-slate-800 bg-slate-900/90 flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-xs text-slate-400">
-            <Lock className="w-4 h-4 text-emerald-400" />
-            <span>Provado por Interceptador de Rede & Relatório Assinado</span>
-          </div>
+        {/* Footer Actions */}
+        <div className="p-4 sm:p-6 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-4">
+          <button
+            onClick={downloadManifestJson}
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center gap-2 transition-all"
+          >
+            <Download className="w-4 h-4" />
+            <span>Baixar Manifesto JSON de Conformidade (TI)</span>
+          </button>
 
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={downloadManifestJson}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-950 transition-all"
-            >
-              <Download className="w-4 h-4" />
-              Baixar Manifesto de TI (.JSON)
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
-            >
-              Fechar
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs transition-colors"
+          >
+            Fechar
+          </button>
         </div>
 
       </div>
