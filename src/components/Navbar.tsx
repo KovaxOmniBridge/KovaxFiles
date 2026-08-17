@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, HardDrive, FileCheck2, Cpu, FileCheck, Sparkles, EyeOff, Bot, Menu, X } from 'lucide-react';
-import { OfflineBadge } from './OfflineBadge';
+import { HardDrive, FileCheck2, Cpu, FileCheck, Sparkles, EyeOff, Bot, Menu, X } from 'lucide-react';
 
 export type AppTabType = 'converter' | 'signer' | 'sanitizer' | 'redactor' | 'local-ai';
 
@@ -44,21 +43,15 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange, onOpenCo
               <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 font-sans">
                 Kovax<span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 bg-clip-text text-transparent">Files</span>
               </h1>
-              <span className="hidden xs:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                 Enterprise
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span className="truncate">100% Client-Side • Zero Upload</span>
-            </p>
           </div>
         </div>
 
         {/* Desktop Controls */}
         <div className="hidden md:flex items-center space-x-3">
-          <OfflineBadge />
-
           <button
             onClick={onOpenCompliance}
             className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-semibold transition-all shadow-xs"
@@ -71,7 +64,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange, onOpenCo
 
         {/* Mobile Hamburger Toggle */}
         <div className="flex md:hidden items-center space-x-2">
-          <OfflineBadge />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-all"
