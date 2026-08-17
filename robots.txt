@@ -1,0 +1,6 @@
+# robots.txt para Kovax Files (https://kovaxfiles.com.br)
+User-agent: *
+Allow: /
+
+# Sitemap oficial
+Sitemap: https://kovaxfiles.com.br/sitemap.xml
