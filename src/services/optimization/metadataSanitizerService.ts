@@ -1,17 +1,26 @@
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFRef } from 'pdf-lib';
+
+export interface MetadataItem {
+  key: string;
+  value: string;
+  isSensitive?: boolean;
+  category: 'GPS' | 'Device' | 'Author' | 'System';
+}
 
 export interface MetadataInspectionResult {
   fileName: string;
   fileSize: number;
   metadataCount: number;
-  metadataItems: { key: string; value: string; category: 'GPS' | 'Device' | 'Author' | 'System' }[];
+  hasSensitiveMetadata: boolean;
+  items: MetadataItem[];
+  metadataItems?: MetadataItem[];
 }
 
 /**
  * Inspeciona um arquivo para encontrar metadados ocultos de EXIF, GPS, autoria e sistema sem ignorar nada.
  */
 export async function inspectFileMetadata(file: File): Promise<MetadataInspectionResult> {
-  const items: { key: string; value: string; category: 'GPS' | 'Device' | 'Author' | 'System' }[] = [];
+  const items: MetadataItem[] = [];
   const buffer = await file.arrayBuffer();
 
   // Inspect 100% of PDF metadata fields
@@ -25,19 +34,19 @@ export async function inspectFileMetadata(file: File): Promise<MetadataInspectio
       const creator = pdfDoc.getCreator()?.trim();
 
       if (author && author.length > 0) {
-        items.push({ key: 'Autor do Documento', value: author, category: 'Author' });
+        items.push({ key: 'Autor do Documento', value: author, isSensitive: true, category: 'Author' });
       }
       if (title && title.length > 0) {
-        items.push({ key: 'Título Interno', value: title, category: 'System' });
+        items.push({ key: 'Título Interno', value: title, isSensitive: false, category: 'System' });
       }
       if (subject && subject.length > 0) {
-        items.push({ key: 'Assunto', value: subject, category: 'System' });
+        items.push({ key: 'Assunto', value: subject, isSensitive: false, category: 'System' });
       }
       if (creator && creator.length > 0) {
-        items.push({ key: 'Software Criador (Creator)', value: creator, category: 'System' });
+        items.push({ key: 'Software Criador (Creator)', value: creator, isSensitive: true, category: 'System' });
       }
       if (producer && producer.length > 0) {
-        items.push({ key: 'Gerador PDF (Producer)', value: producer, category: 'System' });
+        items.push({ key: 'Gerador PDF (Producer)', value: producer, isSensitive: true, category: 'System' });
       }
     } catch {
       // Unreadable or empty PDF stream
@@ -47,25 +56,29 @@ export async function inspectFileMetadata(file: File): Promise<MetadataInspectio
     const text = new TextDecoder('latin1').decode(bytes.subarray(0, 15000));
     
     if (text.includes('Exif')) {
-      items.push({ key: 'Marcador EXIF', value: 'Presente no cabeçalho binário', category: 'Device' });
+      items.push({ key: 'Marcador EXIF', value: 'Presente no cabeçalho binário', isSensitive: true, category: 'Device' });
     }
     
     const deviceMatch = text.match(/(iPhone|Samsung|Canon|Nikon|Sony|Google|Xiaomi|Motorola)[^\u0000-\u001F]{0,30}/i);
     if (deviceMatch) {
-      items.push({ key: 'Dispositivo / Câmera Detectado', value: deviceMatch[0].trim(), category: 'Device' });
+      items.push({ key: 'Dispositivo / Câmera Detectado', value: deviceMatch[0].trim(), isSensitive: true, category: 'Device' });
     }
 
     if (text.includes('GPSLatitude') || text.includes('GPSLongitude') || text.includes('GPSInfo')) {
-      items.push({ key: 'Coordenadas GPS Geotag', value: 'Geolocalização identificada nos dados EXIF', category: 'GPS' });
+      items.push({ key: 'Coordenadas GPS Geotag', value: 'Geolocalização identificada nos dados EXIF', isSensitive: true, category: 'GPS' });
     }
 
-    items.push({ key: 'Data de Modificação do Sistema', value: new Date(file.lastModified).toLocaleString('pt-BR'), category: 'System' });
+    items.push({ key: 'Data de Modificação do Sistema', value: new Date(file.lastModified).toLocaleString('pt-BR'), isSensitive: false, category: 'System' });
   }
+
+  const hasSensitiveMetadata = items.some((i) => i.isSensitive || i.category === 'GPS' || i.category === 'Device' || i.category === 'Author');
 
   return {
     fileName: file.name,
     fileSize: file.size,
     metadataCount: items.length,
+    hasSensitiveMetadata,
+    items,
     metadataItems: items,
   };
 }
@@ -130,7 +143,7 @@ export async function sanitizeFileMetadata(
   // Delete XMP Metadata stream and Info dictionary reference if present
   try {
     const infoRef = pdfDoc.context.trailerInfo.Info;
-    if (infoRef) {
+    if (infoRef && infoRef instanceof PDFRef) {
       pdfDoc.context.delete(infoRef);
     }
   } catch {
@@ -138,7 +151,7 @@ export async function sanitizeFileMetadata(
   }
 
   const cleanBytes = await pdfDoc.save({ useObjectStreams: false });
-  const cleanBlob = new Blob([cleanBytes], { type: 'application/pdf' });
+  const cleanBlob = new Blob([cleanBytes as unknown as BlobPart], { type: 'application/pdf' });
 
   onProgress?.(100, '100% dos metadados de autoria e sistema removidos com sucesso!');
   return { blob: cleanBlob, size: cleanBlob.size };

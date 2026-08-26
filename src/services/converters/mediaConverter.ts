@@ -17,11 +17,18 @@ async function getFFmpeg(onProgress?: (percent: number, status: string) => void)
     onProgress?.(20 + Math.floor(percent * 0.75), `Processando mídia... ${percent}%`);
   });
 
-  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+  const basePath = typeof window !== 'undefined'
+    ? (window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1))
+    : '/';
+  const baseURL = typeof window !== 'undefined'
+    ? new URL(`.${basePath}dist`, window.location.origin).href
+    : './dist';
+
   await ffmpegInstance.load({
     coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
     wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
   });
+
 
   isLoaded = true;
   return ffmpegInstance;

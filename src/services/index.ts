@@ -22,6 +22,8 @@ export * from './optimization/memoryManager';
 
 export * from './pdf/pdfTableExtractorService';
 export * from './pdf/pdfPageEditorService';
+export * from './pdf/pdfSplitterService';
+export * from './pdf/pdfBateStampingService';
 export * from './pdf/acroFormService';
 export * from './pdf/digitalSignatureService';
 export * from './pdf/watermarkService';

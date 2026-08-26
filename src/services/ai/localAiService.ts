@@ -1,10 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import { localVectorStore, type VectorSearchResult, type StoredDocumentMetadata } from './localVectorStore';
+import { setupPdfWorker } from '../pdf/pdfWorkerInit';
 
-if (typeof window !== 'undefined' && 'Worker' in window && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-}
+setupPdfWorker();
+
 
 export interface LocalAiModelInfo {
   id: string;

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { saveAs } from 'file-saver';
 import { Navbar, type AppTabType } from './components/Navbar';
 import { CourtPdfPresets } from './components/CourtPdfPresets';
 import { Dropzone } from './components/Dropzone';
@@ -6,6 +7,8 @@ import { CategoryFilter } from './components/CategoryFilter';
 import { FileCard } from './components/FileCard';
 import { QualityPreviewModal } from './components/QualityPreviewModal';
 import { ComplianceModal } from './components/ComplianceModal';
+import { PdfPageOrganizerModal } from './components/PdfPageOrganizerModal';
+import { PdfMergeModal } from './components/PdfMergeModal';
 import { DigitalSignerTab } from './components/DigitalSignerTab';
 import { MetadataSanitizerTab } from './components/MetadataSanitizerTab';
 import { RedactionAnonymizerTab } from './components/RedactionAnonymizerTab';
@@ -13,7 +16,7 @@ import { LocalAiAnalyzerTab } from './components/LocalAiAnalyzerTab';
 import { Footer } from './components/Footer';
 import { useBatchProcessor } from './hooks/useBatchProcessor';
 import type { BatchFileItem, FileCategory } from './types';
-import { Play, Download, Trash2, Cpu, ShieldCheck, AlertTriangle, FileText } from 'lucide-react';
+import { Play, Download, Trash2, Cpu, ShieldCheck, AlertTriangle, FileText, Layers } from 'lucide-react';
 import { networkAuditLogger } from './services';
 
 export function App() {
@@ -40,6 +43,8 @@ export function App() {
   const [selectedCategory, setSelectedCategory] = useState<FileCategory>('all');
   const [previewItem, setPreviewItem] = useState<BatchFileItem | null>(null);
   const [isComplianceOpen, setIsComplianceOpen] = useState(false);
+  const [organizerFile, setOrganizerFile] = useState<File | null>(null);
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
 
   useEffect(() => {
     // Initialize network audit interceptor
@@ -197,6 +202,18 @@ export function App() {
                       </button>
                     )}
 
+                    {categoryCounts.pdf_court > 1 && (
+                      <button
+                        onClick={() => setIsMergeModalOpen(true)}
+                        disabled={isProcessing}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 flex items-center gap-2 transition-all disabled:opacity-50"
+                        title="Juntar múltiplos PDFs da fila em um único arquivo"
+                      >
+                        <Layers className="w-4 h-4 text-indigo-100" />
+                        Mesclar PDFs em Fila
+                      </button>
+                    )}
+
                     <button
                       onClick={processBatch}
                       disabled={isProcessing || items.every((i) => i.status === 'completed')}
@@ -256,6 +273,28 @@ export function App() {
       <ComplianceModal
         isOpen={isComplianceOpen}
         onClose={() => setIsComplianceOpen(false)}
+      />
+
+      {/* PDF Page Organizer & Rotator Modal */}
+      <PdfPageOrganizerModal
+        isOpen={Boolean(organizerFile)}
+        file={organizerFile}
+        onClose={() => setOrganizerFile(null)}
+        onSave={(blob, filename) => {
+          saveAs(blob, filename);
+          setOrganizerFile(null);
+        }}
+      />
+
+      {/* PDF Merge Modal */}
+      <PdfMergeModal
+        isOpen={isMergeModalOpen}
+        initialFiles={items.filter((i) => i.category === 'pdf_court' || i.name.endsWith('.pdf')).map((i) => i.file)}
+        onClose={() => setIsMergeModalOpen(false)}
+        onMerged={(blob, filename) => {
+          saveAs(blob, filename);
+          setIsMergeModalOpen(false);
+        }}
       />
 
       <Footer />

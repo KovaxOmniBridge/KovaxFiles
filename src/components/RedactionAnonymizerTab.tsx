@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { EyeOff, ShieldCheck, CheckSquare, Square, Download, Cpu, CheckCircle2, FileText, Lock, Plus, PanelTop, PanelBottom, Trash2, AlertCircle, MousePointer, Bot } from 'lucide-react';
+import { EyeOff, ShieldCheck, CheckSquare, Square, Download, Cpu, CheckCircle2, Lock, Plus, PanelTop, PanelBottom, Trash2, AlertCircle, MousePointer, Bot } from 'lucide-react';
 import { detectPiiInData, detectPiiWithAi, applyRedactionToPdf, type PiiDetectionItem } from '../services';
 import { PdfVisualRedactor } from './PdfVisualRedactor';
 
@@ -35,13 +35,14 @@ export const RedactionAnonymizerTab: React.FC = () => {
 
     try {
       const aiDetected = await detectPiiWithAi(file, (status) => setStatusMessage(status));
-      if (aiDetected.length === 0) {
+      if (!aiDetected || aiDetected.length === 0) {
         setPatternNotification('A IA Local analisou o documento e não encontrou nomes ou dados sensíveis adicionais.');
       } else {
         setPiiItems((prev) => {
-          const existingVals = new Set(prev.map((i) => `${i.textValue.toLowerCase()}_${i.location}`));
-          const newOnly = aiDetected.filter((i) => !existingVals.has(`${i.textValue.toLowerCase()}_${i.location}`));
-          return [...prev, ...newOnly];
+          const safePrev = prev || [];
+          const existingVals = new Set(safePrev.map((i) => `${(i?.textValue || '').toLowerCase()}_${i?.location || ''}`));
+          const newOnly = aiDetected.filter((i) => i && !existingVals.has(`${(i?.textValue || '').toLowerCase()}_${i?.location || ''}`));
+          return [...safePrev, ...newOnly];
         });
         setPatternNotification(`✨ IA Local: ${aiDetected.length} elemento(s) semântico(s) (Nomes de Pessoas, Endereços e Dados Sensíveis LGPD) localizados!`);
       }
@@ -71,7 +72,7 @@ export const RedactionAnonymizerTab: React.FC = () => {
     const newItem: PiiDetectionItem = {
       id: `area_${position}_${Date.now()}`,
       textValue: position === 'header' ? '[Cabeçalho Completo]' : '[Rodapé Completo]',
-      type: 'area',
+      type: position === 'header' ? 'Região Cabeçalho' : 'Região Rodapé',
       location: position === 'header' ? 'Cabeçalho da Página' : 'Rodapé da Página',
       selected: true,
       bounds: {
@@ -202,7 +203,12 @@ export const RedactionAnonymizerTab: React.FC = () => {
           </div>
 
           {activeMode === 'visual' ? (
-            <PdfVisualRedactor file={file} onAddRedaction={handleAddVisualItem} />
+            <PdfVisualRedactor
+              file={file}
+              redactionItems={piiItems}
+              onAddVisualRedaction={handleAddVisualItem}
+              onRemoveVisualRedaction={removeItem}
+            />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               

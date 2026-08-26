@@ -1,11 +1,9 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
-import { pdfPageEditorService } from './pdfPageEditorService';
+import { setupPdfWorker } from '../pdf/pdfWorkerInit';
 
-// Set pdfjs worker source to CDN fallback
-if (typeof window !== 'undefined' && 'Worker' in window) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-}
+setupPdfWorker();
+
 
 export interface PdfCompressOptions {
   targetMaxMB: number;
@@ -94,6 +92,7 @@ export async function compressPdfForCourt(
       await page.render({
         canvasContext: context,
         viewport: viewport,
+        canvas: canvas,
       }).promise;
 
       // Compress to JPEG data URL

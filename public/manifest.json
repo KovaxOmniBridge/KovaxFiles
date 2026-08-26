@@ -1,0 +1,19 @@
+{
+  "short_name": "KovaxFiles",
+  "name": "KovaxFiles — Engenharia Documental Client-Side",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "display": "standalone",
+  "orientation": "any",
+  "description": "Plataforma Universal 100% Client-Side / Zero Upload para Engenharia, Conversão, Assinatura Digital PAdES e Tarjamento LGPD.",
+  "categories": ["utilities", "productivity", "business"]
+}

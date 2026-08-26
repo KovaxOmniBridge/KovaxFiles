@@ -28,7 +28,7 @@ export const MetadataSanitizerTab: React.FC = () => {
     setStatusMessage('Iniciando sanitização e limpeza de metadados...');
 
     try {
-      const { blob } = await sanitizeFileMetadata(file, (percent, status) => setStatusMessage(status));
+      const { blob } = await sanitizeFileMetadata(file, (_percent, status) => setStatusMessage(status));
       const url = URL.createObjectURL(blob);
       setSanitizedBlobUrl(url);
     } catch (err) {
@@ -126,7 +126,7 @@ export const MetadataSanitizerTab: React.FC = () => {
               Metadados Encontrados no Arquivo
             </h3>
 
-            {inspection && inspection.items.length > 0 ? (
+            {inspection && inspection.items && inspection.items.length > 0 ? (
               <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
                 {inspection.items.map((item, idx) => (
                   <div key={idx} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">

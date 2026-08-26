@@ -14,7 +14,7 @@ interface PdfVisualRedactorProps {
 
 export const PdfVisualRedactor: React.FC<PdfVisualRedactorProps> = ({
   file,
-  redactionItems,
+  redactionItems = [],
   onAddVisualRedaction,
   onRemoveVisualRedaction,
 }) => {
@@ -111,8 +111,8 @@ export const PdfVisualRedactor: React.FC<PdfVisualRedactorProps> = ({
     ctx.clearRect(0, 0, overlay.width, overlay.height);
 
     // Render Redaction Boxes for Current Page
-    const pageItems = redactionItems.filter(
-      (i) => i.selected && (i.pageIndex === currentPage - 1 || i.pageIndex === undefined)
+    const pageItems = (redactionItems || []).filter(
+      (i) => i && i.selected && (i.pageIndex === currentPage - 1 || i.pageIndex === undefined)
     );
 
     pageItems.forEach((item) => {

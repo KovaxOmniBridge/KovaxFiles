@@ -10,10 +10,10 @@ import {
 } from 'docx';
 import { compressPdfForCourt } from '../optimization/pdfOptimizer';
 import type { DocumentConversionOptions } from './docConverter';
+import { setupPdfWorker } from '../pdf/pdfWorkerInit';
 
-if (typeof window !== 'undefined' && 'Worker' in window && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-}
+setupPdfWorker();
+
 
 function sanitizeText(str: string): string {
   if (!str) return '';

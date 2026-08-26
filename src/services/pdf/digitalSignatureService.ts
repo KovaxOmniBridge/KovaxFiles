@@ -217,6 +217,7 @@ export async function signPdfLocally(
       const { width, height } = targetPage.getSize();
       const yPos = stampPosition === 'top_last_page' ? height - stampHeight - margin : margin;
 
+      // Fundo semi-transparente estilo marca d'água/carimbo oficial (permite a leitura do texto por trás)
       targetPage.drawRectangle({
         x: margin,
         y: yPos,
@@ -225,6 +226,7 @@ export async function signPdfLocally(
         color: rgb(0.94, 0.96, 0.98),
         borderColor: rgb(0.11, 0.21, 0.36),
         borderWidth: 1,
+        opacity: 0.20,
       });
 
       targetPage.drawText('ASSINADO DIGITALMENTE (PAdES / ICP-BRASIL)', {
@@ -233,6 +235,7 @@ export async function signPdfLocally(
         size: 9,
         font: fontBold,
         color: rgb(0.11, 0.21, 0.36),
+        opacity: 0.85,
       });
 
       targetPage.drawText(`Assinante: ${signerOptions.signerName}  |  CPF/CNPJ: ${signerOptions.cpfCnpj}`, {
@@ -241,6 +244,7 @@ export async function signPdfLocally(
         size: 8,
         font: fontRegular,
         color: rgb(0.2, 0.25, 0.33),
+        opacity: 0.85,
       });
 
       targetPage.drawText(`Data/Hora: ${dateStr}  |  Motivo: ${signerOptions.reason || 'Conformidade Legal'}`, {
@@ -249,6 +253,7 @@ export async function signPdfLocally(
         size: 8,
         font: fontRegular,
         color: rgb(0.2, 0.25, 0.33),
+        opacity: 0.85,
       });
 
       targetPage.drawText(`Selo Criptográfico SHA-256: ${hashSha256}`, {
@@ -257,6 +262,7 @@ export async function signPdfLocally(
         size: 7,
         font: fontRegular,
         color: rgb(0.3, 0.35, 0.45),
+        opacity: 0.85,
       });
     });
   }

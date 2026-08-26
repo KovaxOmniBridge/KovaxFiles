@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, Download, FileText, CheckCircle2, Lock, Cpu, ServerOff } from 'lucide-react';
+import { X, ShieldCheck, Download, CheckCircle2, Lock, Cpu, ServerOff } from 'lucide-react';
 import { networkAuditLogger, memoryManager, type NetworkLogEntry } from '../services';
 import { saveAs } from 'file-saver';
 
@@ -152,7 +152,7 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({ isOpen, onClos
                         <td className="p-2.5 font-bold text-blue-600">{log.method}</td>
                         <td className="p-2.5 text-slate-800 truncate max-w-[300px]">{log.url}</td>
                         <td className="p-2.5">
-                          {log.hasFilePayload ? (
+                          {log.containsFileData ? (
                             <span className="text-red-600 font-bold">⚠️ Payload Suspeito</span>
                           ) : (
                             <span className="text-emerald-600 font-bold">✓ Seguro (Sem Dados)</span>

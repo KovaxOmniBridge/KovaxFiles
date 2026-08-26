@@ -4,15 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "copy:worker": "node scripts/copy-worker.js",
     "build:css": "tailwindcss -i ./src/index.css -o ./dist/styles.css --minify",
     "build:js": "esbuild src/main.tsx --bundle --outfile=dist/app.js --minify --jsx=automatic --loader:.tsx=tsx --loader:.ts=ts --define:process.env.NODE_ENV=\"\\\"production\\\"\"",
-    "build": "npm run build:css && npm run build:js",
+    "build": "npm run copy:worker && npm run build:css && npm run build:js",
     "watch:css": "tailwindcss -i ./src/index.css -o ./dist/styles.css --watch",
     "watch:js": "esbuild src/main.tsx --bundle --outfile=dist/app.js --watch --jsx=automatic --loader:.tsx=tsx --loader:.ts=ts --define:process.env.NODE_ENV=\"\\\"development\\\"\"",
-    "watch": "concurrently \"npm run watch:css\" \"npm run watch:js\"",
+    "watch": "npm run copy:worker && concurrently \"npm run watch:css\" \"npm run watch:js\"",
     "lint": "oxlint"
   },
   "dependencies": {
+    "@ffmpeg/core": "^0.12.6",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "docx": "^9.7.1",

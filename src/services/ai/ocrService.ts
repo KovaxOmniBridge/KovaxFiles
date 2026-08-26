@@ -21,6 +21,7 @@ export const ocrService = {
     await pdfPage.render({
       canvasContext: context,
       viewport,
+      canvas,
     }).promise;
 
     return canvas;

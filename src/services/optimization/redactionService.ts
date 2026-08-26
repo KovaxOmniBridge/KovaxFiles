@@ -1,13 +1,13 @@
 import { PDFDocument, rgb } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
+import { setupPdfWorker } from '../pdf/pdfWorkerInit';
 
-if (typeof window !== 'undefined' && 'Worker' in window && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-}
+setupPdfWorker();
+
 
 export interface PiiDetectionItem {
   id: string;
-  type: 'CPF' | 'CNPJ' | 'Email' | 'Telefone' | 'Link/URL' | 'Termo Personalizado' | 'Região Cabeçalho' | 'Região Rodapé' | 'Seleção Visual' | 'Nome de Pessoa (IA)' | 'Endereço/Sensível LGPD (IA)' | 'Dado Financeiro (IA)';
+  type: 'CPF' | 'CNPJ' | 'RG' | 'CNH' | 'Placa de Veículo' | 'Chave PIX' | 'Dado Bancário' | 'Email' | 'Telefone' | 'Link/URL' | 'Termo Personalizado' | 'Região Cabeçalho' | 'Região Rodapé' | 'Seleção Visual' | 'Nome de Pessoa (IA)' | 'CEP/Endereço (IA)' | 'Dado Financeiro (IA)' | 'CID/Saúde (IA)';
   textValue: string;
   location: string;
   selected: boolean;
@@ -106,6 +106,10 @@ export async function detectPiiInData(file: File, customTerms: string[] = []): P
 
     const cpfRegex = /\b\d{3}\.\d{3}\.\d{3}-\d{2}\b|\b\d{11}\b/g;
     const cnpjRegex = /\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/g;
+    const rgRegex = /\bRG\s*:?\s*\d{2}\.\d{3}\.\d{3}-[\dX]\b|\b\d{2}\.\d{3}\.\d{3}-[\dX]\b/gi;
+    const cnhRegex = /\bCNH\s*:?\s*\d{11}\b/gi;
+    const plateRegex = /\b[A-Z]{3}-\d{4}\b|\b[A-Z]{3}\d[A-Z]\d{2}\b/g; // Antiga ABC-1234 e Mercosul ABC1D23
+    const pixRegex = /\b(?:PIX|Chave PIX)\s*:?\s*[\w\d.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b|\b(?:PIX|Chave PIX)\s*:?\s*\+?\d{10,13}\b/gi;
     const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
     const phoneRegex = /\b(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?\d{4,5}[-\s]?\d{4}\b/g;
     const urlRegex = /\b(?:https?:\/\/|www\.|github\.com\/|linkedin\.com\/)[^\s)]+\b/gi;
@@ -136,6 +140,54 @@ export async function detectPiiInData(file: File, customTerms: string[] = []): P
         items.push({
           id: `pii_cnpj_${idx++}`,
           type: 'CNPJ',
+          textValue: match[0],
+          location: `Página ${pageNum}`,
+          selected: true,
+          pageIndex: pageNum - 1,
+        });
+      }
+
+      // RGs
+      while ((match = rgRegex.exec(pageText)) !== null) {
+        items.push({
+          id: `pii_rg_${idx++}`,
+          type: 'RG',
+          textValue: match[0],
+          location: `Página ${pageNum}`,
+          selected: true,
+          pageIndex: pageNum - 1,
+        });
+      }
+
+      // CNHs
+      while ((match = cnhRegex.exec(pageText)) !== null) {
+        items.push({
+          id: `pii_cnh_${idx++}`,
+          type: 'CNH',
+          textValue: match[0],
+          location: `Página ${pageNum}`,
+          selected: true,
+          pageIndex: pageNum - 1,
+        });
+      }
+
+      // Placas de Veículos
+      while ((match = plateRegex.exec(pageText)) !== null) {
+        items.push({
+          id: `pii_plate_${idx++}`,
+          type: 'Placa de Veículo',
+          textValue: match[0],
+          location: `Página ${pageNum}`,
+          selected: true,
+          pageIndex: pageNum - 1,
+        });
+      }
+
+      // Chaves PIX
+      while ((match = pixRegex.exec(pageText)) !== null) {
+        items.push({
+          id: `pii_pix_${idx++}`,
+          type: 'Chave PIX',
           textValue: match[0],
           location: `Página ${pageNum}`,
           selected: true,
@@ -200,7 +252,7 @@ export async function detectPiiInData(file: File, customTerms: string[] = []): P
           
           const fullMatchedElement = pageText.substring(startIdx, endIdx).trim() || match[0];
 
-          if (!items.some(i => i.textValue.toLowerCase() === fullMatchedElement.toLowerCase() && i.pageIndex === pageNum - 1)) {
+          if (!items.some(i => i?.textValue && i.textValue.toLowerCase() === fullMatchedElement.toLowerCase() && i.pageIndex === pageNum - 1)) {
             items.push({
               id: `pii_custom_${idx++}`,
               type: 'Termo Personalizado',
@@ -275,7 +327,7 @@ export async function detectPiiWithAi(
       // 1. Nomes Próprios com Títulos
       while ((match = personNameRegex.exec(pageText)) !== null) {
         const val = match[0].trim();
-        if (val.length > 5 && !stopWords.has(val.toLowerCase()) && !items.some(i => i.textValue.toLowerCase() === val.toLowerCase())) {
+        if (val.length > 5 && !stopWords.has(val.toLowerCase()) && !items.some(i => i?.textValue && i.textValue.toLowerCase() === val.toLowerCase())) {
           items.push({
             id: `ai_name_${idx++}`,
             type: 'Nome de Pessoa (IA)',
@@ -304,7 +356,7 @@ export async function detectPiiWithAi(
           !valLower.includes('presente') &&
           !valLower.includes('instrumento') &&
           !valLower.includes('arrendamento') &&
-          !items.some(i => i.textValue.toLowerCase() === valLower)
+          !items.some(i => i?.textValue && i.textValue.toLowerCase() === valLower)
         ) {
           items.push({
             id: `ai_name_cap_${idx++}`,
@@ -320,10 +372,10 @@ export async function detectPiiWithAi(
       // 3. Endereços e Logradouros
       while ((match = addressRegex.exec(pageText)) !== null) {
         const val = match[0].trim();
-        if (!items.some(i => i.textValue.toLowerCase() === val.toLowerCase())) {
+        if (!items.some(i => i?.textValue && i.textValue.toLowerCase() === val.toLowerCase())) {
           items.push({
             id: `ai_address_${idx++}`,
-            type: 'Endereço/Sensível LGPD (IA)',
+            type: 'CEP/Endereço (IA)',
             textValue: val,
             location: `Página ${pageNum}`,
             selected: true,
@@ -335,7 +387,7 @@ export async function detectPiiWithAi(
       // 4. Dados Financeiros & Documentos Sensíveis
       while ((match = financialAndSensitivesRegex.exec(pageText)) !== null) {
         const val = match[0].trim();
-        if (!items.some(i => i.textValue.toLowerCase() === val.toLowerCase())) {
+        if (!items.some(i => i?.textValue && i.textValue.toLowerCase() === val.toLowerCase())) {
           items.push({
             id: `ai_sensitive_${idx++}`,
             type: 'Dado Financeiro (IA)',
