@@ -16,7 +16,6 @@ import {
   convertDocxToPdf,
   convertDocToPdfA,
   convertDocToTxt,
-  convertPdfToDocx,
   convertPdfToTxt,
   convertPdfToMd,
   convertPdfToHtml,
@@ -33,7 +32,7 @@ import {
   convertSpreadsheetToMd,
   convertSpreadsheetToJson,
   convertJsonToSpreadsheet,
-  pdfTableExtractorService,
+  aiDocumentConverterService,
   convertVideoUniversal,
   convertAudioUniversal,
   convertVideoToGif,
@@ -548,11 +547,12 @@ export function useBatchProcessor() {
 
 
         case 'pdf_to_docx': {
-          const res = await convertPdfToDocx(item.file, {
-            onProgress: updateProgress,
-          });
-          resultBlob = res.blob;
-          resultSize = res.size;
+          const docxBlob = await aiDocumentConverterService.convertPdfToDocxGoogleDocsStandardWithAi(
+            item.file,
+            updateProgress
+          );
+          resultBlob = docxBlob;
+          resultSize = docxBlob.size;
           break;
         }
 
@@ -575,24 +575,21 @@ export function useBatchProcessor() {
         }
 
         case 'pdf_to_excel': {
-          updateProgress(30);
-          const tables = await pdfTableExtractorService.extractTablesFromPdf(item.file);
-          updateProgress(80);
-          const res = pdfTableExtractorService.exportTablesToXlsxBlob(tables);
-          resultBlob = res.blob;
-          resultSize = res.size;
-          updateProgress(100);
+          const res = await aiDocumentConverterService.convertPdfToExcelWithAi(item.file, {
+            onProgress: updateProgress,
+          });
+          resultBlob = res.xlsxBlob;
+          resultSize = res.xlsxBlob.size;
           break;
         }
 
         case 'pdf_to_csv': {
-          updateProgress(30);
-          const tables = await pdfTableExtractorService.extractTablesFromPdf(item.file);
-          updateProgress(80);
-          const res = pdfTableExtractorService.exportTablesToCsvBlob(tables);
-          resultBlob = res.blob;
-          resultSize = res.size;
-          updateProgress(100);
+          const res = await aiDocumentConverterService.convertPdfToExcelWithAi(item.file, {
+            onProgress: updateProgress,
+          });
+          const csvBlob = new Blob([res.csvText], { type: 'text/csv;charset=utf-8;' });
+          resultBlob = csvBlob;
+          resultSize = csvBlob.size;
           break;
         }
 

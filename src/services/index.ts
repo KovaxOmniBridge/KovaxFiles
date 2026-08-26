@@ -14,6 +14,7 @@ export * from './converters/zipService';
 export * from './ai/localAiService';
 export * from './ai/localVectorStore';
 export * from './ai/ocrService';
+export * from './ai/aiDocumentConverterService';
 
 export * from './optimization/pdfOptimizer';
 export * from './optimization/redactionService';
