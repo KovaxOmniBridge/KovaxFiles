@@ -28,6 +28,7 @@ export * from './pdf/pdfBateStampingService';
 export * from './pdf/acroFormService';
 export * from './pdf/digitalSignatureService';
 export * from './pdf/watermarkService';
+export * from './pdf/pdfDiffService';
 
 export * from './utils/networkAuditLogger';
 export * from './utils/sampleGeneratorService';

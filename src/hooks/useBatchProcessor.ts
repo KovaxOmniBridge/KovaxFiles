@@ -23,7 +23,6 @@ import {
   convertDocxToMarkdown,
   convertHtmlToPdf,
   convertHtmlToDocx,
-  convertMarkdownToPdf,
   convertMarkdownToDocx,
   convertSpreadsheetToPdf,
   convertSpreadsheetToDocx,
@@ -115,6 +114,7 @@ export function useBatchProcessor() {
           audioBitrate: '192k',
           videoOutputFormat: 'mp4',
           videoPreset: 'balanced',
+          useAiEngine: true,
         },
       };
     });
@@ -512,11 +512,12 @@ export function useBatchProcessor() {
         }
 
         case 'md_to_pdf': {
-          const res = await convertMarkdownToPdf(item.file, {
+          const text = await item.file.text();
+          const pdfBlob = await aiDocumentConverterService.convertMarkdownToPdfWithAi(text, {
             onProgress: updateProgress,
           });
-          resultBlob = res.blob;
-          resultSize = res.size;
+          resultBlob = pdfBlob;
+          resultSize = pdfBlob.size;
           break;
         }
 
@@ -526,6 +527,29 @@ export function useBatchProcessor() {
           });
           resultBlob = res.blob;
           resultSize = res.size;
+          break;
+        }
+
+        case 'md_to_excel': {
+          updateProgress(30);
+          const text = await item.file.text();
+          updateProgress(60);
+          const res = aiDocumentConverterService.convertMarkdownToSpreadsheetWithAi(text);
+          resultBlob = res.xlsxBlob;
+          resultSize = res.xlsxBlob.size;
+          updateProgress(100);
+          break;
+        }
+
+        case 'md_to_csv': {
+          updateProgress(30);
+          const text = await item.file.text();
+          updateProgress(60);
+          const res = aiDocumentConverterService.convertMarkdownToSpreadsheetWithAi(text);
+          const csvBlob = new Blob([res.csvText], { type: 'text/csv;charset=utf-8;' });
+          resultBlob = csvBlob;
+          resultSize = csvBlob.size;
+          updateProgress(100);
           break;
         }
 
@@ -805,10 +829,12 @@ export function getOutputExtensionForOperation(operation: OperationType, options
       return 'html';
 
     case 'pdf_to_excel':
+    case 'md_to_excel':
       return 'xlsx';
 
     case 'spreadsheet_to_csv':
     case 'pdf_to_csv':
+    case 'md_to_csv':
     case 'json_to_spreadsheet':
       return 'csv';
 

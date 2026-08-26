@@ -42,6 +42,8 @@ export type OperationType =
   | 'txt_to_pdf'
   | 'md_to_pdf'
   | 'md_to_docx'
+  | 'md_to_excel'
+  | 'md_to_csv'
   | 'docx_to_md'
   | 'html_to_pdf'
   | 'html_to_docx'
@@ -88,6 +90,7 @@ export interface ProcessingOptions {
   videoOutputFormat?: 'mp4' | 'webm' | 'mkv';
   linkedCssFiles?: { name: string; content: string }[];
   customCssText?: string;
+  useAiEngine?: boolean;
 }
 
 export type ProcessingStatus = 'idle' | 'queued' | 'processing' | 'completed' | 'error' | 'cancelled';

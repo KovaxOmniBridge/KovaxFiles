@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   FileText, Image as ImageIcon, Video, Music, Scale, 
-  Download, Eye, Trash2, CheckCircle2, AlertTriangle, RefreshCw, Clock, Sliders 
+  Download, Eye, Trash2, CheckCircle2, AlertTriangle, RefreshCw, Clock, Sliders, Bot 
 } from 'lucide-react';
 import type { BatchFileItem, OperationType, ProcessingOptions } from '../types';
 import { formatBytes, getOperationName } from '../utils/formatters';
@@ -157,6 +157,8 @@ export const FileCard: React.FC<FileCardProps> = ({
         return [
           { value: 'md_to_pdf', label: 'Markdown (.md) ➔ PDF Executivo 1:1' },
           { value: 'md_to_docx', label: 'Markdown (.md) ➔ Word Executivo (.docx)' },
+          { value: 'md_to_excel', label: 'Markdown (.md) ➔ Excel (.xlsx) [IA Local]' },
+          { value: 'md_to_csv', label: 'Markdown (.md) ➔ Planilha CSV (.csv) [IA Local]' },
         ];
       }
       if (ext === 'docx' || ext === 'doc') {
@@ -211,6 +213,7 @@ export const FileCard: React.FC<FileCardProps> = ({
   const reduction = calculateReductionPercent();
 
   const isImageCategory = item.category === 'image' && (item.operation === 'img_convert_format' || item.operation === 'img_to_webp' || item.operation === 'img_to_jpg' || item.operation === 'img_to_png' || item.operation === 'img_to_avif');
+  const isAiSupportedOperation = ['pdf_to_docx', 'pdf_to_excel', 'pdf_to_csv', 'md_to_pdf', 'md_to_excel', 'md_to_csv'].includes(item.operation);
 
   const ext = item.name.split('.').pop()?.toLowerCase() || '';
   const type = item.type.toLowerCase();
@@ -386,6 +389,25 @@ export const FileCard: React.FC<FileCardProps> = ({
                   <option value="320k">320 kbps (Máxima)</option>
                 </select>
               </div>
+            </div>
+          )}
+
+          {/* AI Local Engine Options */}
+          {isAiSupportedOperation && (
+            <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 text-blue-800 font-bold">
+                <Bot className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>Motor IA Local (Google Docs Standard)</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={item.options.useAiEngine !== false}
+                  onChange={(e) => onUpdateOptions?.(item.id, { useAiEngine: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
             </div>
           )}
         </div>

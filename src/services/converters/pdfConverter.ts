@@ -1,16 +1,8 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import {
-  Document,
-  Packer,
-  Paragraph,
-  TextRun,
-  ImageRun,
-  AlignmentType,
-  Table,
-} from 'docx';
-import { compressPdfForCourt } from '../optimization/pdfOptimizer';
 import type { DocumentConversionOptions } from './docConverter';
 import { setupPdfWorker } from '../pdf/pdfWorkerInit';
+import { aiDocumentConverterService } from '../ai/aiDocumentConverterService';
+import { compressPdfForCourt } from '../optimization/pdfOptimizer';
 
 setupPdfWorker();
 
@@ -205,7 +197,7 @@ async function extractExecutivePdfLayout(page: pdfjsLib.PDFPageProxy): Promise<P
   };
 }
 
-async function renderPdfPageToJpegBuffer(page: pdfjsLib.PDFPageProxy): Promise<{ buffer: Uint8Array; width: number; height: number }> {
+export async function renderPdfPageToJpegBuffer(page: pdfjsLib.PDFPageProxy): Promise<{ buffer: Uint8Array; width: number; height: number }> {
   const viewport = page.getViewport({ scale: 1.5 });
   const canvas = document.createElement('canvas');
   canvas.width = viewport.width;
@@ -234,47 +226,18 @@ async function renderPdfPageToJpegBuffer(page: pdfjsLib.PDFPageProxy): Promise<{
 }
 
 /**
- * Converte PDF em DOCX editável.
+ * Converte PDF em DOCX editável alinhado ao padrão Google Docs.
  */
 export async function convertPdfToDocx(
   file: File,
   options?: DocumentConversionOptions
 ): Promise<{ blob: Blob; size: number }> {
   options?.onProgress?.(15, 'Carregando documento PDF...');
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-  const children: (Paragraph | Table)[] = [];
-  for (let pNum = 1; pNum <= pdf.numPages; pNum++) {
-    options?.onProgress?.(30 + Math.round((pNum / pdf.numPages) * 60), `Convertendo página ${pNum} de ${pdf.numPages}...`);
-    const pageObj = await pdf.getPage(pNum);
-    const layout = await extractExecutivePdfLayout(pageObj);
-    if (layout.isScanned) {
-      const { buffer, width, height } = await renderPdfPageToJpegBuffer(pageObj);
-      children.push(
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [
-            new ImageRun({
-              data: buffer,
-              transformation: { width, height },
-              type: 'jpg',
-            }),
-          ],
-        })
-      );
-    } else {
-      if (layout.allBodyLines.length > 0) {
-        layout.allBodyLines.forEach((l) => children.push(new Paragraph({ children: [new TextRun({ text: l.text, size: 20 })] })));
-      }
-    }
-  }
-
-  const doc = new Document({ sections: [{ properties: {}, children }] });
-  const docxBlob = await Packer.toBlob(doc);
-  options?.onProgress?.(100, 'PDF convertido para DOCX com sucesso!');
-
-  return { blob: docxBlob, size: docxBlob.size };
+  const blob = await aiDocumentConverterService.convertPdfToDocxGoogleDocsStandardWithAi(
+    file,
+    options?.onProgress
+  );
+  return { blob, size: blob.size };
 }
 
 /**

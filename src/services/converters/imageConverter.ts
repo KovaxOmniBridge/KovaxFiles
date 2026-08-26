@@ -407,6 +407,7 @@ export async function convertImageToDocx(
               new ImageRun({
                 data: buffer,
                 transformation: { width: renderWidth, height: renderHeight },
+                type: 'png',
               }),
             ],
           }),
