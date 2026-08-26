@@ -649,7 +649,7 @@ function parseNetpbmToCanvas(buffer: ArrayBuffer): HTMLCanvasElement | null {
  */
 export async function convertSvgToOutput(
   file: File,
-  outputFormat: 'png' | 'pdf',
+  outputFormat: 'png' | 'pdf' | 'webp' | 'jpeg',
   onProgress?: (percent: number, status: string) => void
 ): Promise<{ blob: Blob; size: number }> {
   onProgress?.(20, 'Carregando vetor SVG...');
@@ -693,13 +693,21 @@ export async function convertSvgToOutput(
     const pdfBlob = doc.output('blob');
     onProgress?.(100, 'PDF gerado a partir do SVG com sucesso!');
     return { blob: pdfBlob, size: pdfBlob.size };
-  } else {
-    onProgress?.(80, 'Exportando para PNG...');
-    const pngBlob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Erro ao exportar PNG'))), 'image/png', 1.0);
+  } else if (outputFormat === 'webp') {
+    onProgress?.(80, 'Exportando para WebP...');
+    const webpBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Erro ao exportar WebP'))), 'image/webp', 0.9);
     });
-    onProgress?.(100, 'PNG gerado com sucesso!');
-    return { blob: pngBlob, size: pngBlob.size };
+    onProgress?.(100, 'WebP gerado com sucesso!');
+    return { blob: webpBlob, size: webpBlob.size };
+  } else {
+    onProgress?.(80, `Exportando para ${outputFormat.toUpperCase()}...`);
+    const mimeType = outputFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const outBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error(`Erro ao exportar ${outputFormat}`))), mimeType, 0.95);
+    });
+    onProgress?.(100, `${outputFormat.toUpperCase()} gerado com sucesso!`);
+    return { blob: outBlob, size: outBlob.size };
   }
 }
 
@@ -709,7 +717,7 @@ export async function convertSvgToOutput(
 export async function convertImageToSpecificFormat(
   file: File,
   format: 'gif' | 'bmp' | 'tiff',
-  options?: ImageConversionOptions
+  options?: Partial<ImageConversionOptions>
 ): Promise<{ blob: Blob; size: number }> {
   const { onProgress, quality = 0.9 } = options || {};
   onProgress?.(20, `Decodificando imagem para ${format.toUpperCase()}...`);

@@ -5,6 +5,8 @@ import { sanitizeClonedDocCss } from '../../utils/cssSanitizer';
 
 export interface DocumentConversionOptions {
   onProgress?: (percent: number, status: string) => void;
+  linkedCssFiles?: { name: string; content: string }[];
+  customCssText?: string;
 }
 
 // Modelo AST (Abstract Syntax Tree) Genérico e Dinâmico para qualquer documento
