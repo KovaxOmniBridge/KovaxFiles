@@ -13,7 +13,6 @@ import { GoogleDocsWysiwygModal } from './components/GoogleDocsWysiwygModal';
 import { DigitalSignerTab } from './components/DigitalSignerTab';
 import { MetadataSanitizerTab } from './components/MetadataSanitizerTab';
 import { RedactionAnonymizerTab } from './components/RedactionAnonymizerTab';
-import { LocalAiAnalyzerTab } from './components/LocalAiAnalyzerTab';
 import { Footer } from './components/Footer';
 import { useBatchProcessor } from './hooks/useBatchProcessor';
 import type { BatchFileItem, FileCategory } from './types';
@@ -262,7 +261,6 @@ export function App() {
         {activeTab === 'signer' && <DigitalSignerTab />}
         {activeTab === 'sanitizer' && <MetadataSanitizerTab />}
         {activeTab === 'redactor' && <RedactionAnonymizerTab />}
-        {activeTab === 'local-ai' && <LocalAiAnalyzerTab />}
       </main>
 
       {/* Quality Comparison Modal */}

@@ -413,7 +413,7 @@ export async function convertDocxToPdf(
 
       const targetElement = iframeDoc.getElementById('docx-render-container') || iframeDoc.body;
 
-      options?.onProgress?.(75, 'Gerando arquivo PDF no padrão Google Docs...');
+      options?.onProgress?.(75, 'Gerando arquivo PDF...');
 
       const doc = new jsPDF({
         unit: 'pt',

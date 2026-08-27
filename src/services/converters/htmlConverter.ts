@@ -31,7 +31,7 @@ export async function convertHtmlToPdf(
   await new Promise((resolve) => setTimeout(resolve, 150));
   const targetElement = iframeDoc.body;
 
-  options?.onProgress?.(70, 'Gerando arquivo PDF no padrão Google Docs...');
+  options?.onProgress?.(70, 'Gerando arquivo PDF...');
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageWidthPt = 595.28;
   const pageHeightPt = 841.89;

@@ -90,7 +90,6 @@ export interface ProcessingOptions {
   videoOutputFormat?: 'mp4' | 'webm' | 'mkv';
   linkedCssFiles?: { name: string; content: string }[];
   customCssText?: string;
-  useAiEngine?: boolean;
 }
 
 export type ProcessingStatus = 'idle' | 'queued' | 'processing' | 'completed' | 'error' | 'cancelled';

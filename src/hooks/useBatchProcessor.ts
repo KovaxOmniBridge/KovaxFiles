@@ -19,11 +19,14 @@ import {
   convertPdfToTxt,
   convertPdfToMd,
   convertPdfToHtml,
+  convertPdfToDocx,
+  convertPdfToExcel,
   convertUniversalDocToPdf,
   convertDocxToMarkdown,
   convertHtmlToPdf,
   convertHtmlToDocx,
   convertMarkdownToDocx,
+  convertMarkdownToPdf,
   convertSpreadsheetToPdf,
   convertSpreadsheetToDocx,
   convertSpreadsheetToCsv,
@@ -31,7 +34,6 @@ import {
   convertSpreadsheetToMd,
   convertSpreadsheetToJson,
   convertJsonToSpreadsheet,
-  aiDocumentConverterService,
   convertVideoUniversal,
   convertAudioUniversal,
   convertVideoToGif,
@@ -512,12 +514,11 @@ export function useBatchProcessor() {
         }
 
         case 'md_to_pdf': {
-          const text = await item.file.text();
-          const pdfBlob = await aiDocumentConverterService.convertMarkdownToPdfWithAi(text, {
+          const res = await convertMarkdownToPdf(item.file, {
             onProgress: updateProgress,
           });
-          resultBlob = pdfBlob;
-          resultSize = pdfBlob.size;
+          resultBlob = res.blob;
+          resultSize = res.size;
           break;
         }
 
@@ -531,22 +532,17 @@ export function useBatchProcessor() {
         }
 
         case 'md_to_excel': {
-          updateProgress(30);
           const text = await item.file.text();
-          updateProgress(60);
-          const res = aiDocumentConverterService.convertMarkdownToSpreadsheetWithAi(text);
-          resultBlob = res.xlsxBlob;
-          resultSize = res.xlsxBlob.size;
+          const csvBlob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+          resultBlob = csvBlob;
+          resultSize = csvBlob.size;
           updateProgress(100);
           break;
         }
 
         case 'md_to_csv': {
-          updateProgress(30);
           const text = await item.file.text();
-          updateProgress(60);
-          const res = aiDocumentConverterService.convertMarkdownToSpreadsheetWithAi(text);
-          const csvBlob = new Blob([res.csvText], { type: 'text/csv;charset=utf-8;' });
+          const csvBlob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
           resultBlob = csvBlob;
           resultSize = csvBlob.size;
           updateProgress(100);
@@ -571,12 +567,12 @@ export function useBatchProcessor() {
 
 
         case 'pdf_to_docx': {
-          const docxBlob = await aiDocumentConverterService.convertPdfToDocxGoogleDocsStandardWithAi(
+          const res = await convertPdfToDocx(
             item.file,
-            updateProgress
+            { onProgress: updateProgress }
           );
-          resultBlob = docxBlob;
-          resultSize = docxBlob.size;
+          resultBlob = res.blob;
+          resultSize = res.size;
           break;
         }
 
@@ -599,7 +595,7 @@ export function useBatchProcessor() {
         }
 
         case 'pdf_to_excel': {
-          const res = await aiDocumentConverterService.convertPdfToExcelWithAi(item.file, {
+          const res = await convertPdfToExcel(item.file, {
             onProgress: updateProgress,
           });
           resultBlob = res.xlsxBlob;
@@ -608,7 +604,7 @@ export function useBatchProcessor() {
         }
 
         case 'pdf_to_csv': {
-          const res = await aiDocumentConverterService.convertPdfToExcelWithAi(item.file, {
+          const res = await convertPdfToExcel(item.file, {
             onProgress: updateProgress,
           });
           const csvBlob = new Blob([res.csvText], { type: 'text/csv;charset=utf-8;' });

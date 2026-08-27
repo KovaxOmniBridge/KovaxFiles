@@ -48,7 +48,7 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
 
     const loadContent = async () => {
       setDocTitle(file.name.replace(/\.[^/.]+$/, ''));
-      setStatusMessage('Carregando documento no formato Google Docs...');
+      setStatusMessage('Carregando documento...');
 
       try {
         const ext = file.name.split('.').pop()?.toLowerCase() || '';
@@ -99,7 +99,7 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
   const handleExportPdf = async () => {
     if (!editorRef.current) return;
     setIsExporting(true);
-    setStatusMessage('Exportando PDF no padrão estrito Google Docs (Margens 2,54 cm, Arial 11pt)...');
+    setStatusMessage('Exportando PDF (Margens 2,54 cm, Arial 11pt)...');
 
     try {
       const pageWidthPt = 595.28;
@@ -203,7 +203,7 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
       }
 
       const pdfBlob = doc.output('blob');
-      saveAs(pdfBlob, `${docTitle}_GoogleDocs.pdf`);
+      saveAs(pdfBlob, `${docTitle}_Editado.pdf`);
       setStatusMessage('PDF gerado e baixado com sucesso!');
     } catch (err) {
       console.error('Erro na exportação de PDF:', err);
@@ -229,14 +229,14 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
       </html>
     `;
     const blob = new Blob(['\ufeff' + htmlString], { type: 'application/msword' });
-    saveAs(blob, `${docTitle}_GoogleDocs.docx`);
+    saveAs(blob, `${docTitle}_Editado.docx`);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
       <div className="bg-slate-100 w-full max-w-6xl h-[95vh] rounded-3xl flex flex-col border border-slate-300 shadow-2xl overflow-hidden">
         
-        {/* Header Bar - Google Docs Title & Actions */}
+        {/* Header Bar - Editor Title & Actions */}
         <div className="bg-white px-4 py-3 border-b border-slate-200 flex items-center justify-between shadow-xs">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
@@ -252,7 +252,7 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
               />
               <div className="flex items-center space-x-2 text-xs text-slate-500 mt-0.5">
                 <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-[10px]">
-                  <Sparkles className="w-3 h-3 text-emerald-600" /> Padrão Google Docs (2,54 cm / Arial 11pt)
+                  <Sparkles className="w-3 h-3 text-emerald-600" /> Padrão A4 (2,54 cm / Arial 11pt)
                 </span>
                 {statusMessage && <span className="text-blue-600 animate-pulse">{statusMessage}</span>}
               </div>
@@ -273,10 +273,10 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
               onClick={handleExportPdf}
               disabled={isExporting}
               className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
-              title="Exportar PDF oficial no padrão Google Docs"
+              title="Exportar PDF oficial"
             >
               <Printer className="w-4 h-4" />
-              <span>{isExporting ? 'Gerando PDF...' : 'Baixar PDF Google Docs'}</span>
+              <span>{isExporting ? 'Gerando PDF...' : 'Baixar PDF'}</span>
             </button>
 
             <button
@@ -288,7 +288,7 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
           </div>
         </div>
 
-        {/* Toolbar - Google Docs Controls */}
+        {/* Toolbar - Editor Controls */}
         <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-2 text-xs text-slate-700 overflow-x-auto">
           {/* Font Family Select */}
           <select
@@ -299,7 +299,7 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
             }}
             className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-xs outline-none cursor-pointer hover:border-slate-400"
           >
-            <option value="Arial">Arial (Google Docs)</option>
+            <option value="Arial">Arial</option>
             <option value="Helvetica">Helvetica</option>
             <option value="Times New Roman">Times New Roman</option>
             <option value="Courier New">Courier New</option>
@@ -315,7 +315,7 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
           >
             <option value="9pt">9 pt</option>
             <option value="10pt">10 pt</option>
-            <option value="11pt">11 pt (Padrão Docs)</option>
+            <option value="11pt">11 pt (Padrão)</option>
             <option value="12pt">12 pt (Título)</option>
             <option value="14pt">14 pt</option>
             <option value="18pt">18 pt</option>
@@ -395,7 +395,7 @@ export const GoogleDocsWysiwygModal: React.FC<GoogleDocsWysiwygModalProps> = ({
             >
               <option value="1.0">1.0 (Simples)</option>
               <option value="1.15">1.15</option>
-              <option value="1.28">1.28 (Google Docs)</option>
+              <option value="1.28">1.28 (Padrão)</option>
               <option value="1.5">1.5</option>
               <option value="2.0">2.0 (Duplo)</option>
             </select>

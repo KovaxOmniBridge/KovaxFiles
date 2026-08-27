@@ -61,12 +61,12 @@ export const RedactionAnonymizerTab: React.FC = () => {
   const handleRunAiScanner = async () => {
     if (!file) return;
     setIsProcessing(true);
-    setStatusMessage('IA Local realizando varredura semântica NER por nomes, endereços e dados sensíveis LGPD...');
+    setStatusMessage('Kovax realizando varredura semântica NER por nomes, endereços e dados sensíveis LGPD...');
 
     try {
       const aiDetected = await detectPiiWithAi(file, (status) => setStatusMessage(status));
       if (!aiDetected || aiDetected.length === 0) {
-        setPatternNotification('A IA Local analisou o documento e não encontrou nomes ou dados sensíveis adicionais.');
+        setPatternNotification('A Kovax analisou o documento e não encontrou nomes ou dados sensíveis adicionais.');
       } else {
         setPiiItems((prev) => {
           const safePrev = prev || [];
@@ -74,10 +74,10 @@ export const RedactionAnonymizerTab: React.FC = () => {
           const newOnly = aiDetected.filter((i) => i && !existingVals.has(`${(i?.textValue || '').toLowerCase()}_${i?.location || ''}`));
           return [...safePrev, ...newOnly];
         });
-        setPatternNotification(`✨ IA Local: ${aiDetected.length} elemento(s) semântico(s) (Nomes de Pessoas, Endereços e Dados Sensíveis LGPD) localizados!`);
+        setPatternNotification(`✨ Kovax: ${aiDetected.length} elemento(s) semântico(s) (Nomes de Pessoas, Endereços e Dados Sensíveis LGPD) localizados!`);
       }
     } catch (err) {
-      console.error('Erro na varredura de IA:', err);
+      console.error('Erro na varredura de PII:', err);
     } finally {
       setIsProcessing(false);
     }
@@ -256,10 +256,10 @@ export const RedactionAnonymizerTab: React.FC = () => {
                 <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-3 shadow-xs">
                   <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                     <Bot className="w-4 h-4 text-violet-600" />
-                    Varredura Inteligente por IA Local (NER)
+                    Varredura Inteligente Kovax (NER)
                   </h4>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Usa Inteligência Artificial local para identificar Nomes de Pessoas Físicas, Razões Sociais e Endereços no texto do PDF.
+                    Usa a Kovax para identificar Nomes de Pessoas Físicas, Razões Sociais e Endereços no texto do PDF.
                   </p>
                   <button
                     onClick={handleRunAiScanner}
@@ -267,7 +267,7 @@ export const RedactionAnonymizerTab: React.FC = () => {
                     className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-95 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                   >
                     <Bot className="w-4 h-4" />
-                    Varrer Nomes & PII com IA Local
+                    Varrer Nomes & PII com Kovax
                   </button>
                 </div>
 
@@ -338,7 +338,7 @@ export const RedactionAnonymizerTab: React.FC = () => {
                     <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" />
                     <p className="text-xs text-slate-900 font-bold">Nenhum dado PII ou palavra-chave foi localizado automaticamente.</p>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      Utilize a Varredura por IA Local acima ou clique na aba "Modo 2: Tarjamento Visual" para selecionar trechos com o mouse.
+                      Utilize a Varredura Kovax acima ou clique na aba "Modo 2: Tarjamento Visual" para selecionar trechos com o mouse.
                     </p>
                   </div>
                 ) : (

@@ -1,4 +1,4 @@
-import { extractTextFromAnyDocument } from '../ai/localAiService';
+import { extractTextFromAnyDocument } from '../utils/documentTextExtractor';
 
 export interface ClauseDiffResult {
   type: 'added' | 'removed' | 'modified' | 'unchanged';

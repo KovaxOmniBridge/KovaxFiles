@@ -11,10 +11,8 @@ export * from './converters/zipConverter';
 export * from './converters/spreadsheetConverter';
 export * from './converters/zipService';
 
-export * from './ai/localAiService';
-export * from './ai/localVectorStore';
-export * from './ai/ocrService';
-export * from './ai/aiDocumentConverterService';
+export * from './utils/documentTextExtractor';
+export * from './utils/ocrService';
 
 export * from './optimization/pdfOptimizer';
 export * from './optimization/redactionService';

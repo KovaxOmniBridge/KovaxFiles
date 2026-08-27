@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   FileText, Image as ImageIcon, Video, Music, Scale, 
-  Download, Eye, Trash2, CheckCircle2, AlertTriangle, RefreshCw, Clock, Sliders, Bot 
+  Download, Eye, Trash2, CheckCircle2, AlertTriangle, RefreshCw, Clock, Sliders, Bot, Sparkles 
 } from 'lucide-react';
 import type { BatchFileItem, OperationType, ProcessingOptions } from '../types';
 import { formatBytes, getOperationName } from '../utils/formatters';
@@ -399,7 +399,7 @@ export const FileCard: React.FC<FileCardProps> = ({
             <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
               <div className="flex items-center gap-1.5 text-blue-800 font-bold">
                 <Bot className="w-4 h-4 text-blue-600 shrink-0" />
-                <span>Motor IA Local (Google Docs Standard)</span>
+                <span>Motor Kovax</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -465,15 +465,15 @@ export const FileCard: React.FC<FileCardProps> = ({
             </button>
           )}
 
-          {/* Google Docs Editor & Visualizer Button */}
+          {/* Editor & Visualizer Button */}
           {onOpenGDocsEditor && (item.category === 'document' || item.category === 'pdf_court' || item.name.endsWith('.docx') || item.name.endsWith('.doc') || item.name.endsWith('.txt') || item.name.endsWith('.md') || item.name.endsWith('.html')) && (
             <button
               onClick={() => onOpenGDocsEditor(item.file)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-800 hover:bg-blue-100 text-xs font-bold border border-blue-200 transition-colors"
-              title="Abrir no Editor & Visualizador WYSIWYG A4 no padrão Google Docs"
+              title="Abrir no Editor & Visualizador WYSIWYG A4"
             >
               <FileText className="w-3.5 h-3.5 text-blue-600" />
-              Editar (Google Docs)
+              Editar
             </button>
           )}
         </div>

@@ -1,11 +1,16 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import * as XLSX from 'xlsx';
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+} from 'docx';
 import type { DocumentConversionOptions } from './docConverter';
 import { setupPdfWorker } from '../pdf/pdfWorkerInit';
-import { aiDocumentConverterService } from '../ai/aiDocumentConverterService';
 import { compressPdfForCourt } from '../optimization/pdfOptimizer';
 
 setupPdfWorker();
-
 
 function sanitizeText(str: string): string {
   if (!str) return '';
@@ -197,34 +202,6 @@ async function extractExecutivePdfLayout(page: pdfjsLib.PDFPageProxy): Promise<P
   };
 }
 
-export async function renderPdfPageToJpegBuffer(page: pdfjsLib.PDFPageProxy): Promise<{ buffer: Uint8Array; width: number; height: number }> {
-  const viewport = page.getViewport({ scale: 1.5 });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const context = canvas.getContext('2d');
-
-  if (context) {
-    context.fillStyle = '#FFFFFF';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: context, viewport: viewport } as any).promise;
-  }
-
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-  const base64 = dataUrl.split(',')[1] || '';
-  const binaryStr = atob(base64);
-  const len = binaryStr.length;
-  const buffer = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    buffer[i] = binaryStr.charCodeAt(i);
-  }
-
-  const renderedWidth = Math.min(500, viewport.width * 0.5);
-  const renderedHeight = (viewport.height / viewport.width) * renderedWidth;
-
-  return { buffer, width: Math.round(renderedWidth), height: Math.round(renderedHeight) };
-}
-
 /**
  * Converte PDF em DOCX editável alinhado ao padrão Google Docs.
  */
@@ -233,11 +210,72 @@ export async function convertPdfToDocx(
   options?: DocumentConversionOptions
 ): Promise<{ blob: Blob; size: number }> {
   options?.onProgress?.(15, 'Carregando documento PDF...');
-  const blob = await aiDocumentConverterService.convertPdfToDocxGoogleDocsStandardWithAi(
-    file,
-    options?.onProgress
-  );
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  
+  const paragraphs: Paragraph[] = [];
+
+  for (let pNum = 1; pNum <= pdfDoc.numPages; pNum++) {
+    const page = await pdfDoc.getPage(pNum);
+    const layout = await extractExecutivePdfLayout(page);
+
+    layout.allBodyLines.forEach((l) => {
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: l.text,
+              font: 'Arial',
+              size: Math.round((l.fontSize || 11) * 2),
+              bold: l.isBold,
+            }),
+          ],
+        })
+      );
+    });
+  }
+
+  const doc = new Document({ sections: [{ properties: {}, children: paragraphs }] });
+  const blob = await Packer.toBlob(doc);
+  options?.onProgress?.(100, 'DOCX gerado com sucesso!');
   return { blob, size: blob.size };
+}
+
+/**
+ * Converte PDF em Planilha Excel (.xlsx) e CSV.
+ */
+export async function convertPdfToExcel(
+  file: File,
+  options?: DocumentConversionOptions
+): Promise<{ xlsxBlob: Blob; csvText: string; filename: string }> {
+  options?.onProgress?.(15, 'Lendo tabelas do PDF...');
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  
+  const allRows: (string | number)[][] = [];
+
+  for (let pNum = 1; pNum <= pdfDoc.numPages; pNum++) {
+    const page = await pdfDoc.getPage(pNum);
+    const layout = await extractExecutivePdfLayout(page);
+
+    layout.allBodyLines.forEach((l) => {
+      allRows.push([l.text]);
+    });
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.aoa_to_sheet(allRows);
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Dados PDF');
+
+  const xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const xlsxBlob = new Blob([xlsxBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const csvText = XLSX.utils.sheet_to_csv(worksheet);
+  const filename = `${file.name.replace(/\.[^/.]+$/, '')}.xlsx`;
+
+  options?.onProgress?.(100, 'Excel gerado com sucesso!');
+  return { xlsxBlob, csvText, filename };
 }
 
 /**

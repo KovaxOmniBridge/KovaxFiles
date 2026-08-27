@@ -18,6 +18,13 @@ export interface PiiDetectionItem {
     widthPercent: number;
     heightPercent: number;
   };
+  bounds?: {
+    pageIndex: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 // Algoritmo de Validação do Módulo 11 de CPF
@@ -538,7 +545,7 @@ export async function applyRedactionsToPdf(
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        await page.render({ canvasContext: ctx, canvas, viewport } as any).promise;
 
         const imgDataUrl = canvas.toDataURL('image/jpeg', 0.9);
         const embeddedImg = await flatPdfDoc.embedJpg(imgDataUrl);
@@ -549,7 +556,7 @@ export async function applyRedactionsToPdf(
       }
 
       const flatBytes = await flatPdfDoc.save();
-      const flatBlob = new Blob([new Uint8Array(flatBytes)], { type: 'application/pdf' });
+      const flatBlob = new Blob([flatBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
       onProgress?.(100, 'Documento tarjado e rasterizado com segurança máxima!');
       return { blob: flatBlob, size: flatBlob.size };
     } catch {
@@ -557,7 +564,7 @@ export async function applyRedactionsToPdf(
     }
   }
 
-  const redactedBlob = new Blob([redactedBytes], { type: 'application/pdf' });
+  const redactedBlob = new Blob([redactedBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
   onProgress?.(100, 'Documento PDF tarjado com sucesso!');
   return {
     blob: redactedBlob,

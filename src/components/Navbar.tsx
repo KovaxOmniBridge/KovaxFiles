@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { HardDrive, FileCheck2, Cpu, FileCheck, Sparkles, EyeOff, Bot, Menu, X } from 'lucide-react';
+import { HardDrive, FileCheck2, Cpu, FileCheck, Sparkles, EyeOff, Menu, X } from 'lucide-react';
 
-export type AppTabType = 'converter' | 'signer' | 'sanitizer' | 'redactor' | 'local-ai';
+export type AppTabType = 'converter' | 'signer' | 'sanitizer' | 'redactor';
 
 interface NavbarProps {
   activeTab: AppTabType;
@@ -17,7 +17,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange, onOpenCo
     { id: 'signer', label: 'Assinador PAdES / ICP-Brasil', icon: <FileCheck className="w-4 h-4" />, color: 'from-indigo-600 to-violet-600' },
     { id: 'sanitizer', label: 'Higienizador EXIF/GPS', icon: <Sparkles className="w-4 h-4" />, color: 'from-emerald-600 to-teal-600' },
     { id: 'redactor', label: 'Tarjador LGPD / PII', icon: <EyeOff className="w-4 h-4" />, color: 'from-violet-600 to-purple-600' },
-    { id: 'local-ai', label: 'Analisador & Comparador IA Local', icon: <Bot className="w-4 h-4" />, color: 'from-blue-600 via-indigo-600 to-emerald-600' },
   ];
 
   return (

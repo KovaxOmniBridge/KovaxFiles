@@ -11,7 +11,7 @@
     <title>Kovax Files — Engenharia Documental Client-Side & Otimização de PDF para Tribunais</title>
     <meta name="title" content="Kovax Files — Engenharia Documental Client-Side & Otimização de PDF para Tribunais" />
     <meta name="description" content="Plataforma universal 100% Client-Side para conversão de DOCX, Markdown, HEIC, compressor de PDF para PJe/TJSP/TRF, assinatura digital PAdES e tarjador LGPD com IA local sem envio de arquivos para servidores." />
-    <meta name="keywords" content="otimizador pdf pje, tjsp pdf compressor, conversor docx pdf google docs, tarjador lgpd ia local, assinador pades icp brasil, conversor heic iphone, kovax files, engenharia de documentos, zero upload" />
+    <meta name="keywords" content="otimizador pdf pje, tjsp pdf compressor, conversor docx pdf, tarjador lgpd kovax ia, assinador pades icp brasil, conversor heic iphone, kovax files, engenharia de documentos, zero upload" />
     <meta name="author" content="Kovax Files" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://kovaxfiles.com.br/" />
@@ -20,7 +20,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://kovaxfiles.com.br/" />
     <meta property="og:title" content="Kovax Files — Engenharia Documental Client-Side & Otimização de PDF para Tribunais" />
-    <meta property="og:description" content="Compacte PDFs para o PJe, converta DOCX/Markdown com padrão Google Docs, assine digitalmente PAdES e tarje dados LGPD com IA Local 100% no seu navegador." />
+    <meta property="og:description" content="Compacte PDFs para o PJe, converta DOCX/Markdown com padrão A4, assine digitalmente PAdES e tarje dados LGPD com Kovax IA 100% no seu navegador." />
     <meta property="og:site_name" content="Kovax Files" />
     <meta property="og:locale" content="pt_BR" />
 
@@ -47,8 +47,8 @@
     }
     </script>
     
-    <!-- Content Security Policy (CSP Restritivo - 0 Conexões Externas) -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' blob: data:; worker-src 'self' blob:; object-src 'none';" />
+    <!-- Content Security Policy (Permite WebGPU Local, Ollama em localhost e download de pesos do HuggingFace) -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' blob: data: http://localhost:11434 http://127.0.0.1:11434 https://huggingface.co https://*.huggingface.co https://raw.githubusercontent.com https://cdn.jsdelivr.net; worker-src 'self' blob:; object-src 'none';" />
 
     <!-- Compiled CSS -->
     <link rel="stylesheet" href="./dist/styles.css" />

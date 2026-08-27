@@ -212,9 +212,9 @@ export function getOperationName(op: OperationType): string {
     case 'md_to_docx':
       return 'Markdown (.md) ➔ Word Executivo (.docx)';
     case 'md_to_excel':
-      return 'Markdown (.md) ➔ Pasta Excel (.xlsx) [IA Local]';
+      return 'Markdown (.md) ➔ Pasta Excel (.xlsx)';
     case 'md_to_csv':
-      return 'Markdown (.md) ➔ Planilha CSV (.csv) [IA Local]';
+      return 'Markdown (.md) ➔ Planilha CSV (.csv)';
     case 'docx_to_md':
       return 'Word (.docx) ➔ Markdown (.md)';
     case 'html_to_pdf':
