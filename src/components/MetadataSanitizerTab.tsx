@@ -65,20 +65,30 @@ export const MetadataSanitizerTab: React.FC = () => {
       {!file ? (
         <div
           onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              const droppedFile = e.dataTransfer.files[0];
+              setFile(droppedFile);
+              setSanitizedBlobUrl(null);
+              inspectFileMetadata(droppedFile).then(setInspection);
+            }
+          }}
           className="border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-white hover:bg-slate-50 rounded-3xl p-8 sm:p-10 text-center cursor-pointer transition-all duration-300 group shadow-xs"
         >
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,application/pdf,video/*"
+            accept="*"
             className="hidden"
             onChange={handleFileSelect}
           />
           <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mx-auto mb-4 group-hover:scale-110 transition-transform">
             <Sparkles className="w-8 h-8" />
           </div>
-          <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mb-1">Selecione uma Imagem, PDF ou Vídeo para higienizar</h3>
-          <p className="text-xs text-slate-500">Inspeção instantânea e eliminação de coordenadas de localização e rastros de dispositivos</p>
+          <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mb-1">Selecione qualquer arquivo (PDF, Word, Excel, Imagem, Vídeo, Áudio) para higienizar</h3>
+          <p className="text-xs text-slate-500">Aceita 100% de todos os formatos de arquivo • Remoção universal de metadados, GPS e rastros de autoria</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

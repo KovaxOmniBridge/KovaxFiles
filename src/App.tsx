@@ -9,6 +9,7 @@ import { QualityPreviewModal } from './components/QualityPreviewModal';
 import { ComplianceModal } from './components/ComplianceModal';
 import { PdfPageOrganizerModal } from './components/PdfPageOrganizerModal';
 import { PdfMergeModal } from './components/PdfMergeModal';
+import { GoogleDocsWysiwygModal } from './components/GoogleDocsWysiwygModal';
 import { DigitalSignerTab } from './components/DigitalSignerTab';
 import { MetadataSanitizerTab } from './components/MetadataSanitizerTab';
 import { RedactionAnonymizerTab } from './components/RedactionAnonymizerTab';
@@ -45,6 +46,7 @@ export function App() {
   const [isComplianceOpen, setIsComplianceOpen] = useState(false);
   const [organizerFile, setOrganizerFile] = useState<File | null>(null);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+  const [gdocsFile, setGdocsFile] = useState<File | null>(null);
 
   useEffect(() => {
     // Initialize network audit interceptor
@@ -247,6 +249,7 @@ export function App() {
                       onRemove={removeItem}
                       onPreview={setPreviewItem}
                       onDownload={downloadSingle}
+                      onOpenGDocsEditor={setGdocsFile}
                     />
                   ))}
                 </div>
@@ -273,6 +276,13 @@ export function App() {
       <ComplianceModal
         isOpen={isComplianceOpen}
         onClose={() => setIsComplianceOpen(false)}
+      />
+
+      {/* Google Docs WYSIWYG Editor & Visualizer Modal */}
+      <GoogleDocsWysiwygModal
+        isOpen={Boolean(gdocsFile)}
+        file={gdocsFile}
+        onClose={() => setGdocsFile(null)}
       />
 
       {/* PDF Page Organizer & Rotator Modal */}

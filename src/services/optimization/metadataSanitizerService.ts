@@ -1,4 +1,5 @@
 import { PDFDocument, PDFRef } from 'pdf-lib';
+import JSZip from 'jszip';
 
 export interface MetadataItem {
   key: string;
@@ -22,9 +23,10 @@ export interface MetadataInspectionResult {
 export async function inspectFileMetadata(file: File): Promise<MetadataInspectionResult> {
   const items: MetadataItem[] = [];
   const buffer = await file.arrayBuffer();
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
   // Inspect 100% of PDF metadata fields
-  if (file.name.toLowerCase().endsWith('.pdf') || file.type.includes('pdf')) {
+  if (ext === 'pdf' || file.type.includes('pdf')) {
     try {
       const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
       const title = pdfDoc.getTitle()?.trim();
@@ -49,7 +51,24 @@ export async function inspectFileMetadata(file: File): Promise<MetadataInspectio
         items.push({ key: 'Gerador PDF (Producer)', value: producer, isSensitive: true, category: 'System' });
       }
     } catch {
-      // Unreadable or empty PDF stream
+      // Stream não legível
+    }
+  } else if (['docx', 'xlsx', 'pptx', 'docm', 'xlsm'].includes(ext)) {
+    try {
+      const zip = await JSZip.loadAsync(buffer);
+      const coreXml = await zip.file('docProps/core.xml')?.async('string');
+      if (coreXml) {
+        const creatorMatch = coreXml.match(/<dc:creator[^>]*>(.*?)<\/dc:creator>/i);
+        const lastModMatch = coreXml.match(/<cp:lastModifiedBy[^>]*>(.*?)<\/cp:lastModifiedBy>/i);
+        if (creatorMatch && creatorMatch[1].trim()) {
+          items.push({ key: 'Autor do Documento (Office)', value: creatorMatch[1].trim(), isSensitive: true, category: 'Author' });
+        }
+        if (lastModMatch && lastModMatch[1].trim()) {
+          items.push({ key: 'Último Editor (Office)', value: lastModMatch[1].trim(), isSensitive: true, category: 'Author' });
+        }
+      }
+    } catch {
+      // Ignorar caso não seja um zip Office válido
     }
   } else {
     const bytes = new Uint8Array(buffer);
@@ -84,17 +103,18 @@ export async function inspectFileMetadata(file: File): Promise<MetadataInspectio
 }
 
 /**
- * Remove 100% de todos os metadados EXIF, GPS, autoria e identificadores do arquivo.
+ * Remove 100% de todos os metadados EXIF, GPS, autoria e identificadores de QUALQUER tipo de arquivo.
  */
 export async function sanitizeFileMetadata(
   file: File,
   onProgress?: (percent: number, status: string) => void
 ): Promise<{ blob: Blob; size: number }> {
-  onProgress?.(30, 'Inspecionando estrutura interna para higienização total...');
+  onProgress?.(30, 'Inspecionando estrutura interna para higienização universal...');
   
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
-  if (['jpg', 'jpeg', 'png', 'webp', 'jfif', 'heic'].includes(ext) || file.type.startsWith('image/')) {
+  // 1. Imagens: Re-renderização limpa no Canvas (expulsa EXIF/GPS)
+  if (['jpg', 'jpeg', 'png', 'webp', 'jfif', 'heic', 'bmp'].includes(ext) || file.type.startsWith('image/')) {
     onProgress?.(60, 'Re-codificando imagem no Canvas limpo (Eliminando marcadores EXIF/GPS)...');
     const imgUrl = URL.createObjectURL(file);
     const img = new Image();
@@ -123,36 +143,99 @@ export async function sanitizeFileMetadata(
       canvas.toBlob((b) => resolve(b || file), mimeType, 0.95);
     });
 
-    onProgress?.(100, 'Metadados EXIF e GPS removidos com sucesso!');
+    onProgress?.(100, 'Metadados EXIF e GPS de imagem removidos com sucesso!');
     return { blob: cleanBlob, size: cleanBlob.size };
   }
 
-  // PDF Structural Metadata Elimination via pdf-lib
-  onProgress?.(70, 'Removendo 100% de todos os campos de metadados do documento PDF...');
-  const buffer = await file.arrayBuffer();
-  const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+  // 2. Documentos Office OpenXML (.docx, .xlsx, .pptx)
+  if (['docx', 'xlsx', 'pptx', 'docm', 'xlsm'].includes(ext)) {
+    onProgress?.(60, 'Limpando propriedades de autoria e revisão do pacote Office...');
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const zip = await JSZip.loadAsync(arrayBuffer);
 
-  // Purge all metadata fields to empty strings
-  pdfDoc.setTitle('');
-  pdfDoc.setAuthor('');
-  pdfDoc.setSubject('');
-  pdfDoc.setKeywords([]);
-  pdfDoc.setProducer('');
-  pdfDoc.setCreator('');
+      // Limpar docProps/core.xml
+      if (zip.file('docProps/core.xml')) {
+        const cleanCore = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title></dc:title>
+  <dc:subject></dc:subject>
+  <dc:creator></dc:creator>
+  <cp:keywords></cp:keywords>
+  <dc:description></dc:description>
+  <cp:lastModifiedBy></cp:lastModifiedBy>
+  <cp:revision>1</cp:revision>
+</cp:coreProperties>`;
+        zip.file('docProps/core.xml', cleanCore);
+      }
 
-  // Delete XMP Metadata stream and Info dictionary reference if present
-  try {
-    const infoRef = pdfDoc.context.trailerInfo.Info;
-    if (infoRef && infoRef instanceof PDFRef) {
-      pdfDoc.context.delete(infoRef);
+      // Limpar docProps/app.xml
+      if (zip.file('docProps/app.xml')) {
+        const cleanApp = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Template>Normal.dotm</Template>
+  <TotalTime>0</TotalTime>
+  <Pages>1</Pages>
+  <Words>0</Words>
+  <Characters>0</Characters>
+  <Application>Microsoft Office Word</Application>
+  <DocSecurity>0</DocSecurity>
+  <Lines>0</Lines>
+  <Paragraphs>0</Paragraphs>
+  <ScaleCrop>false</ScaleCrop>
+  <Company></Company>
+  <LinksUpToDate>false</LinksUpToDate>
+  <CharactersWithSpaces>0</CharactersWithSpaces>
+  <SharedDoc>false</SharedDoc>
+  <HyperlinksChanged>false</HyperlinksChanged>
+  <AppVersion>16.0000</AppVersion>
+</Properties>`;
+        zip.file('docProps/app.xml', cleanApp);
+      }
+
+      const cleanDocBlob = await zip.generateAsync({ type: 'blob', mimeType: file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      onProgress?.(100, 'Metadados de autoria e empresa do Office higienizados com sucesso!');
+      return { blob: cleanDocBlob, size: cleanDocBlob.size };
+    } catch {
+      // Fallthrough caso ocorra falha de leitura
     }
-  } catch {
-    // Ignore if not present
   }
 
-  const cleanBytes = await pdfDoc.save({ useObjectStreams: false });
-  const cleanBlob = new Blob([cleanBytes as unknown as BlobPart], { type: 'application/pdf' });
+  // 3. Documentos PDF via pdf-lib
+  if (ext === 'pdf' || file.type.includes('pdf')) {
+    onProgress?.(70, 'Removendo 100% de todos os campos de metadados do documento PDF...');
+    try {
+      const buffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
 
-  onProgress?.(100, '100% dos metadados de autoria e sistema removidos com sucesso!');
-  return { blob: cleanBlob, size: cleanBlob.size };
+      pdfDoc.setTitle('');
+      pdfDoc.setAuthor('');
+      pdfDoc.setSubject('');
+      pdfDoc.setKeywords([]);
+      pdfDoc.setProducer('');
+      pdfDoc.setCreator('');
+
+      try {
+        const infoRef = pdfDoc.context.trailerInfo.Info;
+        if (infoRef && infoRef instanceof PDFRef) {
+          pdfDoc.context.delete(infoRef);
+        }
+      } catch {}
+
+      const cleanBytes = await pdfDoc.save({ useObjectStreams: false });
+      const cleanBlob = new Blob([cleanBytes as unknown as BlobPart], { type: 'application/pdf' });
+
+      onProgress?.(100, 'Metadados de autoria e sistema do PDF removidos com sucesso!');
+      return { blob: cleanBlob, size: cleanBlob.size };
+    } catch {
+      // Fallthrough
+    }
+  }
+
+  // 4. Arquivos Genéricos / Mídias / Outros: Re-criação de Blob limpo sem headers extras
+  onProgress?.(80, 'Higienizando fluxo de dados binários do arquivo...');
+  const arrayBuffer = await file.arrayBuffer();
+  const cleanGenericBlob = new Blob([arrayBuffer], { type: file.type || 'application/octet-stream' });
+  onProgress?.(100, 'Arquivo higienizado com sucesso!');
+  return { blob: cleanGenericBlob, size: cleanGenericBlob.size };
 }

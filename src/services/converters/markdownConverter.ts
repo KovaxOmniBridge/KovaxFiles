@@ -220,9 +220,9 @@ export async function convertMarkdownToPdf(
             color: #000000 !important;
             font-family: Arial, Helvetica, sans-serif !important;
             font-size: 11pt !important;
-            line-height: 1.35 !important;
+            line-height: 1.28 !important;
             text-align: left !important;
-            width: 487.28pt !important;
+            width: 451.28pt !important;
           }
           #md-root {
             padding: 0 !important;
@@ -236,23 +236,24 @@ export async function convertMarkdownToPdf(
             position: relative !important;
           }
           h1 {
-            font-size: 14pt !important;
-            font-weight: bold !important;
-            margin-top: 18pt !important;
-            margin-bottom: 8pt !important;
-            color: #0f172a !important;
-          }
-          h2 {
             font-size: 12pt !important;
             font-weight: bold !important;
-            margin-top: 14pt !important;
+            margin-top: 12pt !important;
+            margin-bottom: 6pt !important;
+            color: #0f172a !important;
+            text-align: center !important;
+          }
+          h2 {
+            font-size: 11.5pt !important;
+            font-weight: bold !important;
+            margin-top: 10pt !important;
             margin-bottom: 6pt !important;
             color: #0f172a !important;
           }
           h3 {
             font-size: 11pt !important;
             font-weight: bold !important;
-            margin-top: 12pt !important;
+            margin-top: 8pt !important;
             margin-bottom: 4pt !important;
             color: #1e293b !important;
           }
@@ -261,7 +262,7 @@ export async function convertMarkdownToPdf(
             margin-bottom: 6pt !important;
             font-size: 11pt !important;
             color: #1e293b !important;
-            line-height: 1.35 !important;
+            line-height: 1.28 !important;
           }
           b, strong {
             font-weight: bold !important;
@@ -288,6 +289,10 @@ export async function convertMarkdownToPdf(
 
   const targetElement = (iframeDoc.getElementById('md-root') || iframeDoc.body) as HTMLElement;
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidthPt = 595.28;
+  const pageHeightPt = 841.89;
+  const marginPt = 72; // 2.54 cm exato (1 polegada)
+  const contentWidthPt = pageWidthPt - 2 * marginPt; // 451.28 pt
 
   await doc.html(targetElement, {
     callback: () => {
@@ -295,9 +300,9 @@ export async function convertMarkdownToPdf(
     },
     x: 0,
     y: 0,
-    width: 487.28,
-    windowWidth: 487.28,
-    margin: [54, 54, 54, 54],
+    width: contentWidthPt,
+    windowWidth: contentWidthPt,
+    margin: [marginPt, marginPt, marginPt, marginPt],
     autoPaging: 'text',
     html2canvas: {
       useCORS: true,
@@ -309,6 +314,15 @@ export async function convertMarkdownToPdf(
       },
     },
   } as any);
+
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Página ${i} de ${totalPages}`, pageWidthPt - marginPt, pageHeightPt - 36, { align: 'right' });
+  }
 
   const pdfBlob = doc.output('blob');
   options?.onProgress?.(100, `PDF gerado com sucesso a partir de ${file.name}!`);

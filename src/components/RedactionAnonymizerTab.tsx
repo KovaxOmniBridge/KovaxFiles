@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { EyeOff, ShieldCheck, CheckSquare, Square, Download, Cpu, CheckCircle2, Lock, Plus, PanelTop, PanelBottom, Trash2, AlertCircle, MousePointer, Bot } from 'lucide-react';
-import { detectPiiInData, detectPiiWithAi, applyRedactionToPdf, type PiiDetectionItem } from '../services';
+import { detectPiiInData, detectPiiWithAi, applyRedactionToPdf, convertUniversalDocToPdf, convertMarkdownToPdf, convertHtmlToPdf, convertImageToPdf, type PiiDetectionItem } from '../services';
 import { PdfVisualRedactor } from './PdfVisualRedactor';
 
 export const RedactionAnonymizerTab: React.FC = () => {
@@ -16,15 +16,45 @@ export const RedactionAnonymizerTab: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [patternNotification, setPatternNotification] = useState<string | null>(null);
 
+  const processSelectedFile = async (selectedFile: File) => {
+    setRedactedBlobUrl(null);
+    setPatternNotification(null);
+    
+    let pdfFileToProcess = selectedFile;
+    const ext = selectedFile.name.split('.').pop()?.toLowerCase() || '';
+
+    if (ext !== 'pdf') {
+      setIsProcessing(true);
+      setStatusMessage(`Convertendo documento ${selectedFile.name} para PDF para permitir tarjamento visual...`);
+      try {
+        if (['docx', 'doc', 'txt', 'rtf', 'odt'].includes(ext)) {
+          const { blob } = await convertUniversalDocToPdf(selectedFile);
+          pdfFileToProcess = new File([blob], selectedFile.name.replace(/\.[^/.]+$/, '') + '.pdf', { type: 'application/pdf' });
+        } else if (['md', 'markdown'].includes(ext)) {
+          const { blob } = await convertMarkdownToPdf(selectedFile);
+          pdfFileToProcess = new File([blob], selectedFile.name.replace(/\.[^/.]+$/, '') + '.pdf', { type: 'application/pdf' });
+        } else if (['html', 'htm'].includes(ext)) {
+          const { blob } = await convertHtmlToPdf(selectedFile);
+          pdfFileToProcess = new File([blob], selectedFile.name.replace(/\.[^/.]+$/, '') + '.pdf', { type: 'application/pdf' });
+        } else if (['jpg', 'jpeg', 'png', 'webp', 'heic', 'bmp', 'tiff'].includes(ext) || selectedFile.type.startsWith('image/')) {
+          const { blob } = await convertImageToPdf(selectedFile);
+          pdfFileToProcess = new File([blob], selectedFile.name.replace(/\.[^/.]+$/, '') + '.pdf', { type: 'application/pdf' });
+        }
+      } catch (err) {
+        console.error('Erro na auto-conversão para PDF:', err);
+      } finally {
+        setIsProcessing(false);
+      }
+    }
+
+    setFile(pdfFileToProcess);
+    const detected = await detectPiiInData(pdfFileToProcess, customTerms);
+    setPiiItems(detected);
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const selectedFile = e.target.files[0];
-      setFile(selectedFile);
-      setRedactedBlobUrl(null);
-      setPatternNotification(null);
-      
-      const detected = await detectPiiInData(selectedFile, customTerms);
-      setPiiItems(detected);
+      await processSelectedFile(e.target.files[0]);
     }
   };
 
@@ -148,20 +178,27 @@ export const RedactionAnonymizerTab: React.FC = () => {
       {!file ? (
         <div
           onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              processSelectedFile(e.dataTransfer.files[0]);
+            }
+          }}
           className="border-2 border-dashed border-slate-300 hover:border-violet-500 bg-white hover:bg-slate-50 rounded-3xl p-8 sm:p-10 text-center cursor-pointer transition-all duration-300 group shadow-xs"
         >
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf"
+            accept="*"
             className="hidden"
             onChange={handleFileSelect}
           />
           <div className="w-16 h-16 rounded-2xl bg-violet-50 border border-violet-200 flex items-center justify-center text-violet-600 mx-auto mb-4 group-hover:scale-110 transition-transform">
             <Lock className="w-8 h-8" />
           </div>
-          <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mb-1">Selecione o documento PDF para tarjar e anonimizar</h3>
-          <p className="text-xs text-slate-500">Detecção de CPFs/CNPJs reais e tarjamento visual interativo por mouse</p>
+          <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mb-1">Selecione qualquer documento ou imagem (PDF, Word, Texto, Foto) para tarjar</h3>
+          <p className="text-xs text-slate-500">Aceita 100% de todos os formatos de arquivo • Auto-conversão e tarjamento visual irreversível LGPD</p>
         </div>
       ) : (
         <div className="space-y-6">

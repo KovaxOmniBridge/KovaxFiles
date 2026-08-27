@@ -351,9 +351,10 @@ export async function convertDocxToPdf(
       const docxHtml = renderAstToGoogleDocsHtml(astNodes);
 
       const pageWidthPt = 595.28;
-      const MARGIN_TOP_BOTTOM = 28.35; // 1 cm exato (28.35 pt)
-      const MARGIN_LEFT_RIGHT = 56.69; // 2 cm exatos (56.69 pt)
-      const contentWidthPt = pageWidthPt - 2 * MARGIN_LEFT_RIGHT;
+      const pageHeightPt = 841.89;
+      const MARGIN_TOP_BOTTOM = 72; // 2.54 cm exato (72 pt / 1 polegada) - Padrão Google Docs
+      const MARGIN_LEFT_RIGHT = 72; // 2.54 cm exato (72 pt / 1 polegada) - Padrão Google Docs
+      const contentWidthPt = pageWidthPt - 2 * MARGIN_LEFT_RIGHT; // 451.28 pt
 
       const iframe = document.createElement('iframe');
       iframe.style.position = 'absolute';
@@ -383,7 +384,7 @@ export async function convertDocxToPdf(
                 width: ${contentWidthPt}pt !important;
                 max-width: ${contentWidthPt}pt !important;
                 font-family: Arial, Helvetica, sans-serif !important;
-                font-size: 11px !important;
+                font-size: 11pt !important;
                 line-height: 1.28 !important;
                 color: #000000 !important;
                 background-color: #ffffff !important;
@@ -396,10 +397,10 @@ export async function convertDocxToPdf(
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
               }
-              p { text-align: justify; margin: 0 0 6px 0; font-size: 11px !important; line-height: 1.28 !important; font-family: Arial, Helvetica, sans-serif !important; }
-              h1, h2, h3 { text-align: center; font-size: 12px !important; font-weight: bold; margin: 12px 0 10px 0; font-family: Arial, Helvetica, sans-serif !important; }
-              table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-              td, th { border: 1px solid #000000; padding: 4px; font-size: 10px !important; }
+              p { text-align: justify; margin: 0 0 6pt 0; font-size: 11pt !important; line-height: 1.28 !important; font-family: Arial, Helvetica, sans-serif !important; }
+              h1, h2, h3 { text-align: center; font-size: 12pt !important; font-weight: bold; margin: 12pt 0 6pt 0; font-family: Arial, Helvetica, sans-serif !important; }
+              table { width: 100%; border-collapse: collapse; margin: 10pt 0; }
+              td, th { border: 1px solid #000000; padding: 5pt; font-size: 10pt !important; }
               b, strong { font-weight: bold !important; }
             </style>
           </head>
@@ -412,7 +413,7 @@ export async function convertDocxToPdf(
 
       const targetElement = iframeDoc.getElementById('docx-render-container') || iframeDoc.body;
 
-      options?.onProgress?.(75, 'Gerando arquivo PDF de alta fidelidade...');
+      options?.onProgress?.(75, 'Gerando arquivo PDF no padrão Google Docs...');
 
       const doc = new jsPDF({
         unit: 'pt',
@@ -440,6 +441,16 @@ export async function convertDocxToPdf(
           },
         },
       });
+
+      // Injetar numeração de páginas "Página X de Y" e rodapé institucional estilo Google Docs
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Página ${i} de ${totalPages}`, pageWidthPt - MARGIN_LEFT_RIGHT, pageHeightPt - 36, { align: 'right' });
+      }
 
       const pdfBlob = doc.output('blob');
       options?.onProgress?.(100, `Documento ${file.name} convertido com sucesso!`);
@@ -535,6 +546,16 @@ export async function convertDocxToPdf(
         },
       },
     });
+
+    const pageHeightPt = isLandscape ? 595.28 : 841.89;
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Página ${i} de ${totalPages}`, pageWidthPt - MARGIN_LEFT_RIGHT, pageHeightPt - 36, { align: 'right' });
+    }
 
     const pdfBlob = doc.output('blob');
     options?.onProgress?.(100, `Documento ${file.name} convertido com sucesso!`);

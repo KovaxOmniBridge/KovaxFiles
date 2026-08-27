@@ -31,8 +31,12 @@ export async function convertHtmlToPdf(
   await new Promise((resolve) => setTimeout(resolve, 150));
   const targetElement = iframeDoc.body;
 
-  options?.onProgress?.(70, 'Gerando arquivo PDF...');
+  options?.onProgress?.(70, 'Gerando arquivo PDF no padrão Google Docs...');
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidthPt = 595.28;
+  const pageHeightPt = 841.89;
+  const marginPt = 72; // 2.54 cm exato (1 polegada)
+  const contentWidthPt = pageWidthPt - 2 * marginPt; // 451.28 pt
 
   await doc.html(targetElement as HTMLElement, {
     callback: () => {
@@ -40,9 +44,9 @@ export async function convertHtmlToPdf(
     },
     x: 0,
     y: 0,
-    width: 487.28,
-    windowWidth: 487.28,
-    margin: [54, 54, 54, 54],
+    width: contentWidthPt,
+    windowWidth: contentWidthPt,
+    margin: [marginPt, marginPt, marginPt, marginPt],
     autoPaging: 'text',
     html2canvas: {
       useCORS: true,
@@ -54,6 +58,15 @@ export async function convertHtmlToPdf(
       },
     },
   });
+
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Página ${i} de ${totalPages}`, pageWidthPt - marginPt, pageHeightPt - 36, { align: 'right' });
+  }
 
   const pdfBlob = doc.output('blob');
   options?.onProgress?.(100, 'HTML convertido para PDF com sucesso!');

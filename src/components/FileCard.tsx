@@ -13,6 +13,7 @@ interface FileCardProps {
   onRemove: (id: string) => void;
   onPreview: (item: BatchFileItem) => void;
   onDownload: (item: BatchFileItem) => void;
+  onOpenGDocsEditor?: (file: File) => void;
 }
 
 export const FileCard: React.FC<FileCardProps> = ({
@@ -22,6 +23,7 @@ export const FileCard: React.FC<FileCardProps> = ({
   onRemove,
   onPreview,
   onDownload,
+  onOpenGDocsEditor,
 }) => {
   const getFileIcon = () => {
     switch (item.category) {
@@ -460,6 +462,18 @@ export const FileCard: React.FC<FileCardProps> = ({
             >
               <Eye className="w-3.5 h-3.5 text-blue-600" />
               Pré-visualizar
+            </button>
+          )}
+
+          {/* Google Docs Editor & Visualizer Button */}
+          {onOpenGDocsEditor && (item.category === 'document' || item.category === 'pdf_court' || item.name.endsWith('.docx') || item.name.endsWith('.doc') || item.name.endsWith('.txt') || item.name.endsWith('.md') || item.name.endsWith('.html')) && (
+            <button
+              onClick={() => onOpenGDocsEditor(item.file)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-800 hover:bg-blue-100 text-xs font-bold border border-blue-200 transition-colors"
+              title="Abrir no Editor & Visualizador WYSIWYG A4 no padrão Google Docs"
+            >
+              <FileText className="w-3.5 h-3.5 text-blue-600" />
+              Editar (Google Docs)
             </button>
           )}
         </div>

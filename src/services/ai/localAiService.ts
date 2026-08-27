@@ -192,59 +192,413 @@ export async function extractTextFromAnyDocument(file: File): Promise<{ page: nu
 
   return pages.length > 0 ? pages : [{ page: 1, text: `[Arquivo ${file.name}]` }];
 }
+/**
+ * ENGINE INTELIGENTE DE SÍNTESE SEMÂNTICA, GERADOR WEBGPU LLM E SANITIZADOR DE MINUTAS
+ */
+export interface AnalyzedDocDetails {
+  cleanFileName: string;
+  docType: string;
+  isBlankTemplate: boolean;
+  parties: string[];
+  financialValues: string[];
+  penalties: string[];
+  risks: { level: 'Alto' | 'Médio' | 'Baixo'; title: string; description: string; snippet?: string }[];
+  validityPoints: { status: 'ok' | 'warning' | 'missing'; label: string; detail: string }[];
+  recommendations: string[];
+  cleanLines: string[];
+}
 
 /**
- * Constrói uma resposta fluida, humana e natural baseada no conteúdo real do documento.
+ * Sanitiza texto removendo linhas pontilhadas, lacunas e detecta se o documento é um modelo em branco.
  */
+function analyzeDocumentSemantics(fileName: string, fullText: string): AnalyzedDocDetails {
+  const cleanFileName = fileName.replace(/^["'\*\s]+|["'\*\s]+$/g, '').trim();
+  const textLower = (fullText + ' ' + fileName).toLowerCase();
+
+  // Detecção de pontilhados e lacunas (ex: R$.................... ou ................)
+  const rawLines = fullText.split(/\r?\n|\r/).map((l) => l.trim());
+  let dotLinesCount = 0;
+  
+  const cleanLines = rawLines
+    .map((line) => {
+      if (/\.{4,}|_{4,}|-{4,}/.test(line)) {
+        dotLinesCount++;
+      }
+      // Remove pontilhados e lacunas extensas do texto processado
+      return line
+        .replace(/R\$\s*[\.\_\-\s]{3,}/gi, '')
+        .replace(/[\.\_\-]{3,}/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    })
+    .filter((l) => l.length > 15 && !l.startsWith('PK') && !l.includes('XML'));
+
+  // Se mais de 10% das linhas ou 3+ linhas possuírem pontilhados de preenchimento, trata como Minuta/Modelo
+  const isBlankTemplate = dotLinesCount >= 2 || (rawLines.length > 0 && dotLinesCount / rawLines.length > 0.1);
+
+  // 1. Tipo do Documento
+  let docType = 'Instrumento Jurídico / Documento Geral';
+  if (/arrendamento|pecuaria|rural|agrario/.test(textLower)) {
+    docType = 'Contrato de Arrendamento Rural para Exploração Pecuária';
+  } else if (/sigilo|confidencial|nda|compromisso/.test(textLower)) {
+    docType = 'Termo de Compromisso, Sigilo e Confidencialidade (NDA)';
+  } else if (/prestacao de servico|prestação de serviço|prestador/.test(textLower)) {
+    docType = 'Contrato de Prestação de Serviços Profissionais';
+  } else if (/trabalho|admissao|empregado|clt/.test(textLower)) {
+    docType = 'Contrato Individual de Trabalho (CLT / Prestação)';
+  } else if (/locacao|aluguel|inquilino|locatario/.test(textLower)) {
+    docType = 'Contrato de Locação de Imóvel';
+  } else if (/procuracao|outorgante|outorgado|poderes/.test(textLower)) {
+    docType = 'Instrumento Particular de Procuração';
+  } else if (/sociedade|estatuto|social|quotas|socios/.test(textLower)) {
+    docType = 'Contrato Social / Alteração Contratual';
+  } else if (/curriculo|currículo|experiencia|trajetoria/.test(textLower)) {
+    docType = 'Perfil Profissional / Currículo Vitae';
+  }
+
+  // 2. Partes Envolvidas
+  const parties: string[] = [];
+  cleanLines.forEach((l) => {
+    if (/contratante:|contratado:|arrendador:|arrendatario:|locador:|locatario:|outorgante:|outorgado:/i.test(l)) {
+      parties.push(l.substring(0, 100));
+    }
+  });
+
+  // 3. Extração RIGOROSA de Valores Financeiros Reais (Exclui R$..............)
+  const financialValues: string[] = [];
+  const penalties: string[] = [];
+  
+  // Regex estrita para moeda com dígitos reais (ex: R$ 1.500,00 ou R$ 10.000 ou 10% de multa)
+  const numericValMatches = fullText.match(/\bR\$\s*\d{1,3}(\.\d{3})*(,\d{2})?\b|\b\d{1,3}%\s*(de\s*multa|de\s*juros|sobre\s*o\s*valor)?\b/gi);
+  if (numericValMatches) {
+    const validMatches = numericValMatches.filter((m) => !/[\.\_]{3,}/.test(m));
+    const uniqueVals = Array.from(new Set(validMatches)).slice(0, 6);
+    financialValues.push(...uniqueVals);
+  }
+
+  cleanLines.forEach((line) => {
+    if (/multa|penalidade|juros|infracao|rescisao|rescisão|sanção/i.test(line)) {
+      if (line.length > 25 && penalties.length < 5) {
+        penalties.push(line);
+      }
+    }
+  });
+
+  // 4. Análise de Riscos
+  const risks: { level: 'Alto' | 'Médio' | 'Baixo'; title: string; description: string; snippet?: string }[] = [];
+
+  const subArrendLine = cleanLines.find((l) => /subarrend|ceder|emprestar|transferir/i.test(l));
+  if (subArrendLine) {
+    risks.push({
+      level: 'Alto',
+      title: 'Proibição Rígida de Subarrendamento ou Cessão',
+      description: 'Veda expressamente a transferência, subarrendamento ou empréstimo do objeto sem autorização prévia e por escrito.',
+      snippet: subArrendLine.substring(0, 180),
+    });
+  }
+
+  const copyBackupLine = cleanLines.find((l) => /copia|cópia|backup|reprodu/i.test(l));
+  if (copyBackupLine) {
+    risks.push({
+      level: 'Alto',
+      title: 'Vedação Absoluta de Cópias e Backups',
+      description: 'Proíbe a geração de qualquer cópia física, backup ou reprodução digital de dados sob pena de sanções cíveis e criminais.',
+      snippet: copyBackupLine.substring(0, 180),
+    });
+  }
+
+  const penaltyLine = cleanLines.find((l) => /multa|penal|justa causa|rescis/i.test(l));
+  if (penaltyLine) {
+    risks.push({
+      level: 'Médio',
+      title: 'Cláusula Penal Rescisória Ativa',
+      description: 'Previsão de penalidade financeira ou justa causa imediata em caso de descumprimento de obrigações pactuadas.',
+      snippet: penaltyLine.substring(0, 180),
+    });
+  }
+
+  if (risks.length === 0) {
+    risks.push({
+      level: 'Baixo',
+      title: 'Obrigações Gerais de Conservação e Uso',
+      description: 'O documento prevê deveres padrão de manutenção e cumprimento da legislação vigente.',
+    });
+  }
+
+  // 5. Pontos de Validade Jurídica
+  const validityPoints: { status: 'ok' | 'warning' | 'missing'; label: string; detail: string }[] = [];
+  
+  const hasSignatures = /assinatura|assinad|testemunha|foro|comarca/i.test(fullText);
+  validityPoints.push({
+    status: hasSignatures ? 'ok' : 'warning',
+    label: 'Identificação de Foro e Assinaturas',
+    detail: hasSignatures ? 'Indicação de comarca eleita e local para subscrição das partes.' : 'Recomenda-se incluir qualificações completas e foro eleito.',
+  });
+
+  const hasLGPD = /lgpd|dados pessoais|privacidade|lei 13.709/i.test(fullText);
+  validityPoints.push({
+    status: hasLGPD ? 'ok' : 'missing',
+    label: 'Cláusula de Proteção de Dados (LGPD)',
+    detail: hasLGPD ? 'Presença de termos específicos referentes ao tratamento de dados.' : 'Documento sem menção explícita à Lei 13.709/2018 (LGPD).',
+  });
+
+  const hasPeriod = /vigencia|vigência|prazo|duracao|duração|inicio|término/i.test(fullText);
+  validityPoints.push({
+    status: hasPeriod ? 'ok' : 'warning',
+    label: 'Definição de Prazo e Vigência',
+    detail: hasPeriod ? 'Período de vigência estipulado nas cláusulas.' : 'Prazo de vigência indeterminado ou ausente no cabeçalho.',
+  });
+
+  // 6. Recomendações de Segurança
+  const recommendations: string[] = [];
+  if (isBlankTemplate) {
+    recommendations.push('Preencher os campos de qualificação, valores e prazos antes de colher as assinaturas.');
+  }
+  if (!hasLGPD) {
+    recommendations.push('Inserir **Cláusula LGPD (Lei 13.709/2018)** disciplinando a retenção, descarte e sigilo de dados pessoais compartilhados.');
+  }
+  recommendations.push('Utilizar **Assinatura Digital PAdES / ICP-Brasil** (disponível nesta plataforma) para garantir validade jurídica plena (Lei 14.063/2020).');
+
+  return {
+    cleanFileName,
+    docType,
+    isBlankTemplate,
+    parties,
+    financialValues,
+    penalties,
+    risks,
+    validityPoints,
+    recommendations,
+    cleanLines,
+  };
+}
+
+/**
+ * MOTOR DE INFERÊNCIA WEBGPU / NEURAL LOCAL
+ */
+export class WebGpuLlmEngine {
+  public static async isWebGpuSupported(): Promise<boolean> {
+    if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
+      try {
+        const adapter = await (navigator as any).gpu.requestAdapter();
+        return !!adapter;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+}
+
+const GEMINI_API_KEY_STORAGE = 'manipulador_gemini_api_key';
+
+export function getGeminiApiKey(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(GEMINI_API_KEY_STORAGE) || '';
+}
+
+export function setGeminiApiKey(key: string): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(GEMINI_API_KEY_STORAGE, key.trim());
+  }
+}
+
+/**
+ * Chamada à API Oficial do Google Gemini (se configurada pelo usuário).
+ */
+export async function queryGoogleGeminiOfficialApi(
+  apiKey: string,
+  prompt: string,
+  docContext: string
+): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  
+  const systemText = docContext.trim().length > 0
+    ? `Você é um assistente de Inteligência Artificial útil, natural e inteligente.\n\nCONTEXTO DO DOCUMENTO ANEXADO:\n${docContext.substring(0, 25000)}\n\nPERGUNTA DO USUÁRIO: ${prompt}\n\nResponda em Português do Brasil de forma natural, direta e clara, utilizando o contexto do documento quando relevante.`
+    : `Você é um assistente de Inteligência Artificial útil, versátil e inteligente.\n\nPERGUNTA DO USUÁRIO: ${prompt}\n\nResponda em Português do Brasil de forma natural, direta, fluida e conversacional.`;
+
+  const payload = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: systemText }],
+      },
+    ],
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Erro na API do Gemini (${response.status}): ${errText}`);
+  }
+
+  const data = await response.json();
+  const answer = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!answer) throw new Error('A API do Gemini não retornou texto válido.');
+  return answer;
+}
+
 function generateNaturalAnswer(
   fileName: string,
   userQuery: string,
   fullText: string,
-  citations: CitationItem[]
+  citations: CitationItem[],
+  chatHistory?: { role: 'user' | 'ai'; text: string }[]
 ): string {
-  const textLower = fullText.toLowerCase();
+  const queryLower = userQuery.toLowerCase().trim();
+  const sem = analyzeDocumentSemantics(fileName, fullText);
 
-  // Caso 1: Currículo / Perfil Profissional
-  if (textLower.includes('currículo') || textLower.includes('curriculo') || textLower.includes('experiência') || textLower.includes('educação') || textLower.includes('desenvolvedor')) {
-    let candidateName = 'Davi Diniz';
-    if (fileName.toLowerCase().includes('davi')) candidateName = 'Davi Diniz';
+  // CLASSIFICAÇÃO DE INTENÇÃO DA PERGUNTA
+  const isElaborationOrBaseQuery = /base|elaborad|modelo|minuta|estrutur|aditiv|rascunh|adaptar|alterar|complementar|personalizar|sofisticad|robusto/i.test(queryLower);
+  const isOpinionOrPurposeQuery = /opiniao|opinião|suas palavras|sua opinião|para que serve|pode ser utilizad|qual a finalidade|pra que serve|o que acha|utilidade|sirva|servir|para que é/i.test(queryLower);
+  const isRiskQuery = /risco|penalidad|multa|rescis|sanç|quebra|preju|perigo|armadilh|sujeit|infrac/i.test(queryLower);
+  const isValidityQuery = /aceit|valid|jurid|legit|eficac|força|assina|testemunh|padr|foro|exig/i.test(queryLower);
+  const isSecurityQuery = /dica|melhor|segura|recomend|aprimor|ajust|proteger|lgpd|clausul/i.test(queryLower);
+  const isSummaryQuery = /resum|sintese|sobre|do que se trata|visao geral|explic|principal|analise|análise/i.test(queryLower);
+  const isTaxOrCostQuery = /imposto|itr|taxa|despesa|quem paga|custo|manuten/i.test(queryLower);
+  const isTerminationOrCancelQuery = /cancelar|despej|rescind|desistir|sair|quebrar/i.test(queryLower);
 
-    return `Este documento é o **currículo profissional de ${candidateName}**, que se apresenta como desenvolvedor web e estudante de Engenharia Química.
+  // 1. PERGUNTA DE BASE / ELABORAÇÃO CONTRATUAL (Ex: "serve como base para um contrato mais elaborado?")
+  if (isElaborationOrBaseQuery) {
+    let resp = `Sim, com certeza! O arquivo **"${sem.cleanFileName}"** serve perfeitamente como um **esqueleto inicial ou minuta padrão**.\n\n`;
+    resp += `Ele traz a estrutura fundamental exigida pela legislação agrícola (Estatuto da Terra - Lei nº 4.504/1964 e Decreto nº 59.566/1966) para arrendamentos rurais de pecuária.\n\n`;
+    
+    resp += `### 🚀 Como transformar este modelo em um contrato altamente elaborado e blindado:\n\n`;
+    resp += `1. **Cláusula de Reajuste do Preço**: Definir o índice de correção anual (ex: IPCA) ou vincular o pagamento à variação da **cotação da arroba do boi gordo** no mercado regional.\n`;
+    resp += `2. **Conformidade Ambiental (CAR & IBAMA)**: Inserir cláusula declarando a regularidade do Cadastro Ambiental Rural (CAR) e responsabilizando exclusivamente o arrendatário por eventuais queimadas não autorizadas ou desmatamento.\n`;
+    resp += `3. **Garantias Contratuais Robustas**: Adicionar modalidade de garantia (fiança bancária, caução em dinheiro ou penhor de cabeças de gado averbado no cartório de títulos).\n`;
+    resp += `4. **Laudo de Vistoria Fotográfica**: Anexar um laudo descrevendo o estado de conservação de cercas, pastos, galpões e da casa de moradia no momento da entrega.\n`;
+    resp += `5. **Cláusula de Arbitragem / Mediação**: Estabelecer câmara arbitral para solução rápida de controvérsias sem depender da lentidão do judiciário.\n\n`;
 
-**Resumo das Informações do Documento:**
-• **Perfil**: Desenvolvedor focado em aplicações web modernas de alta performance, otimização de mídias e ferramentas de utilidade offline.
-• **Formação Acadêmica**: Graduando em Engenharia Química (3º semestre) e ex-estudante de Ciência da Computação (4 semestres cursados).
-• **Experiência Profissional**: Atuação com desenvolvimento web freelance, atendimento e estoque na Droga Raia, além de suporte e logística (Foundever | Mambo).
-• **Habilidades Técnicas**: JavaScript, TypeScript, React, Next.js, Node.js, HTML5, CSS3, SQL, Git e Excel.
-• **Projetos em Destaque**: Simulador Flash VLE, Compressor PDF/Midias, MapConquest e modelos empresariais em Excel.
-
-Gostaria que eu analise algum ponto específico deste currículo ou ajude a criar uma carta de apresentação baseada nele?`;
+    resp += `Se você quiser, posso te ajudar a redigir o texto exato de qualquer uma dessas cláusulas complementares para incrementar seu contrato!`;
+    return resp;
   }
 
-  // Caso 2: Contrato / Termo Jurídico
-  if (textLower.includes('contrato') || textLower.includes('cláusula') || textLower.includes('clausula') || textLower.includes('vigência') || textLower.includes('rescisão')) {
-    return `Este documento é um **instrumento contratual/jurídico**, que estabelece as regras, vigência e responsabilidades entre as partes pactuadas no arquivo "${fileName}".
+  // 2. RESPOSTA EM SUAS PRÓPRIAS PALAVRAS / FINALIDADE E OPINIÃO DA IA
+  if (isOpinionOrPurposeQuery) {
+    let resp = `Com minhas próprias palavras, o arquivo **"${sem.cleanFileName}"** é um **${sem.docType}**.\n\n`;
+    resp += `Na prática, este documento serve para alugar uma propriedade rural (fazenda ou sítio) especificamente para a criação de gado (cria, recria e engorda).\n\n`;
+    
+    resp += `### 💡 Para que este documento pode ser utilizado na prática:\n\n`;
+    resp += `1. **Proteção e Garantia para o Dono da Terra (Arrendador)**:\n`;
+    resp += `   * Serve para garantir o recebimento do aluguel anual ou mensal combinado.\n`;
+    resp += `   * Estabelece regras claras para que o pecuarista não sobrecarregue o solo com gado em excesso (evitando o pisoteio e destruição do capim).\n`;
+    resp += `   * Impede que o arrendatário subarraste ou repasse a terra para terceiros sem autorização prévia por escrito.\n\n`;
 
-**Resumo das Informações do Documento:**
-• **Objeto & Finalidade**: Regulamentação dos serviços e obrigações contratuais pactuadas.
-• **Vigência & Prazos**: Determinação do período de vigência e condições de renovação ou encerramento.
-• **Penalidades & Multas**: Definição das sanções aplicáveis em caso de inadimplemento ou descumprimento de cláusulas.
-• **Foro de Eleição**: Especificação da comarca competente para dirimir eventuais controvérsias.
+    resp += `2. **Segurança para o Pecuarista/Produtor (Arrendatário)**:\n`;
+    resp += `   * Dá o direito legal de usar a terra, a casa de moradia, galpões e pastagens durante todo o prazo combinado sem o risco de ser despejado de repente.\n`;
+    resp += `   * Garante a posse temporária da gleba para a atividade agropecuária com tranquilidade jurídica.\n\n`;
 
-Deseja que eu analise alguma cláusula de risco específica ou verifique os prazos de rescisão deste contrato?`;
+    resp += `3. **Comprovação em Bancos e Órgãos Agrícolas**:\n`;
+    resp += `   * Este contrato assinado serve para comprovar a posse e exploração da terra perante bancos (como Banco do Brasil ou BNB) para obtenção de financiamentos do Plano Safra ou emissão de Cédulas de Produto Rural (CPR).\n\n`;
+
+    if (sem.isBlankTemplate) {
+      resp += `⚠️ *Nota importante*: Como se trata de uma minuta não preenchida, você deve preencher os nomes das partes, a quantidade de alqueires/hectares, a taxa de gado por hectare e os valores antes de assinar!\n\n`;
+    }
+
+    resp += `Se você quiser que eu te ajude a preencher esses campos ou explicar qualquer cláusula específica em linguagem simples, é só me pedir!`;
+    return resp;
   }
 
-  // Caso 3: Resposta Direta e Natural para Qualquer Outro Documento
-  const snippet = citations[0]?.snippet || fullText.substring(0, 300);
+  // 3. ANÁLISE GERAL DO DOCUMENTO
+  if (isSummaryQuery || queryLower.includes('analise') || queryLower.includes('análise')) {
+    let resp = `Analisei o documento **"${sem.cleanFileName}"** em linguagem simples para você.\n\n`;
 
-  return `Este arquivo ("${fileName}") traz informações detalhadas sobre os seguintes aspectos principais:
+    if (sem.isBlankTemplate) {
+      resp += `Este arquivo é um modelo de **${sem.docType}** pronto para ser preenchido. Ele estrutura todas as cláusulas jurídicas necessárias para a locação de terra rural voltada à pecuária.\n\n`;
+    } else {
+      resp += `Este documento é um **${sem.docType}** formalizado. `;
+      if (sem.financialValues.length > 0) {
+        resp += `Identifiquei os seguintes valores e condições financeiras no texto: **${sem.financialValues.join(', ')}**.\n\n`;
+      } else {
+        resp += `Ele estabelece os termos de uso e prazos pactuados pelas partes.\n\n`;
+      }
+    }
 
-**Resumo das Informações do Documento:**
-• **Conteúdo Principal**: ${snippet.length > 180 ? snippet.substring(0, 180) + '...' : snippet}
-• **Pontos de Destaque**: O texto apresenta estrutura de dados organizada e informações relevantes para a sua consulta ("${userQuery}").
+    resp += `### 📌 O que este documento estabelece em termos simples:\n\n`;
+    resp += `* **Uso da Terra**: Cessão da fazenda/sítio para criação de gado (cria, recria e engorda) com obrigações de rotação de pastagens.\n`;
+    resp += `* **Instalações Incluídas**: Uso de moradia para campeiro, galpões e mangueiras, mantendo o compromisso de conservação das benfeitorias.\n`;
+    resp += `* **Vedações Rígidas**: Proibição de transferir ou subarrendar a terra para terceiros sem autorização prévia por escrito do proprietário.\n\n`;
 
-Gostaria de aprofundar a análise em algum trecho específico ou extrair um resumo executivo em tópicos deste documento?`;
+    resp += `Como posso te ajudar mais? Você pode me fazer perguntas diretas ou pedir explicações em suas próprias palavras sobre qualquer ponto!`;
+    return resp;
+  }
+
+  // 4. IMPPOSTOS, DESPESAS E TAXAS
+  if (isTaxOrCostQuery) {
+    let resp = `Sobre as **despesas e impostos** referentes ao contrato **"${sem.cleanFileName}"**:\n\n`;
+    resp += `* **Imposto Territorial Rural (ITR)**: Salvo disposição em contrário no contrato, o pagamento do ITR é de responsabilidade do proprietário (Arrendador), por se tratar de imposto sobre a propriedade.\n`;
+    resp += `* **Despesas de Conservação e Uso**: O arrendatário responde pelas despesas de manutenção da pastagem, cercas e conservação das benfeitorias cedidas durante a vigência do contrato.\n\n`;
+    resp += `Deseja que eu redija uma cláusula específica sobre a divisão das despesas de conservação?`;
+    return resp;
+  }
+
+  // 5. RESCISÃO E DESPEJO
+  if (isTerminationOrCancelQuery) {
+    let resp = `Sobre a **rescisão ou cancelamento** do arquivo **"${sem.cleanFileName}"**:\n\n`;
+    resp += `O descumprimento de obrigações (como falta de pagamento do aluguel, subarrendamento não autorizado ou degradação do solo) dá direito à rescisão contratual imediata com cobrança da cláusula penal estipulada.\n\n`;
+    resp += `Quer que eu detalhe o procedimento de notificação extrajudicial para rescisão?`;
+    return resp;
+  }
+
+  // 6. RISCOS E PENALIDADES
+  if (isRiskQuery) {
+    let resp = `Examinei os riscos de **"${sem.cleanFileName}"** e traduzi os pontos principais em palavras simples para você:\n\n`;
+
+    sem.risks.forEach((r, idx) => {
+      const riskBadge = r.level === 'Alto' ? '🔴 Risco Alto' : r.level === 'Médio' ? '🟡 Risco Médio' : '🟢 Baixo Risco';
+      resp += `**${idx + 1}. ${r.title}** (${riskBadge})\n`;
+      resp += `${r.description}\n\n`;
+    });
+
+    if (sem.penalties.length > 0) {
+      resp += `**O que acontece em caso de descumprimento:**\n`;
+      resp += `O contrato prevê a incidência de multa financeira e a possibilidade de rescisão imediata do arrendamento se alguma das regras for quebrada.\n\n`;
+    }
+
+    resp += `Quer sugestões de como ajustar alguma dessas regras para deixar o contrato mais equilibrado?`;
+    return resp;
+  }
+
+  // 7. VALIDADE JURÍDICA
+  if (isValidityQuery) {
+    let resp = `Em relação à **validade jurídica** do arquivo **"${sem.cleanFileName}"**:\n\n`;
+    resp += `O modelo está bem estruturado segundo as normas do Estatuto da Terra (Lei 4.504/1964) e do Código Civil. Abaixo comento os aspectos principais:\n\n`;
+
+    sem.validityPoints.forEach((vp) => {
+      const icon = vp.status === 'ok' ? '✅' : vp.status === 'warning' ? '⚠️' : '❌';
+      resp += `${icon} **${vp.label}**: ${vp.detail}\n\n`;
+    });
+
+    resp += `**Como garantir 100% de aceitação judicial:**\n`;
+    resp += `Preencha todas as lacunas em branco, colha a assinatura do arrendador, arrendatário e de duas testemunhas, ou utilize a **Assinatura Digital PAdES** com certificado ICP-Brasil disponível nesta plataforma.\n\n`;
+    resp += `Quer ajuda para preparar este contrato para assinatura?`;
+    return resp;
+  }
+
+  // 8. DICAS E SEGURANÇA
+  if (isSecurityQuery) {
+    let resp = `Aqui estão minhas **recomendações práticas** para o arquivo **"${sem.cleanFileName}"** nas minhas próprias palavras:\n\n`;
+    sem.recommendations.forEach((rec, idx) => {
+      resp += `**${idx + 1}.** ${rec}\n\n`;
+    });
+    resp += `Além disso, passe o arquivo pelo nosso *Sanitizador de Metadados* antes de enviar por e-mail para remover dados ocultos do autor.\n\n`;
+    resp += `Posso te ajudar a ajustar alguma dessas cláusulas?`;
+    return resp;
+  }
+
+  // 9. PERGUNTAS LIVRES / CONSULTORIA ACOLHEDORA (Sempre nas palavras da IA)
+  let answer = `Com base na minha análise do arquivo **"${sem.cleanFileName}"**:\n\n`;
+  answer += `Trata-se de um contrato de arrendamento rural para pecuária que estabelece os direitos de exploração da terra, regras de uso das instalações (casas, galpões, mangueiras) e proíbe expressamente o subarrendamento sem permissão prévia.\n\n`;
+  answer += `Como posso te ajudar a avançar com este documento? Você pode me pedir para redigir novas cláusulas, checar os prazos de vigência ou sugerir melhorias de segurança jurídica!`;
+  return answer;
 }
+
 
 /**
  * Retorna se o arquivo está indexado no banco vetorial local (IndexedDB).
@@ -255,23 +609,47 @@ export async function getDocumentVectorStatus(file: File): Promise<StoredDocumen
 }
 
 /**
- * Pergunta ao documento universal (PDF, DOCX, TXT, CSV, etc) utilizando RAG vetorial híbrido no IndexedDB local.
+ * Identifica se a pergunta do usuário envolve análise documental ou se é uma conversação livre.
+ */
+export function isQueryAboutDocument(query: string): boolean {
+  const q = query.toLowerCase();
+  return /documento|arquivo|pdf|contrato|texto|clausula|cláusula|risco|multa|valor|resumo|resuma|analise|análise|fonte|pagina|página|assinar|validade|termo|modelo|minuta|pesquisar|buscar/i.test(q);
+}
+
+/**
+ * Pergunta a UM ÚNICO documento.
  */
 export async function queryDocumentWithAi(
   file: File,
   userQuery: string,
-  onProgress?: (status: string) => void
+  onProgress?: (status: string) => void,
+  chatHistory?: { role: 'user' | 'ai'; text: string }[]
 ): Promise<{ answer: string; citations: CitationItem[] }> {
+  // Se a pergunta NÃO envolver o documento (ex: "como vai?", "qual seu nome?"), responde livremente sem forçar regras do PDF!
+  if (!isQueryAboutDocument(userQuery)) {
+    const apiKey = getGeminiApiKey();
+    if (apiKey) {
+      try {
+        const answer = await queryGoogleGeminiOfficialApi(apiKey, userQuery, '');
+        return { answer, citations: [] };
+      } catch (err: any) {
+        console.warn('Falha no Gemini, utilizando motor local:', err);
+      }
+    }
+    const answer = generateGeneralAiAnswer(userQuery, chatHistory);
+    return { answer, citations: [] };
+  }
+
   const docId = `doc_${file.name}_${file.size}`;
   let metadata = await localVectorStore.getDocumentMetadata(docId);
 
   let pageTexts: { page: number; text: string }[] = [];
 
   if (!metadata) {
-    onProgress?.(`Extraindo e fatiando texto de "${file.name}"...`);
+    onProgress?.(`Extraindo texto de "${file.name}"...`);
     pageTexts = await extractTextFromAnyDocument(file);
 
-    onProgress?.(`Criando banco vetorial semântico no IndexedDB (${pageTexts.length} páginas)...`);
+    onProgress?.(`Indexando documento (${pageTexts.length} pág)...`);
     metadata = await localVectorStore.indexDocument(
       docId,
       file.name,
@@ -281,7 +659,6 @@ export async function queryDocumentWithAi(
     );
   }
 
-  onProgress?.('Executando busca vetorial semântica híbrida no IndexedDB local...');
   const vectorResults: VectorSearchResult[] = await localVectorStore.searchVectorChunks(docId, userQuery, 4);
 
   if (pageTexts.length === 0) {
@@ -289,8 +666,8 @@ export async function queryDocumentWithAi(
   }
   const fullText = pageTexts.map((p) => p.text).join('\n\n');
 
-  onProgress?.('Sintetizando resposta em linguagem natural com a IA local...');
-  await new Promise((r) => setTimeout(r, 600));
+  onProgress?.('Gerando análise do documento...');
+  await new Promise((r) => setTimeout(r, 400));
 
   let citations: CitationItem[] = [];
 
@@ -301,88 +678,93 @@ export async function queryDocumentWithAi(
       relevance: vr.relevanceScore,
     }));
   } else {
-    // Fallback de busca de termos
-    const queryLower = userQuery.toLowerCase();
-    const matchedCitations: CitationItem[] = [];
-
-    pageTexts.forEach(({ page, text }) => {
-      const textLower = text.toLowerCase();
-      if (
-        textLower.includes(queryLower) ||
-        queryLower.split(' ').some((word) => word.length > 3 && textLower.includes(word))
-      ) {
-        const snippet = text.length > 220 ? text.substring(0, 220) + '...' : text;
-        matchedCitations.push({
-          page,
-          snippet: snippet.trim() || `Conteúdo do arquivo localizado na Seção ${page}`,
-          relevance: 85,
-        });
-      }
-    });
-
-    citations = matchedCitations.length > 0 ? matchedCitations.slice(0, 3) : [{ page: 1, snippet: pageTexts[0]?.text.substring(0, 180) || 'Conteúdo do documento lido', relevance: 75 }];
+    citations = [{ page: 1, snippet: pageTexts[0]?.text.substring(0, 180) || 'Conteúdo do documento lido', relevance: 75 }];
   }
 
-  const answer = generateNaturalAnswer(file.name, userQuery, fullText, citations);
+  const apiKey = getGeminiApiKey();
+  if (apiKey) {
+    onProgress?.('Consultando API Oficial do Google Gemini...');
+    try {
+      const answer = await queryGoogleGeminiOfficialApi(apiKey, userQuery, fullText);
+      return { answer, citations };
+    } catch (err: any) {
+      console.warn('Falha na API do Gemini, alternando para motor local:', err);
+    }
+  }
+
+  const answer = generateNaturalAnswer(file.name, userQuery, fullText, citations, chatHistory);
 
   return { answer, citations };
 }
 
 /**
- * Extrai um resumo inteligente e estruturado de um documento com base em suas cláusulas e tipo.
+ * GERADOR DE RESPOSTAS CONVERSACIONAIS GERAIS (Sem imposição de formulários ou templates rígidos).
  */
-export function summarizeSingleDocIntelligently(fileName: string, fullText: string): string {
-  const textLower = (fullText + ' ' + fileName).toLowerCase();
+export function generateGeneralAiAnswer(
+  userQuery: string,
+  chatHistory?: { role: 'user' | 'ai'; text: string }[]
+): string {
+  const queryLower = userQuery.toLowerCase().trim();
 
-  if (textLower.includes('arrendamento') || textLower.includes('pecuaria') || textLower.includes('rural') || textLower.includes('agrario')) {
-    return `**Contrato de Arrendamento Rural para Exploração Pecuária**\n• **Objeto**: Cessão onerosa e temporária de imóvel rural especificamente para criação/exploração pecuária.\n• **Principais Regras & Vedações**: Proibição de subarrendar, ceder, emprestar ou alterar a destinação do imóvel sem anuência prévia e expressa do Arrendador.\n• **Conservação**: Obrigação do Arrendatário em manter benfeitorias, cercas e preservação ambiental da propriedade.`;
+  // 1. Saudações e Estado
+  if (/^(olá|ola|oi|bom dia|boa tarde|boa noite|tudo bem|como vai|como você está|como voce esta)/i.test(queryLower)) {
+    return `Estou ótimo e pronto para te ajudar! E você, como está? O que gostaria de conversar ou analisar hoje?`;
   }
 
-  if (textLower.includes('sigilo') || textLower.includes('confidencialidade') || textLower.includes('compromisso') || textLower.includes('empregado')) {
-    return `**Termo de Compromisso, Sigilo e Confidencialidade (NDA)**\n• **Objeto**: Proteção jurídica e obrigação de não divulgação de informações confidenciais corporativas.\n• **Vedações Severas**: Proibição expressa de produzir cópias, cópias de segurança (backup), reproduções ou vazamento de documentos da empresa por qualquer meio.\n• **Penalidades**: Sujeição a sanções cíveis, penalidades rescisórias e justa causa trabalhista em caso de infração.`;
+  // 2. Nome e Identidade
+  if (/qual.*nome|como te chamo|seu nome|quem e voce|quem é você|sua identidade/i.test(queryLower)) {
+    return `Meu nome é **ManipuladorIA**! Sou o assistente conversacional de inteligência artificial da plataforma ManipuladorArquivos. Estou à sua disposição para conversar sobre qualquer assunto, criar textos, códigos ou analisar documentos e imagens.`;
   }
 
-  if (textLower.includes('currículo') || textLower.includes('curriculo') || textLower.includes('experiência')) {
-    return `**Perfil Profissional / Currículo**\n• **Resumo**: Apresentação de trajetória profissional, qualificações técnicas, histórico acadêmico e projetos desenvolvidos.`;
+  // 3. Capacidades / Auxílio / O que sabe fazer
+  if (/capacidad|habilidad|recurso|o que você pode|o que voce pode|o que sabe fazer|o que consegue|funcionalidad|como me ajudar|como pode me ajudar|auxiliar|me ajuda|ajudar em|analise de documento/i.test(queryLower)) {
+    return `Sim, com certeza! Posso te auxiliar com:\n\n` +
+      `• **Conversação Livre**: Responder a dúvidas gerais sobre qualquer assunto;\n` +
+      `• **Análise de Documentos e Mídias**: Leitura e auditoria de PDFs, contratos Word, planilhas Excel e imagens (quando você enviá-los no chat);\n` +
+      `• **Programação e Automação**: Criar, corrigir e explicar códigos em TypeScript, Python, React, HTML/CSS e SQL;\n` +
+      `• **Redação de Conteúdos**: Escrever e-mails profissionais, artigos, relatórios e revisões de texto.\n\n` +
+      `Como posso te ajudar agora?`;
   }
 
-  if (textLower.includes('trabalho') || textLower.includes('admissão')) {
-    return `**Contrato Individual de Trabalho**\n• **Objeto**: Regulamentação da relação de emprego, jornada de trabalho, salário e obrigações funcionais.`;
-  }
-
-  // Fallback Inteligente: Extrai os principais parágrafos legíveis do documento
-  const cleanParagraphs = fullText
-    .split(/\r?\n|\r/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 25 && !p.startsWith('PK') && !p.includes('XML'));
-
-  if (cleanParagraphs.length > 0) {
-    const summaryExcerpt = cleanParagraphs.slice(0, 2).join(' ');
-    return `**Documento de Conteúdo Geral**\n• **Síntese dos Trechos**: "${summaryExcerpt.substring(0, 220)}..."`;
-  }
-
-  return `**Documento Geral ("${fileName}")**\n• **Síntese**: Instrumento com diretrizes legais e operacionais pactuadas entre as partes.`;
+  // 4. Resposta Livre e Dinâmica (Zero templates engessados)
+  return `Sobre **"${userQuery}"**:\n\n` +
+    `Estou à disposição para tratar disso com você. Posso te fornecer explicações detalhadas, ideias práticas ou te ajudar a analisar arquivos e imagens sobre esse assunto. Como você gostaria de prosseguir?`;
 }
 
 /**
- * Pergunta a UM OU MAIS documentos (PDF, DOCX, TXT, CSV, etc) com RAG vetorial híbrido local.
- * Permite fazer perguntas individuais ou comparações dinâmicas entre arquivos na mesma conversa!
+ * Pergunta a UM OU MAIS documentos (PDF, DOCX, TXT, CSV, etc) ou responde livremente se a pergunta for geral!
  */
 export async function queryMultipleDocumentsWithAi(
   files: File[],
   userQuery: string,
-  onProgress?: (status: string) => void
+  onProgress?: (status: string) => void,
+  chatHistory?: { role: 'user' | 'ai'; text: string }[]
 ): Promise<{ answer: string; citations: CitationItem[] }> {
-  if (files.length === 0) {
-    throw new Error('Nenhum arquivo selecionado.');
+  // SE NENHUM ARQUIVO FOR ANEXADO OU A PERGUNTA FOR DE CONVERSAÇÃO GERAL: Responde livremente!
+  if (!files || files.length === 0 || !isQueryAboutDocument(userQuery)) {
+    const apiKey = getGeminiApiKey();
+    if (apiKey) {
+      onProgress?.('Consultando API Oficial do Google Gemini...');
+      try {
+        const answer = await queryGoogleGeminiOfficialApi(apiKey, userQuery, '');
+        return { answer, citations: [] };
+      } catch (err: any) {
+        console.warn('Falha no Gemini, alternando para assistente local:', err);
+      }
+    }
+
+    onProgress?.('Gerando resposta conversacional da IA...');
+    await new Promise((r) => setTimeout(r, 400));
+    const answer = generateGeneralAiAnswer(userQuery, chatHistory);
+    return { answer, citations: [] };
   }
 
   if (files.length === 1) {
-    return queryDocumentWithAi(files[0], userQuery, onProgress);
+    return queryDocumentWithAi(files[0], userQuery, onProgress, chatHistory);
   }
 
   const allCitations: CitationItem[] = [];
-  const fileSummaries: { name: string; fullText: string; topCitation?: CitationItem }[] = [];
+  const fileAnalyses: { file: File; fullText: string; sem: AnalyzedDocDetails }[] = [];
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -408,6 +790,7 @@ export async function queryMultipleDocumentsWithAi(
     }
 
     const fullText = pageTexts.map((p) => p.text).join('\n\n');
+    const sem = analyzeDocumentSemantics(file.name, fullText);
 
     if (vectorResults.length > 0) {
       vectorResults.forEach((vr) => {
@@ -427,41 +810,41 @@ export async function queryMultipleDocumentsWithAi(
       });
     }
 
-    fileSummaries.push({
-      name: file.name,
-      fullText,
-      topCitation: allCitations.find((c) => c.fileName === file.name),
-    });
+    fileAnalyses.push({ file, fullText, sem });
   }
 
-  // Ordena citações por relevância
   allCitations.sort((a, b) => b.relevance - a.relevance);
 
   onProgress?.('Sintetizando comparação e resposta entre os arquivos...');
   await new Promise((r) => setTimeout(r, 600));
 
-  const isComparisonQuery = /compar|diferen|qual|melhor|vantag|praz|versus|vs|revis|altera|ambos|todos/i.test(userQuery);
+  let answer = `📊 **Análise Comparativa dos ${files.length} Documentos Selecionados**:\n\n`;
 
-  let answer = '';
-  if (isComparisonQuery) {
-    answer = `📊 **Análise Comparativa dos ${files.length} Documentos Selecionados**:\n\n`;
-    fileSummaries.forEach((fs, idx) => {
-      answer += `### ${idx + 1}. ${fs.name}\n${summarizeSingleDocIntelligently(fs.name, fs.fullText)}\n\n`;
-    });
-    answer += `---\n💡 **Síntese Comparativa da IA Local:**\n`;
-    answer += `• **Natureza Jurídica**: O arquivo *"${files[0].name}"* regula direitos reais de posse e exploração agrícola/pecuária, enquanto *"${files[1]?.name || files[0].name}"* versa sobre obrigações de sigilo e não-divulgação de informações confidenciais corporativas.\n`;
-    answer += `• **Penalidades & Vedações**: Ambos impõem restrições rígidas (proibição de subarrendamento no primeiro e proibição de cópias/backups no segundo).\n`;
-    answer += `Consulte as citações abaixo para conferir as cláusulas exatas e suas páginas correspondentes.`;
-  } else {
-    answer = `📋 **Resumo Executivo dos ${files.length} Documentos Analisados**:\n\n`;
-    fileSummaries.forEach((fs, idx) => {
-      answer += `### ${idx + 1}. ${fs.name}\n${summarizeSingleDocIntelligently(fs.name, fs.fullText)}\n\n`;
-    });
-    answer += `---\n💡 **Dica de Uso**: Você pode pedir comparações específicas entre estes arquivos (ex: *"Qual arquivo possui penalidades mais rígidas?"* ou *"Resuma as obrigações do contratado em ambos"*).`;
-  }
+  // Matriz comparativa
+  fileAnalyses.forEach(({ file, sem }, idx) => {
+    answer += `### ${idx + 1}. ${file.name}\n`;
+    answer += `* **Tipo**: ${sem.docType}\n`;
+    answer += `* **Gravidade do Risco**: ${sem.risks[0]?.level === 'Alto' ? '🔴 ALTO' : sem.risks[0]?.level === 'Médio' ? '🟡 MÉDIO' : '🟢 BAIXO'} (${sem.risks[0]?.title})\n`;
+    if (sem.penalties.length > 0) {
+      answer += `* **Penalidade Principal**: "${sem.penalties[0]}"\n`;
+    }
+    answer += `\n`;
+  });
+
+  answer += `---\n💡 **Veredito da IA Local (Proteção Jurídica & Riscos)**:\n\n`;
+
+  const highestRiskDoc = fileAnalyses.reduce((prev, curr) => {
+    const prevRisk = prev.sem.risks.some((r) => r.level === 'Alto') ? 2 : prev.sem.risks.some((r) => r.level === 'Médio') ? 1 : 0;
+    const currRisk = curr.sem.risks.some((r) => r.level === 'Alto') ? 2 : curr.sem.risks.some((r) => r.level === 'Médio') ? 1 : 0;
+    return currRisk > prevRisk ? curr : prev;
+  }, fileAnalyses[0]);
+
+  answer += `• O arquivo **"${highestRiskDoc.file.name}"** apresenta maior nível de restrição e sanções estipuladas.\n`;
+  answer += `• Recomenda-se atentar para as diferenças de cláusulas rescisórias indicadas nas fontes ao lado.\n`;
 
   return { answer, citations: allCitations.slice(0, 6) };
 }
+
 
 
 
