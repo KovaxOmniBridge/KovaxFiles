@@ -1,61 +1,19 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./public/favicon.svg" />
-    <link rel="manifest" href="./public/manifest.json" />
-    <meta name="theme-color" content="#2563eb" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <!-- SEO Primário -->
-    <title>Kovax Files — Engenharia Documental Client-Side & Otimização de PDF para Tribunais</title>
-    <meta name="title" content="Kovax Files — Engenharia Documental Client-Side & Otimização de PDF para Tribunais" />
-    <meta name="description" content="Plataforma universal 100% Client-Side para conversão de DOCX, Markdown, HEIC, compressor de PDF para PJe/TJSP/TRF, assinatura digital PAdES e tarjador LGPD com IA local sem envio de arquivos para servidores." />
-    <meta name="keywords" content="otimizador pdf pje, tjsp pdf compressor, conversor docx pdf, tarjador lgpd kovax ia, assinador pades icp brasil, conversor heic iphone, kovax files, engenharia de documentos, zero upload" />
-    <meta name="author" content="Kovax Files" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://kovaxfiles.com.br/" />
-
-    <!-- Open Graph / Facebook / LinkedIn -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://kovaxfiles.com.br/" />
-    <meta property="og:title" content="Kovax Files — Engenharia Documental Client-Side & Otimização de PDF para Tribunais" />
-    <meta property="og:description" content="Compacte PDFs para o PJe, converta DOCX/Markdown com padrão A4, assine digitalmente PAdES e tarje dados LGPD com Kovax IA 100% no seu navegador." />
-    <meta property="og:site_name" content="Kovax Files" />
-    <meta property="og:locale" content="pt_BR" />
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:url" content="https://kovaxfiles.com.br/" />
-    <meta name="twitter:title" content="Kovax Files — Engenharia Documental Client-Side" />
-    <meta name="twitter:description" content="Plataforma 100% local sem envio de arquivos para servidores. Otimização PJe/TJSP, conversão de mídias e IA Local." />
-
-    <!-- Dados Estruturados Schema.org (JSON-LD) para Busca do Google -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "Kovax Files",
-      "operatingSystem": "Web (Client-Side)",
-      "applicationCategory": "BusinessApplication",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "BRL"
-      },
-      "description": "Plataforma universal de engenharia de documentos 100% Client-Side com otimização de PDF para portais judiciais (PJe, TJSP, TRF), conversão DOCX/Markdown e IA local LGPD."
-    }
-    </script>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; connect-src 'self' data: blob: http://127.0.0.1:* http://localhost:* https://generativelanguage.googleapis.com https://huggingface.co https://*.huggingface.co ws: ws://localhost:* ws://127.0.0.1:*; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;" />
+    <title>KovaxFiles Desktop — Engenharia Documental 100% Local</title>
+    <meta name="description" content="Plataforma desktop 100% local para escritórios de advocacia e prefeituras. Compressão PJe/Tribunais, tarjamento LGPD, juntada de processos e OCR offline." />
     
-    <!-- Content Security Policy (Permite WebGPU Local, Ollama em localhost e download de pesos do HuggingFace) -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' blob: data: http://localhost:11434 http://127.0.0.1:11434 https://huggingface.co https://*.huggingface.co https://raw.githubusercontent.com https://cdn.jsdelivr.net; worker-src 'self' blob:; object-src 'none';" />
-
-    <!-- Compiled CSS -->
-    <link rel="stylesheet" href="./dist/styles.css" />
-
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-slate-950 text-slate-100 antialiased font-sans">
+  <body class="bg-slate-950 text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
     <div id="root"></div>
-    <script type="module" src="./dist/app.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

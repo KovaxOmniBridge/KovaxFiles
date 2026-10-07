@@ -1,121 +1,141 @@
-# 🛡️ ManipuladorArquivos — Plataforma Enterprise Client-Side de Engenharia de Documentos
+# KovaxFiles Desktop — Engenharia Documental 100% Local
 
-> **Plataforma Universal 100% Client-Side / Zero Upload para Engenharia, Conversão, Assinatura Digital PAdES, Tarjamento LGPD com IA Local e Otimização para Portais Judiciais (PJe, TJSP, TRF).**
+[![GitHub Pages](https://img.shields.io/badge/Website-GitHub%20Pages-0284c7?style=for-the-badge&logo=github)](https://KovaxOmniBridge.github.io/KovaxFilesApp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg?style=for-the-badge)](LICENSE)
+[![Platform](https://img.shields.io/badge/Plataforma-Windows%20%7C%20macOS%20%7C%20Linux-blueviolet?style=for-the-badge)](https://github.com/KovaxOmniBridge/KovaxFilesApp/releases)
+[![Security](https://img.shields.io/badge/Seguran%C3%A7a-100%25%20Offline%20%2F%20LGPD-059669?style=for-the-badge)](https://github.com/KovaxOmniBridge/KovaxFilesApp#-%EF%B8%8F-seguran%C3%A7a-e-privacidade)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6.svg)](https://www.typescriptlang.org/)
-[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC.svg)](https://tailwindcss.com/)
-[![GitHub Pages](https://img.shields.io/badge/Deploy-GitHub%20Pages-green.svg)](#-publicando-no-github-pages)
-
----
-
-## 📌 Visão Geral
-
-O **ManipuladorArquivos** é um ecossistema de software de alta performance projetado para processamento de documentos confidenciais com **garantia absoluta de privacidade**.
-
-Diferente das soluções SaaS tradicionais do mercado, todos os algoritmos de visão computacional, tarjamento com inteligência artificial, parsing de arquivos Word/PDF, transcodificação de mídias e otimização binária são executados **exclusivamente na memória RAM e na GPU local do navegador do usuário**. Nenhum dado ou arquivo é transmitido para servidores externos.
+Plataforma universal de alta performance para escritórios de advocacia, departamentos jurídicos e órgãos de gestão pública (prefeituras). Operação **100% Client-Side / Offline**, garantindo total sigilo de dados (segredo de justiça) e conformidade estrita com a **LGPD (Lei Geral de Proteção de Dados)**.
 
 ---
 
-## ✨ Principais Funcionalidades
+## 🌐 Página de Apresentação & Downloads (GitHub Pages)
 
-### ⚖️ 1. Presets Judiciais & Compressão de PDF
-* **Perfis Oficiais**: Presets calibrados para os limites dos tribunais brasileiros:
-  * **PJe Nacional**: 1.5 MB
-  * **TJSP / TJRJ / TJMG**: 3.0 MB
-  * **TRF / TRT / STJ**: 5.0 MB, 10.0 MB e 25.0 MB
-* **Redução Inteligente**: Algoritmos de re-amostragem vetorial e otimização de imagens mantendo legibilidade total para peticionamento eletrônico.
+O repositório inclui a página estática de apresentação e portal oficial de downloads na pasta [`/docs`](./docs).
 
-### 📝 2. Conversor Universal de Documentos
-* **Word (.docx / .doc) para PDF**: Conversão com fidelidade métrica e tipográfica idêntica ao Google Docs (Arial 11pt, altura de linha 1.35, margens estáticas de 1.9 cm).
-* **Markdown (.md) para PDF**: Renderização executiva unificada sem sobreposição de textos, com suporte a tabelas comparativas, blocos de código e diagramas.
-* **Extração de Tabelas para Excel**: Converte tabelas de PDFs em planilhas `.xlsx` e `.csv`.
-* **Conversão de Mídias**: Suporte a imagens HEIC (iPhone), AVIF, WebP, PNG, JPG, MP4 e áudio WAV.
-
-### 🖋️ 3. Assinatura Digital PAdES / ICP-Brasil
-* **Termo de Encerramento Automático**: Adiciona uma folha A4 dedicada de encerramento criptográfico em conformidade com a **MP nº 2.200-2/2001** e **Lei nº 14.063/2020**.
-* **Audit Trail**: Injeção de metadados SHA-256 com zero sobreposição visual sobre o conteúdo do documento original.
-
-### 🕵️‍♂️ 4. Tarjamento LGPD com IA Local (NER)
-* **Reconhecimento de Entidades Sensíveis**: Localização e tarjamento automático por IA local de CPFs (com validação Módulo 11), CNPJs, e-mails, telefones, nomes de pessoas físicas e dados LGPD.
-* **Rasterização de Segurança Máxima (Padrão NSA/DOJ)**: Converte páginas tarjadas em imagens de alta definição e remove os caracteres ocultos do código binário do PDF.
+* **Acesse o site ao vivo:** [https://KovaxOmniBridge.github.io/KovaxFilesApp/](https://KovaxOmniBridge.github.io/KovaxFilesApp/)
+* **Instalador direto para Windows:** [Baixar KovaxFiles-Setup.exe (v1.0.0)](https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles-Setup.exe)
 
 ---
 
-## 🏛️ Arquitetura Tecnológica
+## 🛡️ Princípios de Segurança e Privacidade
 
+1. **Zero Server Upload**: Todos os arquivos processados (PDFs, petições, anexos e escaneamentos) permanecem exclusivamente na memória RAM e CPU do computador do usuário.
+2. **Processamento em Memória & WASM**: Motores de manipulação de PDF (`pdf-lib`), anonimização e OCR (`tesseract.js`) executam localmente via WebAssembly.
+3. **Censura LGPD Definitiva (*Burn-In*)**: As tarjas pretas aplicadas sobre CPFs, CNPJs e dados sigilosos são queimadas diretamente no vetor do PDF, impedindo seleção ou recuperação de dados por cópia de texto.
+
+---
+
+## ⚡ Módulos e Funcionalidades
+
+### 1. 🔍 Pesquisa Jurídica LEXML
+- Consulta integrada à Rede de Informação Legislativa e Jurídica do Brasil.
+- Acesso rápido a leis, decretos, acórdãos e jurisprudência diretamente no workflow de edição.
+
+### 2. 📄 Compressor de PDF para Portais Judiciais e Públicos
+- Presets predefinidos para limites de upload sem perda de legibilidade:
+  - **PJe Nacional (CNJ)** (Máx 3.0 MB)
+  - **e-SAJ TJSP** (Máx 10.0 MB)
+  - **TRF / e-Proc** (Máx 5.0 MB)
+  - **Sistemas Municipais de Prefeitura** (Máx 15.0 MB)
+
+### 3. 🛡️ Tarjador & Anonimizador LGPD Local
+- Identificação e tarjamento automático de CPFs, CNPJs, RGs, e-mails e termos customizados.
+- Aplicação de tarjas pretas definitivas com eliminação do texto subjacente.
+
+### 4. 🏷️ Juntada & Carimbo de Autos
+- Chancela automática de numeração sequencial de folhas (`Fl. 001/2026`, `Fl. 002/2026`).
+- Adição de número de processo (`Proc. Nº 12.345/2026`) e carimbo institucional nos quatro cantos das páginas.
+
+### 5. 👁️ OCR Local & Scanner de Texto
+- Leitura óptica offline via WebAssembly (Tesseract.js) para transformar cópias escaneadas antigas em texto pesquisável e selecionável.
+
+### 6. 🧹 Sanitizador de Metadados PDF
+- Remoção completa de propriedades ocultas (autor, software de criação, tags EXIF e histórico de edições) antes de protocolar em juízo.
+
+### 7. ✂️ Manipulador de PDF (Fusão & Divisão)
+- Mescla de petição inicial + procuração + comprovantes + guias em um único PDF otimizado.
+- Divisão de autos judiciais extensos em volumes ou páginas individuais.
+
+---
+
+## 📂 Estrutura do Repositório
+
+```text
+KovaxFilesApp/
+├── .github/
+│   └── workflows/
+│       ├── deploy-pages.yml     # Workflow de publicação automática no GitHub Pages
+│       └── build-release.yml    # Workflow de geração dos instaladores .exe / .dmg / .AppImage
+├── docs/                        # Site Estático de Apresentação e Downloads (GitHub Pages)
+│   ├── index.html               # Landing page responsiva com suporte a Dark Glassmorphism
+│   ├── style.css                # Estilos e tokens de design
+│   └── app.js                   # Interatividade, menu mobile e fetch de releases
+├── electron/                    # Código do Processo Principal Electron & Preload
+│   ├── main.ts                  # Gerenciamento de Janelas nativas e IPC Dialogs
+│   └── preload.ts               # Bridge de segurança para a UI React
+├── src/                         # Aplicação React + TypeScript (UI Desktop)
+│   ├── components/              # Componentes de interface e ferramentas
+│   ├── services/                # Motores de processamento de PDF local
+│   ├── App.tsx                  # Contêiner Principal
+│   └── index.css                # Design System com TailwindCSS
+├── compilar-desktop.bat         # Script de compilação rápida para Windows
+├── compilar-desktop.sh          # Script de compilação rápida para macOS / Linux
+├── package.json                 # Configurações do electron-builder e scripts
+└── README.md                    # Documentação principal
 ```
-ManipuladorArquivos Client-Side Architecture
-├── Layer de Interface: React 19, TypeScript 6.0, TailwindCSS v4, Lucide Icons
-├── Bundler & Build: Esbuild, Oxlint, Vite
-├── PDF Engine: pdf-lib, pdfjs-dist, jsPDF
-├── Document Engine: mammoth, docx, docx-preview, XLSX / SheetJS
-├── Local AI & Storage: WebGPU, Transformers.js, IndexedDB Vector Store
-└── Media & Vision: WebAssembly FFmpeg, Tesseract.js OCR
-```
 
 ---
 
-## 🚀 Instalação e Execução Local
+## 💻 Requisitos e Execução em Desenvolvimento
 
-### Pré-requisitos
-* Node.js v18+ e npm v9+
+### Requisitos:
+* **Node.js**: `v18.0.0` ou superior.
+* **NPM**: `v9.0.0` ou superior.
 
-### Passos
-
+### Como Iniciar em Modo de Desenvolvimento:
 ```bash
-# Clone o repositório
-git clone https://github.com/seu-usuario/ManipuladorArquivos.git
-
-# Acesse o diretório do projeto
-cd ManipuladorArquivos
-
-# Instale as dependências
+# 1. Instalar dependências do projeto
 npm install
 
-# Execute o servidor de desenvolvimento
-npm run watch
-
-# Compilar para produção
-npm run build
+# 2. Executar em ambiente de desenvolvimento (Vite + Electron)
+npm run dev
 ```
 
 ---
 
-## 🌐 Publicando no GitHub Pages
+## 📦 Compilando os Instaladores Desktop
 
-Este projeto foi construído com rotas e caminhos de assets relativos (`./dist/app.js`, `./dist/styles.css`), estando **100% pronto para rodar no GitHub Pages**.
+### No Windows:
+Dê dois cliques no arquivo `compilar-desktop.bat` ou execute no terminal:
+```cmd
+compilar-desktop.bat
+```
+Os executáveis (`.exe` NSIS e versão portátil) serão gerados na pasta `release/`.
 
-### Método 1: Deploy Direto via GitHub Actions (Recomendado)
-
-1. Suba o projeto para seu repositório no GitHub.
-2. No repositório, acesse **Settings** > **Pages**.
-3. Em **Source**, selecione **GitHub Actions**.
-4. O workflow automático em `.github/workflows/deploy.yml` fará o build e publicará a aplicação automaticamente a cada `git push`.
-
-### Método 2: Deploy Manual
-
+### No macOS / Linux:
+Execute o script bash:
 ```bash
-# Execute o build de produção
-npm run build
-
-# Envie as pastas dist/, public/ e index.html para o seu repositório
-git add .
-git commit -m "feat: release build para GitHub Pages"
-git push origin main
+chmod +x compilar-desktop.sh
+./compilar-desktop.sh
 ```
+Os pacotes `.dmg` (Mac) e `.AppImage` (Linux) serão gerados na pasta `release/`.
 
 ---
 
-## 📄 Licença e Conformidade Comercial
+## ⚙️ Como Ativar o GitHub Pages no Repositório
 
-Este projeto está licenciado sob a **Licença MIT** (veja o arquivo [LICENSE](LICENSE) para mais detalhes).
+Para servir o site estático a partir da pasta `/docs`:
 
-Todas as dependências utilizadas no projeto (`React`, `jsPDF`, `pdf-lib`, `pdfjs-dist`, `html2canvas`, `mammoth`, `docx`, `xlsx`, `jszip`, `lucide-react`) são bibliotecas de **código aberto permissivas** (MIT, Apache 2.0, BSD e ISC). O uso comercial enterprise ou SaaS é **100% legal e em inteira conformidade jurídica**.
+1. No GitHub, navegue até a aba **Settings** do seu repositório.
+2. Na barra lateral esquerda, clique em **Pages**.
+3. Em **Build and deployment**:
+   * **Source**: Selecione `Deploy from a branch`.
+   * **Branch**: Selecione `main` e a pasta `/docs`.
+4. Clique em **Save**. Em instantes, a sua página estará online no link `https://SEU_USUARIO.github.io/KovaxFilesApp/`.
 
 ---
 
-## ✉️ Suporte e Contato
+## 📄 Licença
 
-Desenvolvido para engenharia documental de alta criticidade e privacidade absoluta.
+Distribuído sob a licença **MIT**. Veja [`LICENSE`](LICENSE) para mais detalhes.

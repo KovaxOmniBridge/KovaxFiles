@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KovaxFiles Desktop — Engenharia Documental 100% Local</title>
+  <meta name="description" content="Plataforma desktop offline de alta performance para escritórios de advocacia e prefeituras. Compressão PJe/e-SAJ/TRF, Anonimização LGPD, Juntada de Processos, OCR e Busca LEXML." />
+  
+  <!-- Open Graph / Social Media -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="KovaxFiles Desktop — Engenharia Documental 100% Local" />
+  <meta property="og:description" content="Segurança máxima para seus processos judiciais. 100% Offline, Zero Server Upload, Conforme LGPD." />
+  <meta property="og:image" content="https://raw.githubusercontent.com/KovaxOmniBridge/KovaxFilesApp/main/docs/assets/og-image.png" />
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-cyan-500 selection:text-slate-950 min-h-screen flex flex-col relative overflow-x-hidden">
+
+  <!-- Background Animated Gradient Glows -->
+  <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[400px] bg-gradient-to-tr from-cyan-600/20 via-blue-600/10 to-indigo-600/20 blur-[120px] pointer-events-none -z-10 rounded-full"></div>
+  <div class="fixed bottom-0 right-0 w-[600px] h-[600px] bg-gradient-to-tl from-cyan-900/15 via-slate-900/0 to-transparent blur-[140px] pointer-events-none -z-10"></div>
+
+  <!-- Top Navigation Header -->
+  <header class="sticky top-0 z-50 backdrop-blur-xl bg-slate-950/80 border-b border-slate-800/80 transition-all duration-300" id="header">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <a href="#" class="flex items-center gap-3 group">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 p-[1px] shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-all duration-300">
+          <div class="w-full h-full bg-slate-950 rounded-[11px] flex items-center justify-center">
+            <i data-lucide="shield-check" class="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform duration-300"></i>
+          </div>
+        </div>
+        <div class="flex flex-col">
+          <span class="font-outfit text-xl font-bold tracking-tight text-white flex items-center gap-1.5">
+            KovaxFiles <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-semibold uppercase tracking-wider">Desktop</span>
+          </span>
+          <span class="text-[10px] text-slate-400 font-medium tracking-wide">Engenharia Documental Local</span>
+        </div>
+      </a>
+
+      <!-- Desktop Nav Menu -->
+      <nav class="hidden md:flex items-center gap-8">
+        <a href="#recursos" class="text-sm font-medium text-slate-300 hover:text-cyan-400 transition-colors">Recursos</a>
+        <a href="#seguranca" class="text-sm font-medium text-slate-300 hover:text-cyan-400 transition-colors">Segurança LGPD</a>
+        <a href="#download" class="text-sm font-medium text-slate-300 hover:text-cyan-400 transition-colors">Instaladores</a>
+        <a href="#faq" class="text-sm font-medium text-slate-300 hover:text-cyan-400 transition-colors">FAQ</a>
+        <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp" target="_blank" rel="noopener" class="text-sm font-medium text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors">
+          <i data-lucide="github" class="w-4 h-4"></i> GitHub
+        </a>
+      </nav>
+
+      <!-- CTA Button -->
+      <div class="flex items-center gap-3">
+        <a href="#download" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-semibold text-sm shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200">
+          <i data-lucide="download" class="w-4 h-4 stroke-[2.5]"></i>
+          Baixar Grátis
+        </a>
+        
+        <!-- Mobile Menu Toggle Button -->
+        <button id="mobile-menu-btn" class="md:hidden p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white" aria-label="Abrir Menu">
+          <i data-lucide="menu" class="w-6 h-6"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Nav Dropdown -->
+    <div id="mobile-menu" class="hidden md:hidden border-b border-slate-800 bg-slate-950/95 backdrop-blur-2xl px-4 pt-2 pb-6 space-y-3">
+      <a href="#recursos" class="block py-2 text-base font-medium text-slate-200 hover:text-cyan-400">Recursos</a>
+      <a href="#seguranca" class="block py-2 text-base font-medium text-slate-200 hover:text-cyan-400">Segurança LGPD</a>
+      <a href="#download" class="block py-2 text-base font-medium text-slate-200 hover:text-cyan-400">Instaladores</a>
+      <a href="#faq" class="block py-2 text-base font-medium text-slate-200 hover:text-cyan-400">FAQ</a>
+      <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp" target="_blank" class="block py-2 text-base font-medium text-slate-400 hover:text-white">Código no GitHub</a>
+      <a href="#download" class="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-cyan-500 text-slate-950 font-semibold text-sm shadow-lg shadow-cyan-500/20">
+        <i data-lucide="download" class="w-4 h-4"></i> Baixar para PC
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="relative pt-12 pb-20 md:pt-24 md:pb-32 overflow-hidden">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <!-- Security Status Pill -->
+      <div class="flex justify-center mb-8">
+        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900/90 border border-cyan-500/30 text-xs text-slate-300 shadow-inner backdrop-blur-md">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span class="font-medium text-slate-200">Operação 100% Offline & Client-Side</span>
+          <span class="text-slate-600">|</span>
+          <span class="text-cyan-400 font-semibold">Zero Servidores de Terceiros</span>
+        </div>
+      </div>
+
+      <!-- Main Headline -->
+      <div class="text-center max-w-4xl mx-auto space-y-6">
+        <h1 class="font-outfit text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.1]">
+          Engenharia Documental <br class="hidden sm:inline" />
+          <span class="bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-300 bg-clip-text text-transparent">
+            100% Local & Segura
+          </span>
+        </h1>
+        
+        <p class="text-lg sm:text-xl text-slate-400 font-normal leading-relaxed max-w-3xl mx-auto">
+          Plataforma offline de alta precisão para advocacia, departamentos jurídicos e órgãos públicos. 
+          Compacte PDFs para o **PJe, e-SAJ e TRF**, tarje dados **LGPD**, carimbe juntadas e pesquise na **LEXML** sem nenhum arquivo sair do seu computador.
+        </p>
+
+        <!-- CTA Action Buttons -->
+        <div class="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles-Setup.exe" 
+             id="hero-download-btn"
+             class="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-bold text-base shadow-xl shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-1 active:translate-y-0 transition-all duration-300 group">
+            <i data-lucide="download" class="w-5 h-5 text-slate-950 group-hover:bounce"></i>
+            <span>Baixar para Windows (.exe)</span>
+            <span class="text-xs bg-slate-950/20 px-2 py-0.5 rounded text-slate-900 font-mono font-bold">v1.0.0</span>
+          </a>
+
+          <a href="#download" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-200 font-semibold text-base transition-all duration-200">
+            <i data-lucide="laptop" class="w-5 h-5 text-slate-400"></i>
+            macOS e Linux
+          </a>
+        </div>
+
+        <!-- Operating System Compatibility Badges -->
+        <div class="pt-6 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
+          <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i> Windows 10 / 11 (64-bit)</span>
+          <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i> macOS Intel & Apple Silicon</span>
+          <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i> Linux (.AppImage)</span>
+        </div>
+      </div>
+
+      <!-- App Interface Preview Card -->
+      <div class="mt-14 relative max-w-5xl mx-auto">
+        <div class="absolute -inset-1 bg-gradient-to-r from-cyan-500/30 via-blue-500/20 to-indigo-500/30 rounded-3xl blur-xl opacity-75 pointer-events-none"></div>
+        
+        <div class="relative rounded-2xl bg-slate-900 border border-slate-800/90 shadow-2xl overflow-hidden backdrop-blur-xl">
+          <!-- Window Header Controls -->
+          <div class="h-11 bg-slate-950/90 border-b border-slate-800 px-4 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-rose-500/80 inline-block"></span>
+              <span class="w-3 h-3 rounded-full bg-amber-500/80 inline-block"></span>
+              <span class="w-3 h-3 rounded-full bg-emerald-500/80 inline-block"></span>
+              <span class="ml-4 text-xs font-mono text-slate-400 flex items-center gap-1.5">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5 text-cyan-400"></i> KovaxFiles Desktop — Modo Estrito 100% Offline
+              </span>
+            </div>
+            <div class="flex items-center gap-3 text-xs text-slate-400 font-mono">
+              <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Sem Conexão Externa Exigida</span>
+            </div>
+          </div>
+
+          <!-- App Mockup Visual Content -->
+          <div class="p-6 md:p-8 bg-slate-950/60 grid grid-cols-1 md:grid-cols-12 gap-6">
+            
+            <!-- Sidebar Preview -->
+            <div class="md:col-span-4 bg-slate-900/80 rounded-xl p-4 border border-slate-800 space-y-2">
+              <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 pb-1">Módulos Jurídicos</div>
+              
+              <div class="flex items-center gap-3 p-2.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-medium text-sm">
+                <i data-lucide="scale" class="w-4 h-4 text-cyan-400"></i> Pesquisa Jurídica LEXML
+              </div>
+              <div class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-800 text-slate-400 text-sm">
+                <i data-lucide="file-archive" class="w-4 h-4 text-blue-400"></i> Compressor PJe / e-SAJ
+              </div>
+              <div class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-800 text-slate-400 text-sm">
+                <i data-lucide="eye-off" class="w-4 h-4 text-amber-400"></i> Anonimizador LGPD
+              </div>
+              <div class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-800 text-slate-400 text-sm">
+                <i data-lucide="stamp" class="w-4 h-4 text-emerald-400"></i> Juntada & Carimbo de Folhas
+              </div>
+              <div class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-800 text-slate-400 text-sm">
+                <i data-lucide="scan-text" class="w-4 h-4 text-purple-400"></i> OCR Local (Tesseract WASM)
+              </div>
+            </div>
+
+            <!-- Content Preview Area -->
+            <div class="md:col-span-8 bg-slate-900/50 rounded-xl p-6 border border-slate-800/80 flex flex-col justify-between space-y-6">
+              <div class="space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="shield-alert" class="w-5 h-5 text-cyan-400"></i>
+                    <h3 class="font-semibold text-white text-base">Processamento de PDF em Memória (WASM)</h3>
+                  </div>
+                  <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">0 KB Enviados à Nuvem</span>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="p-3 bg-slate-950/80 rounded-lg border border-slate-800">
+                    <span class="text-xs text-slate-400 block">PJe Nacional (CNJ)</span>
+                    <span class="text-sm font-bold text-slate-200">Limite 3.0 MB</span>
+                  </div>
+                  <div class="p-3 bg-slate-950/80 rounded-lg border border-slate-800">
+                    <span class="text-xs text-slate-400 block">e-SAJ TJSP</span>
+                    <span class="text-sm font-bold text-slate-200">Limite 10.0 MB</span>
+                  </div>
+                </div>
+
+                <div class="p-4 rounded-xl bg-cyan-950/30 border border-cyan-500/20 text-xs text-cyan-200 flex items-start gap-3">
+                  <i data-lucide="lock" class="w-5 h-5 text-cyan-400 shrink-0 mt-0.5"></i>
+                  <div>
+                    <strong>Censura Definitiva LGPD:</strong> As tarjas sobre dados sensíveis são queimadas diretamente no arquivo vetorial, impedindo cópia de texto ou seleção.
+                  </div>
+                </div>
+              </div>
+
+              <div class="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <span>Motor: PDF-Lib + Tesseract WASM</span>
+                <span class="text-slate-300 font-mono">100% Client-Side Engine</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Key Features Grid Section -->
+  <section id="recursos" class="py-20 bg-slate-900/40 border-y border-slate-800/60 relative">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
+      
+      <!-- Section Header -->
+      <div class="text-center space-y-4 max-w-3xl mx-auto">
+        <h2 class="text-xs font-bold tracking-widest text-cyan-400 uppercase">Funcionalidades Integradas</h2>
+        <h3 class="font-outfit text-3xl sm:text-5xl font-bold text-white tracking-tight">Tudo que o Advogado e Servidor Público precisam em um único App</h3>
+        <p class="text-slate-400 text-base">Elimine a dependência de sites de terceiros que colocam em risco o segredo de justiça dos seus processos.</p>
+      </div>
+
+      <!-- Features Cards Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+
+        <!-- Card 1 -->
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800/80 hover:border-cyan-500/40 hover:bg-slate-900/90 transition-all duration-300 group space-y-4">
+          <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+            <i data-lucide="file-archive" class="w-6 h-6"></i>
+          </div>
+          <h4 class="font-outfit text-xl font-bold text-white">Compressor PJe & Tribunais</h4>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Reduza petições e anexos para os limites exatos do PJe (3MB), e-SAJ TJSP (10MB), TRF/e-Proc (5MB) e sistemas municipais, mantendo a nitidez para o juiz.
+          </p>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800/80 hover:border-amber-500/40 hover:bg-slate-900/90 transition-all duration-300 group space-y-4">
+          <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
+            <i data-lucide="eye-off" class="w-6 h-6"></i>
+          </div>
+          <h4 class="font-outfit text-xl font-bold text-white">Tarjador & Anonimizador LGPD</h4>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Localize e oculte automaticamente CPFs, CNPJs, nomes e termos confidenciais com tarjas pretas definitivas (*burn-in* inalterável).
+          </p>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800/80 hover:border-emerald-500/40 hover:bg-slate-900/90 transition-all duration-300 group space-y-4">
+          <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+            <i data-lucide="stamp" class="w-6 h-6"></i>
+          </div>
+          <h4 class="font-outfit text-xl font-bold text-white">Juntada & Carimbo de Autos</h4>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Numere páginas sequencialmente (`Fl. 001/2026`), aplique número de processo e chancelas institucionais nos quatro cantos do documento.
+          </p>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800/80 hover:border-purple-500/40 hover:bg-slate-900/90 transition-all duration-300 group space-y-4">
+          <div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
+            <i data-lucide="scale" class="w-6 h-6"></i>
+          </div>
+          <h4 class="font-outfit text-xl font-bold text-white">Pesquisa LEXML</h4>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Consulte a Rede de Informação Legislativa e Jurídica do Brasil diretamente da interface, sem anúncios ou distrações externas.
+          </p>
+        </div>
+
+        <!-- Card 5 -->
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800/80 hover:border-blue-500/40 hover:bg-slate-900/90 transition-all duration-300 group space-y-4">
+          <div class="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+            <i data-lucide="scan-text" class="w-6 h-6"></i>
+          </div>
+          <h4 class="font-outfit text-xl font-bold text-white">OCR Local & Scanner</h4>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Reconhecimento óptico de caracteres via WebAssembly local. Converta escaneamentos antigos em texto pesquisável e selecionável.
+          </p>
+        </div>
+
+        <!-- Card 6 -->
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800/80 hover:border-rose-500/40 hover:bg-slate-900/90 transition-all duration-300 group space-y-4">
+          <div class="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 group-hover:scale-110 transition-transform">
+            <i data-lucide="shield-check" class="w-6 h-6"></i>
+          </div>
+          <h4 class="font-outfit text-xl font-bold text-white">Sanitizador de Metadados</h4>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Remova propriedades ocultas de arquivos (autor, software de criação, dados EXIF e histórico de edições) antes de protocolar em juízo.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Security & LGPD Commitment Section -->
+  <section id="seguranca" class="py-20 relative">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-cyan-500/20 p-8 sm:p-12 lg:p-16 relative overflow-hidden shadow-2xl">
+        <div class="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 blur-[100px] pointer-events-none rounded-full"></div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative z-10">
+          <div class="lg:col-span-7 space-y-6">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-xs font-semibold">
+              <i data-lucide="shield" class="w-3.5 h-3.5"></i> Arquitetura Zero-Trust & Zero-Upload
+            </div>
+            
+            <h3 class="font-outfit text-3xl sm:text-4xl font-bold text-white tracking-tight">
+              Por que enviar documentos sigilosos para sites na web é um risco fatal?
+            </h3>
+            
+            <p class="text-slate-300 text-base leading-relaxed">
+              Serviços online gratuitos de conversão de PDF salvam seus arquivos em servidores desconhecidos na nuvem. 
+              Para advogados e órgãos públicos, isso viola o **Segredo de Justiça** e a **Lei Geral de Proteção de Dados (LGPD)**.
+            </p>
+
+            <div class="space-y-4 pt-2">
+              <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                  <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i>
+                </div>
+                <span class="text-sm text-slate-300"><strong>Execução 100% Client-Side:</strong> Todo o código roda na CPU/Memória da máquina local.</span>
+              </div>
+              
+              <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                  <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i>
+                </div>
+                <span class="text-sm text-slate-300"><strong>Funciona sem Internet:</strong> Desconecte o Wi-Fi e o aplicativo continuará funcionando com máxima velocidade.</span>
+              </div>
+
+              <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                  <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i>
+                </div>
+                <span class="text-sm text-slate-300"><strong>Conformidade LGPD Auditável:</strong> Código aberto e inspecionável no GitHub.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 bg-slate-950/80 rounded-2xl p-6 border border-slate-800 space-y-6">
+            <h4 class="font-outfit font-bold text-lg text-white flex items-center gap-2">
+              <i data-lucide="lock" class="w-5 h-5 text-cyan-400"></i> Garantias de Privacidade
+            </h4>
+            
+            <div class="space-y-3 font-mono text-xs">
+              <div class="p-3 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
+                <span class="text-slate-400">Envio de Telemetria:</span>
+                <span class="text-emerald-400 font-bold">DESATIVADO</span>
+              </div>
+              <div class="p-3 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
+                <span class="text-slate-400">Armazenamento em Nuvem:</span>
+                <span class="text-emerald-400 font-bold">NENHUM</span>
+              </div>
+              <div class="p-3 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
+                <span class="text-slate-400">Licenciamento:</span>
+                <span class="text-cyan-400 font-bold">MIT Open Source</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Download Section -->
+  <section id="download" class="py-20 bg-slate-900/60 border-t border-slate-800/80 relative">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+      
+      <div class="text-center space-y-4 max-w-3xl mx-auto">
+        <h2 class="text-xs font-bold tracking-widest text-cyan-400 uppercase">Downloads Oficiais</h2>
+        <h3 class="font-outfit text-3xl sm:text-5xl font-bold text-white tracking-tight">Baixe o KovaxFiles para o seu sistema</h3>
+        <p class="text-slate-400 text-base">Sem cadastro, sem mensalidades e sem propagandas. Escolha o instalador nativo correspondente:</p>
+      </div>
+
+      <!-- Operating Systems Download Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        
+        <!-- Windows Card -->
+        <div class="p-8 rounded-3xl bg-slate-900 border border-slate-800 hover:border-cyan-500/50 transition-all duration-300 flex flex-col justify-between space-y-6 relative group">
+          <div class="space-y-4">
+            <div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+              <i data-lucide="monitor" class="w-7 h-7"></i>
+            </div>
+            <div>
+              <h4 class="font-outfit text-2xl font-bold text-white">Windows</h4>
+              <p class="text-slate-400 text-xs mt-1">Windows 10 e Windows 11 (64-bit)</p>
+            </div>
+            <ul class="text-xs text-slate-300 space-y-2 pt-2">
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-400"></i> Instalador Nativo NSIS (.exe)</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-400"></i> Opção Executável Portable</li>
+            </ul>
+          </div>
+          
+          <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles-Setup.exe" 
+             class="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-cyan-500/20">
+            <i data-lucide="download" class="w-4 h-4"></i> Baixar para Windows (.exe)
+          </a>
+        </div>
+
+        <!-- macOS Card -->
+        <div class="p-8 rounded-3xl bg-slate-900 border border-slate-800 hover:border-blue-500/50 transition-all duration-300 flex flex-col justify-between space-y-6 relative group">
+          <div class="space-y-4">
+            <div class="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+              <i data-lucide="apple" class="w-7 h-7"></i>
+            </div>
+            <div>
+              <h4 class="font-outfit text-2xl font-bold text-white">macOS</h4>
+              <p class="text-slate-400 text-xs mt-1">macOS 11 Big Sur ou superior</p>
+            </div>
+            <ul class="text-xs text-slate-300 space-y-2 pt-2">
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-blue-400"></i> Suporte Apple Silicon (M1/M2/M3)</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-blue-400"></i> Suporte Processadores Intel</li>
+            </ul>
+          </div>
+          
+          <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles.dmg" 
+             class="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm border border-slate-700 transition-all">
+            <i data-lucide="download" class="w-4 h-4"></i> Baixar para Mac (.dmg)
+          </a>
+        </div>
+
+        <!-- Linux Card -->
+        <div class="p-8 rounded-3xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 transition-all duration-300 flex flex-col justify-between space-y-6 relative group">
+          <div class="space-y-4">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+              <i data-lucide="terminal" class="w-7 h-7"></i>
+            </div>
+            <div>
+              <h4 class="font-outfit text-2xl font-bold text-white">Linux</h4>
+              <p class="text-slate-400 text-xs mt-1">Ubuntu, Debian, Fedora e Arch</p>
+            </div>
+            <ul class="text-xs text-slate-300 space-y-2 pt-2">
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-indigo-400"></i> Pacote Universal AppImage</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-indigo-400"></i> Execução sem necessidade de Root</li>
+            </ul>
+          </div>
+          
+          <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles.AppImage" 
+             class="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm border border-slate-700 transition-all">
+            <i data-lucide="download" class="w-4 h-4"></i> Baixar AppImage (.AppImage)
+          </a>
+        </div>
+
+      </div>
+
+      <div class="text-center pt-4">
+        <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases" target="_blank" class="text-xs text-slate-400 hover:text-cyan-400 underline underline-offset-4">
+          Ver o histórico completo de releases e código fonte no GitHub →
+        </a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- FAQ Section -->
+  <section id="faq" class="py-20 border-t border-slate-800/60">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+      
+      <div class="text-center space-y-4">
+        <h2 class="text-xs font-bold tracking-widest text-cyan-400 uppercase">Dúvidas Frequentes</h2>
+        <h3 class="font-outfit text-3xl font-bold text-white tracking-tight">Perguntas Frequentes</h3>
+      </div>
+
+      <div class="space-y-4" id="faq-container">
+
+        <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-2 cursor-pointer faq-item">
+          <div class="flex items-center justify-between font-outfit font-semibold text-white text-lg">
+            <span>O aplicativo precisa de internet para funcionar?</span>
+            <i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition-transform"></i>
+          </div>
+          <p class="text-slate-400 text-sm leading-relaxed hidden">
+            Não! Toda a manipulação de arquivos PDF, compressão, OCR e tarjamento LGPD ocorre localmente utilizando tecnologia WebAssembly e Node.js no seu próprio computador.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-2 cursor-pointer faq-item">
+          <div class="flex items-center justify-between font-outfit font-semibold text-white text-lg">
+            <span>A tarja preta do tarjador LGPD pode ser removida depois?</span>
+            <i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition-transform"></i>
+          </div>
+          <p class="text-slate-400 text-sm leading-relaxed hidden">
+            Não. O KovaxFiles realiza o processo de *burn-in*, queimando a tarja no documento vetorial e removendo o texto oculto subjacente. Isso impede a seleção ou cópia de texto por qualquer pessoa.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-2 cursor-pointer faq-item">
+          <div class="flex items-center justify-between font-outfit font-semibold text-white text-lg">
+            <span>Posso instalar em computadores institucionais da prefeitura ou escritório?</span>
+            <i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition-transform"></i>
+          </div>
+          <p class="text-slate-400 text-sm leading-relaxed hidden">
+            Sim! O aplicativo é distribuído sob licença livre MIT e não requer privilégios de administrador para execução na versão portátil.
+          </p>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="mt-auto border-t border-slate-800/80 bg-slate-950 py-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+      
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+          <i data-lucide="shield-check" class="w-4 h-4"></i>
+        </div>
+        <span class="text-sm font-semibold text-white">KovaxFiles Desktop</span>
+        <span class="text-xs text-slate-500">© 2026 — Engenharia Documental Local</span>
+      </div>
+
+      <div class="flex items-center gap-6 text-xs text-slate-400">
+        <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp" target="_blank" class="hover:text-white transition-colors">Repositório GitHub</a>
+        <a href="#seguranca" class="hover:text-white transition-colors">Política de Privacidade</a>
+        <a href="#recursos" class="hover:text-white transition-colors">Funcionalidades</a>
+      </div>
+
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

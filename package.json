@@ -1,47 +1,78 @@
 {
-  "name": "manipuladorarquivos",
-  "private": true,
-  "version": "0.0.0",
+  "name": "kovax-files-desktop",
+  "version": "1.0.0",
+  "description": "Engenharia Documental 100% Local para Advocacia e Prefeituras",
+  "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
-    "copy:worker": "node scripts/copy-worker.js",
-    "build:css": "tailwindcss -i ./src/index.css -o ./dist/styles.css --minify",
-    "build:js": "esbuild src/main.tsx --bundle --outfile=dist/app.js --minify --jsx=automatic --loader:.tsx=tsx --loader:.ts=ts --define:process.env.NODE_ENV=\"\\\"production\\\"\"",
-    "build": "npm run copy:worker && npm run build:css && npm run build:js",
-    "watch:css": "tailwindcss -i ./src/index.css -o ./dist/styles.css --watch",
-    "watch:js": "esbuild src/main.tsx --bundle --outfile=dist/app.js --watch --jsx=automatic --loader:.tsx=tsx --loader:.ts=ts --define:process.env.NODE_ENV=\"\\\"development\\\"\"",
-    "watch": "npm run copy:worker && concurrently \"npm run watch:css\" \"npm run watch:js\"",
-    "lint": "oxlint"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "electron:dev": "vite",
+    "test:stress": "npx tsx scripts/stress_test_e2e.ts",
+    "package:win": "npm run build && electron-builder --win",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:linux": "npm run build && electron-builder --linux",
+    "package:all": "npm run build && electron-builder -wml"
   },
+  "keywords": [
+    "pje",
+    "tjsp",
+    "trf",
+    "prefeitura",
+    "advocacia",
+    "pdf-compressor",
+    "tarjador-lgpd",
+    "juntada-processo",
+    "ocr-local",
+    "offline"
+  ],
+  "author": "Kovax Files Desktop Team",
+  "license": "MIT",
   "dependencies": {
-    "@ffmpeg/core": "^0.12.6",
-    "@ffmpeg/ffmpeg": "^0.12.15",
-    "@ffmpeg/util": "^0.12.2",
-    "docx": "^9.7.1",
-    "docx-preview": "^0.4.0",
-    "file-saver": "^2.0.5",
-    "heic2any": "^0.0.4",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^4.2.1",
-    "jszip": "^3.10.1",
-    "lucide-react": "^1.30.0",
-    "mammoth": "^1.12.0",
+    "@xenova/transformers": "^2.17.2",
+    "fflate": "^0.8.3",
+    "lucide-react": "^0.344.0",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^6.2.108",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "xlsx": "^0.18.5"
+    "pdfjs-dist": "^3.11.174",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tesseract.js": "^5.0.4"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.0.0",
-    "@types/file-saver": "^2.0.7",
-    "@types/node": "^24.13.3",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "concurrently": "^9.1.2",
-    "esbuild": "^0.25.0",
-    "oxlint": "^1.75.0",
-    "tailwindcss": "^4.0.0",
-    "typescript": "~6.0.2"
+    "@types/node": "^20.11.24",
+    "@types/react": "^18.2.61",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.18",
+    "concurrently": "^8.2.2",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.4",
+    "vite-plugin-electron": "^0.28.0",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.kovaxfiles.desktop",
+    "productName": "KovaxFiles Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false,
+      "verifyUpdateCodeSignature": false
+    }
   }
 }
