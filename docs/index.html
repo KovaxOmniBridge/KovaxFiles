@@ -6,17 +6,35 @@
   <title>KovaxFiles Desktop — Engenharia Documental 100% Local</title>
   <meta name="description" content="Plataforma desktop offline de alta performance para escritórios de advocacia e prefeituras. Compressão PJe/e-SAJ/TRF, Anonimização LGPD, Juntada de Processos, OCR e Busca LEXML." />
   
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+
   <!-- Open Graph / Social Media -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="KovaxFiles Desktop — Engenharia Documental 100% Local" />
   <meta property="og:description" content="Segurança máxima para seus processos judiciais. 100% Offline, Zero Server Upload, Conforme LGPD." />
-  <meta property="og:image" content="https://raw.githubusercontent.com/KovaxOmniBridge/KovaxFilesApp/main/docs/assets/og-image.png" />
   
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
   
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            outfit: ['Outfit', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   
@@ -53,7 +71,7 @@
         <a href="#seguranca" class="text-sm font-medium text-slate-300 hover:text-cyan-400 transition-colors">Segurança LGPD</a>
         <a href="#download" class="text-sm font-medium text-slate-300 hover:text-cyan-400 transition-colors">Instaladores</a>
         <a href="#faq" class="text-sm font-medium text-slate-300 hover:text-cyan-400 transition-colors">FAQ</a>
-        <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp" target="_blank" rel="noopener" class="text-sm font-medium text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors">
+        <a href="https://github.com/KovaxOmniBridge/KovaxFiles" target="_blank" rel="noopener" class="text-sm font-medium text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors">
           <i data-lucide="github" class="w-4 h-4"></i> GitHub
         </a>
       </nav>
@@ -78,7 +96,7 @@
       <a href="#seguranca" class="block py-2 text-base font-medium text-slate-200 hover:text-cyan-400">Segurança LGPD</a>
       <a href="#download" class="block py-2 text-base font-medium text-slate-200 hover:text-cyan-400">Instaladores</a>
       <a href="#faq" class="block py-2 text-base font-medium text-slate-200 hover:text-cyan-400">FAQ</a>
-      <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp" target="_blank" class="block py-2 text-base font-medium text-slate-400 hover:text-white">Código no GitHub</a>
+      <a href="https://github.com/KovaxOmniBridge/KovaxFiles" target="_blank" class="block py-2 text-base font-medium text-slate-400 hover:text-white">Código no GitHub</a>
       <a href="#download" class="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-cyan-500 text-slate-950 font-semibold text-sm shadow-lg shadow-cyan-500/20">
         <i data-lucide="download" class="w-4 h-4"></i> Baixar para PC
       </a>
@@ -113,17 +131,17 @@
         
         <p class="text-lg sm:text-xl text-slate-400 font-normal leading-relaxed max-w-3xl mx-auto">
           Plataforma offline de alta precisão para advocacia, departamentos jurídicos e órgãos públicos. 
-          Compacte PDFs para o **PJe, e-SAJ e TRF**, tarje dados **LGPD**, carimbe juntadas e pesquise na **LEXML** sem nenhum arquivo sair do seu computador.
+          Compacte PDFs para o <strong>PJe, e-SAJ e TRF</strong>, tarje dados <strong>LGPD</strong>, carimbe juntadas e pesquise na <strong>LEXML</strong> sem nenhum arquivo sair do seu computador.
         </p>
 
         <!-- CTA Action Buttons -->
         <div class="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles-Setup.exe" 
+          <a href="https://github.com/KovaxOmniBridge/KovaxFiles/releases/latest/download/KovaxFiles-Setup.exe" 
              id="hero-download-btn"
              class="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-bold text-base shadow-xl shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-1 active:translate-y-0 transition-all duration-300 group">
             <i data-lucide="download" class="w-5 h-5 text-slate-950 group-hover:bounce"></i>
             <span>Baixar para Windows (.exe)</span>
-            <span class="text-xs bg-slate-950/20 px-2 py-0.5 rounded text-slate-900 font-mono font-bold">v1.0.0</span>
+            <span class="text-xs bg-slate-950/20 px-2 py-0.5 rounded text-slate-900 font-mono font-bold release-tag">v1.0.0</span>
           </a>
 
           <a href="#download" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-200 font-semibold text-base transition-all duration-200">
@@ -270,7 +288,7 @@
           </div>
           <h4 class="font-outfit text-xl font-bold text-white">Juntada & Carimbo de Autos</h4>
           <p class="text-slate-400 text-sm leading-relaxed">
-            Numere páginas sequencialmente (`Fl. 001/2026`), aplique número de processo e chancelas institucionais nos quatro cantos do documento.
+            Numere páginas sequencialmente (<code>Fl. 001/2026</code>), aplique número de processo e chancelas institucionais nos quatro cantos do documento.
           </p>
         </div>
 
@@ -330,7 +348,7 @@
             
             <p class="text-slate-300 text-base leading-relaxed">
               Serviços online gratuitos de conversão de PDF salvam seus arquivos em servidores desconhecidos na nuvem. 
-              Para advogados e órgãos públicos, isso viola o **Segredo de Justiça** e a **Lei Geral de Proteção de Dados (LGPD)**.
+              Para advogados e órgãos públicos, isso viola o <strong>Segredo de Justiça</strong> e a <strong>Lei Geral de Proteção de Dados (LGPD)</strong>.
             </p>
 
             <div class="space-y-4 pt-2">
@@ -413,7 +431,7 @@
             </ul>
           </div>
           
-          <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles-Setup.exe" 
+          <a href="https://github.com/KovaxOmniBridge/KovaxFiles/releases/latest/download/KovaxFiles-Setup.exe" 
              class="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-cyan-500/20">
             <i data-lucide="download" class="w-4 h-4"></i> Baixar para Windows (.exe)
           </a>
@@ -435,7 +453,7 @@
             </ul>
           </div>
           
-          <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles.dmg" 
+          <a href="https://github.com/KovaxOmniBridge/KovaxFiles/releases/latest/download/KovaxFiles.dmg" 
              class="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm border border-slate-700 transition-all">
             <i data-lucide="download" class="w-4 h-4"></i> Baixar para Mac (.dmg)
           </a>
@@ -457,7 +475,7 @@
             </ul>
           </div>
           
-          <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles.AppImage" 
+          <a href="https://github.com/KovaxOmniBridge/KovaxFiles/releases/latest/download/KovaxFiles.AppImage" 
              class="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm border border-slate-700 transition-all">
             <i data-lucide="download" class="w-4 h-4"></i> Baixar AppImage (.AppImage)
           </a>
@@ -466,7 +484,7 @@
       </div>
 
       <div class="text-center pt-4">
-        <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp/releases" target="_blank" class="text-xs text-slate-400 hover:text-cyan-400 underline underline-offset-4">
+        <a href="https://github.com/KovaxOmniBridge/KovaxFiles/releases" target="_blank" class="text-xs text-slate-400 hover:text-cyan-400 underline underline-offset-4">
           Ver o histórico completo de releases e código fonte no GitHub →
         </a>
       </div>
@@ -501,7 +519,7 @@
             <i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition-transform"></i>
           </div>
           <p class="text-slate-400 text-sm leading-relaxed hidden">
-            Não. O KovaxFiles realiza o processo de *burn-in*, queimando a tarja no documento vetorial e removendo o texto oculto subjacente. Isso impede a seleção ou cópia de texto por qualquer pessoa.
+            Não. O KovaxFiles realiza o processo de <em>burn-in</em>, queimando a tarja no documento vetorial e removendo o texto oculto subjacente. Isso impede a seleção ou cópia de texto por qualquer pessoa.
           </p>
         </div>
 
@@ -533,7 +551,7 @@
       </div>
 
       <div class="flex items-center gap-6 text-xs text-slate-400">
-        <a href="https://github.com/KovaxOmniBridge/KovaxFilesApp" target="_blank" class="hover:text-white transition-colors">Repositório GitHub</a>
+        <a href="https://github.com/KovaxOmniBridge/KovaxFiles" target="_blank" class="hover:text-white transition-colors">Repositório GitHub</a>
         <a href="#seguranca" class="hover:text-white transition-colors">Política de Privacidade</a>
         <a href="#recursos" class="hover:text-white transition-colors">Funcionalidades</a>
       </div>

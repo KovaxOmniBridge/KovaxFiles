@@ -43,10 +43,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Dynamic GitHub Release Version Fetcher
+  // Dynamic GitHub Release Version Fetcher (Safely handled)
   async function fetchLatestRelease() {
     try {
-      const response = await fetch('https://api.github.com/repos/KovaxOmniBridge/KovaxFilesApp/releases/latest');
+      const response = await fetch('https://api.github.com/repos/KovaxOmniBridge/KovaxFiles/releases/latest');
       if (response.ok) {
         const data = await response.json();
         const tag = data.tag_name || 'v1.0.0';
@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
     } catch (err) {
-      console.log('GitHub Release API fallback active.');
+      // Graceful silent fallback to default v1.0.0
     }
   }
 
