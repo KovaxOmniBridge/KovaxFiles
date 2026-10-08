@@ -1,20 +1,20 @@
 # KovaxFiles Desktop — Engenharia Documental 100% Local
 
-[![GitHub Pages](https://img.shields.io/badge/Website-GitHub%20Pages-0284c7?style=for-the-badge&logo=github)](https://KovaxOmniBridge.github.io/KovaxFilesApp/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/Plataforma-Windows%20%7C%20macOS%20%7C%20Linux-blueviolet?style=for-the-badge)](https://github.com/KovaxOmniBridge/KovaxFilesApp/releases)
-[![Security](https://img.shields.io/badge/Seguran%C3%A7a-100%25%20Offline%20%2F%20LGPD-059669?style=for-the-badge)](https://github.com/KovaxOmniBridge/KovaxFilesApp#-%EF%B8%8F-seguran%C3%A7a-e-privacidade)
+[![GitHub Pages](https://img.shields.io/badge/Website-GitHub%20Pages-0284c7?style=for-the-badge&logo=github)](https://KovaxOmniBridge.github.io/KovaxFiles/)
+[![Platform](https://img.shields.io/badge/Plataforma-Windows%20%7C%20macOS%20%7C%20Linux-blueviolet?style=for-the-badge)](https://github.com/KovaxOmniBridge/KovaxFiles)
+[![Security](https://img.shields.io/badge/Seguran%C3%A7a-100%25%20Offline%20%2F%20LGPD-059669?style=for-the-badge)](https://github.com/KovaxOmniBridge/KovaxFiles#-%EF%B8%8F-seguran%C3%A7a-e-privacidade)
 
-Plataforma universal de alta performance para escritórios de advocacia, departamentos jurídicos e órgãos de gestão pública (prefeituras). Operação **100% Client-Side / Offline**, garantindo total sigilo de dados (segredo de justiça) e conformidade estrita com a **LGPD (Lei Geral de Proteção de Dados)**.
+Plataforma universal de alta performance sob licenciamento para escritórios de advocacia, departamentos jurídicos e órgãos de gestão pública (prefeituras). Operação **100% Client-Side / Offline**, garantindo total sigilo de dados (segredo de justiça) e conformidade estrita com a **LGPD (Lei Geral de Proteção de Dados)**.
 
 ---
 
-## 🌐 Página de Apresentação & Downloads (GitHub Pages)
+## 🌐 Página de Apresentação (GitHub Pages)
 
-O repositório inclui a página estática de apresentação e portal oficial de downloads na pasta [`/docs`](./docs).
+O repositório inclui a página estática de apresentação e solicitação de planos na pasta [`/docs`](./docs).
 
-* **Acesse o site ao vivo:** [https://KovaxOmniBridge.github.io/KovaxFilesApp/](https://KovaxOmniBridge.github.io/KovaxFilesApp/)
-* **Instalador direto para Windows:** [Baixar KovaxFiles-Setup.exe (v1.0.0)](https://github.com/KovaxOmniBridge/KovaxFilesApp/releases/latest/download/KovaxFiles-Setup.exe)
+* **Acesse o site ao vivo:** [https://KovaxOmniBridge.github.io/KovaxFiles/](https://KovaxOmniBridge.github.io/KovaxFiles/)
+
+> ⚠️ **Nota:** Os downloads diretos de instaladores estão temporariamente indisponíveis no site. Para solicitar licença corporativa ou demonstração, utilize os canais de contato da plataforma.
 
 ---
 
@@ -62,15 +62,15 @@ O repositório inclui a página estática de apresentação e portal oficial de 
 ## 📂 Estrutura do Repositório
 
 ```text
-KovaxFilesApp/
+KovaxFiles/
 ├── .github/
 │   └── workflows/
 │       ├── deploy-pages.yml     # Workflow de publicação automática no GitHub Pages
 │       └── build-release.yml    # Workflow de geração dos instaladores .exe / .dmg / .AppImage
-├── docs/                        # Site Estático de Apresentação e Downloads (GitHub Pages)
+├── docs/                        # Site Estático de Apresentação e Planos (GitHub Pages)
 │   ├── index.html               # Landing page responsiva com suporte a Dark Glassmorphism
 │   ├── style.css                # Estilos e tokens de design
-│   └── app.js                   # Interatividade, menu mobile e fetch de releases
+│   └── app.js                   # Interatividade e menu mobile
 ├── electron/                    # Código do Processo Principal Electron & Preload
 │   ├── main.ts                  # Gerenciamento de Janelas nativas e IPC Dialogs
 │   └── preload.ts               # Bridge de segurança para a UI React
@@ -120,22 +120,3 @@ chmod +x compilar-desktop.sh
 ./compilar-desktop.sh
 ```
 Os pacotes `.dmg` (Mac) e `.AppImage` (Linux) serão gerados na pasta `release/`.
-
----
-
-## ⚙️ Como Ativar o GitHub Pages no Repositório
-
-Para servir o site estático a partir da pasta `/docs`:
-
-1. No GitHub, navegue até a aba **Settings** do seu repositório.
-2. Na barra lateral esquerda, clique em **Pages**.
-3. Em **Build and deployment**:
-   * **Source**: Selecione `Deploy from a branch`.
-   * **Branch**: Selecione `main` e a pasta `/docs`.
-4. Clique em **Save**. Em instantes, a sua página estará online no link `https://SEU_USUARIO.github.io/KovaxFilesApp/`.
-
----
-
-## 📄 Licença
-
-Distribuído sob a licença **MIT**. Veja [`LICENSE`](LICENSE) para mais detalhes.
