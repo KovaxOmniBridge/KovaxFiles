@@ -47,40 +47,53 @@ export const LgpdRedactor: React.FC = () => {
   const [rigorLevel, setRigorLevel] = useState<AiRigorLevel>('broad');
   const [geminiApiKey, setGeminiApiKey] = useState<string>('');
 
-  // Status do Servidor de IA Local (Inicializado como Indisponível até validação real de inferência)
+  // Status do Servidor de IA Local (Distinção em 4 Níveis: Servidor, Modelo, Inferência e Qualidade Jurídica)
   const [embeddedAiStatus, setEmbeddedAiStatus] = useState<{
     running: boolean;
     checking: boolean;
     cpuCores: number;
     modelName: string;
+    serverAvailable?: boolean;
+    modelLoaded?: boolean;
+    inferenceFunctional?: boolean;
+    legalQualityValidated?: boolean;
+    tier?: 'offline' | 'server_available' | 'model_loaded' | 'warming_up' | 'inference_functional' | 'fully_validated';
+    isWarmingUp?: boolean;
     inferenceVerified?: boolean;
     inferenceLatencyMs?: number;
+    instructionFollowed?: boolean;
     statusMessage?: string;
   }>({
     running: false,
     checking: true,
     cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
-    modelName: 'Verificando conectividade e inferência com motor local...'
+    modelName: 'Verificando conectividade e inferência com motor local...',
+    tier: 'offline'
   });
 
   useEffect(() => {
     let isMounted = true;
 
     async function probeAiHealth() {
-      // 1. Tenta consulta via IPC no Electron se disponível (inclui teste real de inferência)
+      // 1. Tenta consulta via IPC no Electron se disponível (diagnóstico completo em 4 níveis)
       if (typeof window !== 'undefined' && window.electronAPI?.getAiStatus) {
         try {
           const status = await window.electronAPI.getAiStatus();
           if (isMounted && status) {
             setEmbeddedAiStatus({
-              running: status.running && !!status.inferenceVerified,
+              running: !!status.running && !!status.inferenceFunctional,
               checking: false,
               cpuCores: status.cpuCores || (typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 4) || 4,
-              modelName: status.running
-                ? (status.modelName || 'Motor Local C++ Ativo')
-                : (status.modelName || 'Servidor Local Offline (Porta 18888)'),
+              modelName: status.modelName || 'Servidor Local (Porta 18888)',
+              serverAvailable: status.serverAvailable,
+              modelLoaded: status.modelLoaded,
+              inferenceFunctional: status.inferenceFunctional,
+              legalQualityValidated: status.legalQualityValidated,
+              tier: status.tier,
+              isWarmingUp: status.isWarmingUp,
               inferenceVerified: status.inferenceVerified,
               inferenceLatencyMs: status.inferenceLatencyMs,
+              instructionFollowed: status.instructionTest?.followed,
               statusMessage: status.statusMessage
             });
             return;
@@ -90,19 +103,19 @@ export const LgpdRedactor: React.FC = () => {
         }
       }
 
-      // 2. Fallback Browser: Probe em 3 etapas (Socket / Models / Inferência Real com Timeout de 3500ms)
+      // 2. Fallback Browser: Probe em 4 níveis (Disponibilidade, Modelo, Inferência 'PRONTO', Benchmark Jurídico)
       try {
-        // Etapa 1: /health
+        // NÍVEL 1: /health
         const healthRes = await fetch('http://127.0.0.1:18888/health', {
-          signal: AbortSignal.timeout(1200)
+          signal: AbortSignal.timeout(1500)
         });
 
         if (healthRes.ok) {
-          // Etapa 2: /v1/models
+          // NÍVEL 2: /v1/models
           let detectedModel = '';
           try {
             const modelsRes = await fetch('http://127.0.0.1:18888/v1/models', {
-              signal: AbortSignal.timeout(1500)
+              signal: AbortSignal.timeout(2500)
             });
             if (modelsRes.ok) {
               const data = await modelsRes.json();
@@ -119,14 +132,25 @@ export const LgpdRedactor: React.FC = () => {
                 checking: false,
                 cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
                 modelName: 'Servidor HTTP Ativo (Nenhum modelo neural carregado)',
-                inferenceVerified: false
+                serverAvailable: true,
+                modelLoaded: false,
+                inferenceFunctional: false,
+                legalQualityValidated: false,
+                tier: 'server_available',
+                inferenceVerified: false,
+                statusMessage: 'Servidor HTTP online, mas nenhum modelo neural alocado em memória.'
               });
               return;
             }
           }
 
-          // Etapa 3: Teste Real de Inferência (Smoke Test)
+          // NÍVEL 3: Inferência Funcional & Obediência a Instrução ('PRONTO')
           const startTime = Date.now();
+          let rawReply = '';
+          let inferOk = false;
+          let latencyMs = 0;
+          let isWarmUp = false;
+
           try {
             const inferRes = await fetch('http://127.0.0.1:18888/v1/chat/completions', {
               method: 'POST',
@@ -134,47 +158,114 @@ export const LgpdRedactor: React.FC = () => {
               body: JSON.stringify({
                 model: detectedModel,
                 messages: [
-                  { role: 'system', content: 'Responda com uma palavra: OK' },
-                  { role: 'user', content: 'Ping' }
+                  { role: 'system', content: 'Você é um validador de integridade. Responda estritamente com uma única palavra em caixa alta sem pontuação: PRONTO' },
+                  { role: 'user', content: 'Envie a palavra de confirmação agora.' }
                 ],
-                max_tokens: 5,
+                max_tokens: 10,
                 temperature: 0.0
               }),
-              signal: AbortSignal.timeout(3500)
+              signal: AbortSignal.timeout(8000) // 8s de tolerância para cold-start
             });
 
+            latencyMs = Date.now() - startTime;
             if (inferRes.ok) {
               const inferJson = await inferRes.json();
-              const reply = inferJson.choices?.[0]?.message?.content;
-              const latencyMs = Date.now() - startTime;
-
-              if (typeof reply === 'string' && reply.trim().length > 0) {
-                if (isMounted) {
-                  setEmbeddedAiStatus({
-                    running: true,
-                    checking: false,
-                    cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
-                    modelName: detectedModel,
-                    inferenceVerified: true,
-                    inferenceLatencyMs: latencyMs,
-                    statusMessage: `Inferência validada (${latencyMs}ms)`
-                  });
-                  return;
-                }
-              }
+              rawReply = inferJson.choices?.[0]?.message?.content || '';
+              inferOk = true;
             }
-          } catch {
-            // Falha na inferência
+          } catch (e: any) {
+            if (e?.name === 'TimeoutError') {
+              isWarmUp = true;
+            }
           }
+
+          if (isWarmUp) {
+            if (isMounted) {
+              setEmbeddedAiStatus({
+                running: false,
+                checking: false,
+                cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
+                modelName: detectedModel,
+                serverAvailable: true,
+                modelLoaded: true,
+                inferenceFunctional: false,
+                legalQualityValidated: false,
+                isWarmingUp: true,
+                tier: 'warming_up',
+                inferenceVerified: false,
+                statusMessage: 'Modelo carregado em memória, mas em aquecimento inicial (cold-start lento).'
+              });
+              return;
+            }
+          }
+
+          const cleanReply = rawReply.trim().toUpperCase().replace(/[^A-Z]/g, '');
+          const instructionFollowed = cleanReply.includes('PRONTO');
+
+          if (!inferOk || !instructionFollowed) {
+            if (isMounted) {
+              setEmbeddedAiStatus({
+                running: false,
+                checking: false,
+                cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
+                modelName: detectedModel,
+                serverAvailable: true,
+                modelLoaded: true,
+                inferenceFunctional: false,
+                legalQualityValidated: false,
+                tier: 'model_loaded',
+                inferenceVerified: false,
+                instructionFollowed: false,
+                statusMessage: rawReply
+                  ? `Modelo gerou texto, mas falhou na obediência à instrução (esperado 'PRONTO', recebido: "${rawReply.trim().slice(0, 30)}")`
+                  : 'Falha na resposta de inferência do modelo.'
+              });
+              return;
+            }
+          }
+
+          // NÍVEL 4: Benchmark de Competência Jurídica (CLT / Trabalhista)
+          let legalPassed = false;
+          try {
+            const benchRes = await fetch('http://127.0.0.1:18888/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: detectedModel,
+                messages: [
+                  { role: 'system', content: 'Você é um assistente de inteligência artificial jurídica especializado em Direito Brasileiro.' },
+                  { role: 'user', content: 'Em uma frase curta, indique qual é o ramo do Direito e a sigla da principal lei que disciplinam as verbas rescisórias e horas extras no Brasil.' }
+                ],
+                max_tokens: 45,
+                temperature: 0.0
+              }),
+              signal: AbortSignal.timeout(7000)
+            });
+
+            if (benchRes.ok) {
+              const benchJson = await benchRes.json();
+              const benchText = (benchJson.choices?.[0]?.message?.content || '').toLowerCase();
+              legalPassed = (benchText.includes('trabalhist') || benchText.includes('trabalho')) && benchText.includes('clt');
+            }
+          } catch {}
 
           if (isMounted) {
             setEmbeddedAiStatus({
-              running: false,
+              running: true,
               checking: false,
               cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
-              modelName: `${detectedModel} (Falha no teste de inferência)`,
-              inferenceVerified: false,
-              statusMessage: 'Servidor respondeu mas a inferência falhou ou excedeu 3500ms'
+              modelName: detectedModel,
+              serverAvailable: true,
+              modelLoaded: true,
+              inferenceFunctional: true,
+              legalQualityValidated: legalPassed,
+              tier: legalPassed ? 'fully_validated' : 'inference_functional',
+              inferenceVerified: true,
+              inferenceLatencyMs: latencyMs,
+              instructionFollowed: true,
+              statusMessage: legalPassed
+                ? `IA Jurídica Homologada (Nível 4): CLT/Trabalhista validado (${latencyMs}ms)`
+                : `Inferência funcional com obediência (Nível 3: ${latencyMs}ms), mas validação jurídica pendente.`
             });
             return;
           }
@@ -189,7 +280,13 @@ export const LgpdRedactor: React.FC = () => {
           checking: false,
           cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
           modelName: 'Servidor Local Offline (Porta 18888)',
-          inferenceVerified: false
+          serverAvailable: false,
+          modelLoaded: false,
+          inferenceFunctional: false,
+          legalQualityValidated: false,
+          tier: 'offline',
+          inferenceVerified: false,
+          statusMessage: 'Porta 18888 fechada ou não responde (Servidor C++ offline)'
         });
       }
     }
@@ -575,28 +672,52 @@ export const LgpdRedactor: React.FC = () => {
             <span>Motor de Análise e Detecção:</span>
           </label>
 
-          {/* Badge de Status da IA Local com Diagnóstico Real */}
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all ${
+          {/* Badge de Status da IA Local com Diagnóstico em 4 Níveis */}
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-medium transition-all ${
             embeddedAiStatus.checking
               ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-              : embeddedAiStatus.running
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                : 'bg-slate-800/80 border-slate-700 text-slate-400'
+              : embeddedAiStatus.isWarmingUp
+                ? 'bg-orange-500/10 border-orange-500/30 text-orange-300'
+                : embeddedAiStatus.legalQualityValidated
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm shadow-emerald-950/50'
+                  : embeddedAiStatus.inferenceFunctional
+                    ? 'bg-teal-500/10 border-teal-500/30 text-teal-300'
+                    : embeddedAiStatus.modelLoaded
+                      ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                      : embeddedAiStatus.serverAvailable
+                        ? 'bg-purple-500/10 border-purple-500/30 text-purple-300'
+                        : 'bg-slate-800/80 border-slate-700 text-slate-400'
           }`}>
             <span className={`w-2 h-2 rounded-full ${
               embeddedAiStatus.checking
                 ? 'bg-amber-400 animate-pulse'
-                : embeddedAiStatus.running
-                  ? 'bg-emerald-400 animate-pulse'
-                  : 'bg-slate-500'
+                : embeddedAiStatus.isWarmingUp
+                  ? 'bg-orange-400 animate-pulse'
+                  : embeddedAiStatus.legalQualityValidated
+                    ? 'bg-emerald-400 animate-pulse ring-2 ring-emerald-500/30'
+                    : embeddedAiStatus.inferenceFunctional
+                      ? 'bg-teal-400 animate-pulse'
+                      : embeddedAiStatus.modelLoaded
+                        ? 'bg-blue-400'
+                        : embeddedAiStatus.serverAvailable
+                          ? 'bg-purple-400'
+                          : 'bg-slate-500'
             }`} />
             <Cpu className="w-3.5 h-3.5" />
             <span>
               {embeddedAiStatus.checking
-                ? 'Diagnosticando Motor Local (Porta 18888)...'
-                : embeddedAiStatus.running
-                  ? `Motor C++ Conectado: ${embeddedAiStatus.modelName} (${embeddedAiStatus.cpuCores} núcleos)`
-                  : `Motor C++ Offline — Fallback Neural Local (WASM/BERT) Ativo`}
+                ? 'Diagnosticando Motor Local em 4 Níveis (Porta 18888)...'
+                : embeddedAiStatus.isWarmingUp
+                  ? `Motor C++ em Aquecimento Inicial: ${embeddedAiStatus.modelName} (Cold-Start Lento)`
+                  : embeddedAiStatus.legalQualityValidated
+                    ? `🟢 Nível 4 Homologado (CLT/Trabalhista): ${embeddedAiStatus.modelName}`
+                    : embeddedAiStatus.inferenceFunctional
+                      ? `🟡 Nível 3 Funcional (Obediência 'PRONTO'): ${embeddedAiStatus.modelName}`
+                      : embeddedAiStatus.modelLoaded
+                        ? `🔵 Nível 2 Carregado (Sem inferência): ${embeddedAiStatus.modelName}`
+                        : embeddedAiStatus.serverAvailable
+                          ? `🟣 Nível 1 Servidor HTTP Ativo (Sem modelos)`
+                          : `Motor C++ Offline — Fallback Neural Local (WASM/BERT) Ativo`}
             </span>
           </div>
         </div>
@@ -659,17 +780,37 @@ export const LgpdRedactor: React.FC = () => {
                 <span>Servidor Local C++ (Porta 18888)</span>
               </div>
               <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                embeddedAiStatus.running
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+                embeddedAiStatus.legalQualityValidated
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : embeddedAiStatus.inferenceFunctional
+                    ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                    : embeddedAiStatus.isWarmingUp
+                      ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+                      : embeddedAiStatus.modelLoaded
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                        : embeddedAiStatus.serverAvailable
+                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
               }`}>
-                {embeddedAiStatus.running ? 'Inferência Comprovada' : 'Offline'}
+                {embeddedAiStatus.legalQualityValidated
+                  ? 'Nível 4: Juridicamente Homologada'
+                  : embeddedAiStatus.inferenceFunctional
+                    ? 'Nível 3: Inferência Funcional'
+                    : embeddedAiStatus.isWarmingUp
+                      ? 'Aquecimento (Cold-Start)'
+                      : embeddedAiStatus.modelLoaded
+                        ? 'Nível 2: Modelo Carregado'
+                        : embeddedAiStatus.serverAvailable
+                          ? 'Nível 1: Servidor Ativo'
+                          : 'Offline'}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              {embeddedAiStatus.running
-                ? `Modelo: ${embeddedAiStatus.modelName}. Inferência ativa comprovada (${embeddedAiStatus.inferenceLatencyMs ? embeddedAiStatus.inferenceLatencyMs + 'ms' : 'OK'}).`
-                : `${embeddedAiStatus.modelName}. O aplicativo opera via motor neural local WASM.`}
+              {embeddedAiStatus.statusMessage || (
+                embeddedAiStatus.running
+                  ? `Modelo: ${embeddedAiStatus.modelName}. Inferência ativa comprovada (${embeddedAiStatus.inferenceLatencyMs ? embeddedAiStatus.inferenceLatencyMs + 'ms' : 'OK'}).`
+                  : `${embeddedAiStatus.modelName}. O aplicativo opera via motor neural local WASM.`
+              )}
             </p>
           </div>
         </div>

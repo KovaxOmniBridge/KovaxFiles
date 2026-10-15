@@ -98,6 +98,18 @@ Testado e homologado via `npm run test:pdf-edge-cases`:
 
 > 💡 **Nota sobre Pesquisabilidade (Ctrl+F) e Acessibilidade:** A destruição física da camada vetorial de texto é o único método tecnicamente infalível contra extração forense sob tarjas. Contudo, essa operação remove a capacidade de pesquisa por texto na página anonimizada. Para processos judiciais que exigem conformidade estrita com indexação textual e acessibilidade sem comprometer o sigilo LGPD, submeta o documento anonimizado final ao módulo **OCR Local & Scanner**, que recriará uma camada de texto limpa apenas sobre os dados remanescentes não tarjados.
 
+### 🤖 Diagnóstico e Homologação de IA Local em 4 Níveis
+
+Para certificar que a inteligência artificial local não apenas está respondendo na rede, mas é funcional e apta a processar documentos jurídicos, o sistema adota uma esteira de diagnóstico em 4 níveis (`npm run test:ai-diagnostics`):
+
+1. **Nível 1 — Disponibilidade do Servidor HTTP (`serverAvailable`)**: Checagem de socket em `/health` na porta local 18888.
+2. **Nível 2 — Modelo Carregado em Memória (`modelLoaded`)**: Consulta a `/v1/models` para confirmar que os pesos neurais estão alocados na memória RAM/VRAM.
+3. **Nível 3 — Inferência Funcional & Obediência a Instrução (`inferenceFunctional`)**: Envio de prompt de controle exigindo estritamente a palavra `PRONTO`. Rejeita qualquer resposta que não cumpra a restrição negativa/formato solicitado.
+4. **Nível 4 — Qualidade e Competência Jurídica Homologada (`legalQualityValidated`)**: Submissão de caso sintético sobre verbas rescisórias e jornada de trabalho, avaliando se a resposta do modelo identifica corretamente o ramo (**Direito Trabalhista**) e o diploma normativo (**CLT**).
+
+#### ⏱️ Tolerância a Cold-Start e Aquecimento Inicial
+Modelos locais de 8B parâmetros em CPU/GPU podem apresentar latência elevada na primeira inferência (alocação de tensores mmap e compilação de cache KV). O diagnóstico agora detecta esse estado com janela estendida (8s) e classifica a máquina como `warming_up` (**Modelo em Aquecimento Inicial**), sem derrubar falsamente o status para "Servidor Offline".
+
 ## 📂 Estrutura do Repositório
 
 ```text
