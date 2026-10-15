@@ -20,6 +20,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096"
 
     steps:
       - name: Checkout Repository
