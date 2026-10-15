@@ -45,5 +45,53 @@ if (auditTest.status !== 0) {
   process.exit(auditTest.status || 1);
 }
 
-console.log('\n[SUCESSO] Todos os testes forenses foram concluídos com sucesso.');
+// 4. Verificação física estrita dos artefatos produzidos e relatório JSON
+console.log('\n[4/4] Verificando artefatos gerados e integridade do relatório JSON...');
+const reportPath = path.resolve('test_output/battery/relatorio_forense_anonimizacao.json');
+if (!fs.existsSync(reportPath)) {
+  console.error('[ERRO FATAL] O relatório JSON test_output/battery/relatorio_forense_anonimizacao.json não foi gerado!');
+  process.exit(1);
+}
+
+const reportContent = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+if (!Array.isArray(reportContent) || reportContent.length < 4) {
+  console.error('[ERRO FATAL] O relatório JSON não contém os 4 documentos auditados!');
+  process.exit(1);
+}
+
+// 1. Verifica que os controles negativos detectaram vulnerabilidades (prova de sensibilidade)
+if (reportContent[0].total_leaks_found === 0 || reportContent[1].total_leaks_found === 0) {
+  console.error('[FALHA DE VALIDAÇÃO] Os controles negativos (original ou tarja vetorial) não detectaram vazamentos. A auditoria perdeu sensibilidade!');
+  process.exit(1);
+}
+
+// 2. Verifica que o motor e o documento sanitizado possuem 0 vazamentos e score 100
+for (const doc of reportContent.slice(2)) {
+  if (doc.total_leaks_found !== 0 || doc.safety_score !== 100) {
+    console.error(`[FALHA DE VALIDAÇÃO] ${doc.label} possui vazamentos (${doc.total_leaks_found}) ou score inferior a 100 (${doc.safety_score})!`);
+    process.exit(1);
+  }
+}
+
+// Verifica a existência física dos arquivos de saída
+const requiredArtifacts = [
+  'test_output/test_original.pdf',
+  'test_output/test_redacted_engine.pdf',
+  'test_output/battery/doc_original.pdf',
+  'test_output/battery/doc_vector_overlay.pdf',
+  'test_output/battery/doc_raster_flattened.pdf',
+  'test_output/battery/relatorio_forense_anonimizacao.json'
+];
+
+for (const artifact of requiredArtifacts) {
+  if (!fs.existsSync(artifact) || fs.statSync(artifact).size === 0) {
+    console.error(`[ERRO FATAL] Artefato obrigatório ausente ou vazio: ${artifact}`);
+    process.exit(1);
+  }
+  console.log(`  -> Artefato verificado: ${artifact} (${fs.statSync(artifact).size} bytes)`);
+}
+
+console.log('\n================================================================');
+console.log('  SUCESSO COMPROVADO: TODOS OS TESTES E ARTEFATOS FORAM HOMOLOGADOS');
+console.log('================================================================\n');
 process.exit(0);

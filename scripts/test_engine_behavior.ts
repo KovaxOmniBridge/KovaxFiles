@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import assert from 'assert';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { LocalPdfEngine } from '../src/services/pdfEngine';
 
@@ -20,8 +21,11 @@ async function main() {
   page.drawText(`Réu: Empresa Brasileira de Logística, CNPJ ${sensitiveCnpj}`, { x: 50, y: 720, size: 12, font });
   
   const originalBytes = await doc.save();
+  assert.ok(originalBytes.length > 0, 'Documento original deve gerar bytes válidos');
+
   fs.mkdirSync('test_output', { recursive: true });
   fs.writeFileSync('test_output/test_original.pdf', originalBytes);
+  assert.ok(fs.existsSync('test_output/test_original.pdf'), 'Arquivo original deve ser gravado no disco');
   console.log('PDF original criado: test_output/test_original.pdf');
   
   // 2. Chamar PdfEngine.redactPdf passando retângulos sobre os dados sensíveis
@@ -32,9 +36,19 @@ async function main() {
   ];
   
   const redactedBytes = await LocalPdfEngine.redactPdf(originalBytes.buffer, rectangles, { sanitizeFlatten: true });
+  assert.ok(redactedBytes instanceof Uint8Array && redactedBytes.length > 0, 'Buffer anonimizado deve ser válido');
+
   fs.writeFileSync('test_output/test_redacted_engine.pdf', redactedBytes);
+  assert.ok(fs.existsSync('test_output/test_redacted_engine.pdf'), 'Arquivo anonimizado deve existir no disco');
+
+  const stats = fs.statSync('test_output/test_redacted_engine.pdf');
+  assert.ok(stats.size > 5000, 'Tamanho do PDF anonimizado deve ser superior a 5KB');
+
   console.log('PDF tarjado pelo PdfEngine salvo: test_output/test_redacted_engine.pdf');
-  console.log('Tamanho do PDF resultante:', redactedBytes.length, 'bytes');
+  console.log('Tamanho do PDF resultante:', stats.size, 'bytes');
 }
 
-main().catch(console.error);
+main().catch(err => {
+  console.error('[FALHA CRÍTICA NO TESTE DO MOTOR]:', err);
+  process.exitCode = 1;
+});

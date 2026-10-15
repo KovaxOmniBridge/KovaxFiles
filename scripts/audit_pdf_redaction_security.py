@@ -631,7 +631,23 @@ def main():
         json.dump(audits, f, indent=2, ensure_ascii=False)
     print("[+] Relatório JSON completo salvo em: test_output/battery/relatorio_forense_anonimizacao.json")
 
-    return 0 if audits[-1]["total_leaks_found"] == 0 else 1
+    # Verificação de integridade dos testes:
+    # 1. Os controles negativos (Original e Tarja Vetorial Pura) DEVEM acusar vazamento para atestar a sensibilidade da suíte
+    if audits[0]["total_leaks_found"] == 0:
+        sys.stderr.write("[ERRO NA BATERIA] O controle original não acusou vazamento. A bateria perdeu sensibilidade de detecção!\n")
+        return 1
+    if audits[1]["total_leaks_found"] == 0:
+        sys.stderr.write("[ERRO NA BATERIA] A tarja vetorial pura não acusou vazamento. A bateria perdeu sensibilidade de detecção!\n")
+        return 1
+
+    # 2. O motor do aplicativo (LocalPdfEngine) e o documento sanitizado DEVEM ter ZERO vazamentos
+    for a in audits[2:]:
+        if a["total_leaks_found"] > 0:
+            sys.stderr.write(f"[FALHA DE SEGURANÇA] {a['label']} apresentou {a['total_leaks_found']} vazamentos de dados confidenciais!\n")
+            return 1
+
+    print("[VERIFICAÇÃO DE INTEGRIDADE] Todos os controles responderam conforme o esperado e os artefatos sanitizados obtiveram 100% de sigilo.")
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
