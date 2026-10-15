@@ -909,37 +909,10 @@ export const LexmlSearchTool: React.FC = () => {
               <span className="hidden sm:inline">Minhas Preferências</span>
             </button>
 
-            {/* SELETOR DE PILAR OPERACIONAL */}
-            <div className="flex items-center bg-slate-950 p-1.5 rounded-xl border border-slate-800">
-              <button
-                onClick={() => {
-                  setOperatingPillar('P1_DETERMINISTIC');
-                  showToast('Ativado Pilar 1: Motor Determinístico Factual (100% Fonte Oficial / Zero IA)');
-                }}
-                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  operatingPillar === 'P1_DETERMINISTIC'
-                    ? 'bg-emerald-600 text-white shadow-lg'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Pilar 1: 100% Factual</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setOperatingPillar('P2_AI_ASSISTED');
-                  showToast('Ativado Pilar 2: Rascunho com IA (Revisão Humana Obrigatória)');
-                }}
-                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  operatingPillar === 'P2_AI_ASSISTED'
-                    ? 'bg-indigo-600 text-white shadow-lg'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Bot className="w-4 h-4" />
-                <span>Pilar 2: IA Assistida</span>
-              </button>
+            {/* BADGE DE MODO OFFLINE / FACTUAL */}
+            <div className="flex items-center bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs font-bold text-emerald-400 gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>100% Acervo Oficial (Local)</span>
             </div>
           </div>
         </div>
@@ -2011,17 +1984,17 @@ export const LexmlSearchTool: React.FC = () => {
               <div className="bg-slate-900 p-5 rounded-xl border border-amber-500/40 space-y-3 flex flex-col">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                   <div className="flex items-center space-x-2 text-xs font-bold text-amber-400">
-                    <Bot className="w-4 h-4" />
-                    <span>RASCUNHO COM ASSISTÊNCIA DE IA</span>
+                    <FileText className="w-4 h-4" />
+                    <span>MINUTA SUGERIDA DE CITAÇÃO</span>
                   </div>
                   <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono font-bold">
-                    REQUER REVISÃO
+                    MODELO DE PEÇA
                   </span>
                 </div>
 
                 <div className="flex-1 text-xs text-amber-100/90 leading-relaxed bg-slate-950 p-4 rounded-xl border border-slate-800 overflow-y-auto space-y-2">
                   <p className="font-semibold text-amber-300">
-                    📌 Rascunho de Tese Jurídica para Petição:
+                    📌 Minuta Sugerida para Petição:
                   </p>
                   <p className="italic font-mono">
                     "Conforme estabelecido no {auditingArticle.article} da {auditingArticle.lawName}, a norma busca resguardar os direitos previstos em sua ementa ({auditingArticle.title}), devendo a parte adversa observar as exigências formais ali descritas."
@@ -2030,14 +2003,14 @@ export const LexmlSearchTool: React.FC = () => {
 
                 <button
                   onClick={() => {
-                    const textWithDisclaimer = `RASCUNHO SUGERIDO:\nConforme o ${auditingArticle.article} da ${auditingArticle.lawName} (${auditingArticle.title})...\n\n⚠️ [Aviso de Responsabilidade]: Rascunho gerado por assistência algorítmica e auditado pelo profissional responsável em ${new Date().toLocaleDateString('pt-BR')}.`;
+                    const textWithDisclaimer = `MINUTA DE CITAÇÃO:\nConforme o ${auditingArticle.article} da ${auditingArticle.lawName} (${auditingArticle.title})...\n\n(Fonte: ${auditingArticle.officialRef || auditingArticle.lawName} - Consultado via KovaxFiles em ${new Date().toLocaleDateString('pt-BR')})`;
                     navigator.clipboard.writeText(textWithDisclaimer);
-                    showToast('Rascunho copiado com termo de revisão humana!');
+                    showToast('Minuta de citação copiada para a área de transferência!');
                   }}
                   className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center space-x-2 shadow-lg"
                 >
                   <Copy className="w-4 h-4" />
-                  <span>Copiar Rascunho com Disclaimer de Revisão</span>
+                  <span>Copiar Minuta de Citação</span>
                 </button>
               </div>
             </div>

@@ -16,7 +16,6 @@
     "test:dist-security": "npx tsx scripts/verify_distribution_security.ts",
     "test:pdf-edge-cases": "npx tsx scripts/test_advanced_pdf_edge_cases.ts",
     "test:raster-quality": "npx tsx scripts/test_raster_quality_criteria.ts",
-    "test:ai-diagnostics": "npx tsx scripts/test_ai_diagnostic_tiers.ts",
     "test:distribution-prerequisites": "npx tsx scripts/verify_distribution_prerequisites.ts",
     "test:sandbox-isolation": "electron --no-sandbox scripts/test_runtime_sandbox_isolation.cjs",
     "test:release-operational": "npx tsx scripts/verify_distribution_prerequisites.ts",
@@ -45,7 +44,6 @@
   "author": "Kovax Files Desktop Team",
   "license": "MIT",
   "dependencies": {
-    "@xenova/transformers": "^2.17.2",
     "fflate": "^0.8.3",
     "lucide-react": "^0.344.0",
     "pdf-lib": "^1.17.1",

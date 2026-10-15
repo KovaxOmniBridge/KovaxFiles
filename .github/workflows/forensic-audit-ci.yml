@@ -77,9 +77,6 @@ jobs:
       - name: Run Raster Quality Criteria & Effective Resolution Tests
         run: npm run test:raster-quality
 
-      - name: Run 4-Tier AI Diagnostics Benchmark
-        run: npm run test:ai-diagnostics
-
       - name: Publish Forensic Report to GitHub Step Summary
         if: always()
         shell: bash

@@ -221,7 +221,7 @@ export const LocalKnowledgeManager: React.FC<LocalKnowledgeManagerProps> = ({ on
                 <div className="space-y-1">
                   <h3 className="text-sm font-semibold text-slate-300">Nenhuma lei municipal ou regimento local cadastrado</h3>
                   <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    Arraste um PDF da Lei Orgânica, Código Tributário Municipal ou Regimento Interno do seu município para integrar a IA local.
+                    Arraste um PDF da Lei Orgânica, Código Tributário Municipal ou Regimento Interno do seu município para integrar ao acervo local de busca.
                   </p>
                 </div>
                 <button

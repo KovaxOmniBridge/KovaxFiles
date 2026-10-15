@@ -1,8 +1,8 @@
 import { PageTextData, PdfTextExtractor } from './pdfTextExtractor';
-import { LocalNerService } from './localNerService';
-import { UniversalAiClassifier, AiRigorLevel } from './universalAiClassifier';
+import { UniversalAiClassifier, AiRigorLevel, DetectionRigorLevel } from './universalAiClassifier';
 
-export type AiEngineMode = 'pattern' | 'assisted_ner' | 'embedded';
+export type RedactionScanMode = 'pattern' | 'comprehensive';
+export type AiEngineMode = 'pattern' | 'assisted_ner' | 'embedded' | 'comprehensive';
 
 export interface RedactionCategoryOptions {
   cpf: boolean;
@@ -39,16 +39,16 @@ export interface DetectedRedactionItem {
 
 export interface AiSettings {
   mode: AiEngineMode;
-  rigorLevel?: AiRigorLevel;
+  rigorLevel?: AiRigorLevel | DetectionRigorLevel;
   geminiApiKey?: string;
 }
 
 export class AiRedactionService {
   /**
-   * Executa a análise completa:
-   * 1. Varredura por Padrões / Regex (Determinístico e Instantâneo: CPF, CNPJ, etc.)
-   * 2. Classificação Semântica Zero-Shot de Tokens (quando ativado o modo assistido)
-   * 3. Extração Neural Local de Entidades (NER via Transformers.js/BERT em WebAssembly)
+   * Executa a análise documental determinística e algorítmica:
+   * 1. Varredura por Padrões / Regex (CPF, CNPJ, RG, E-mails, Telefones, etc.)
+   * 2. Varredura Heurística de Entidades Documentais (Nomes de partes, endereços, contas) com blindagem OAB
+   * 3. Cobertura da Margem Lateral Judicial (e-SAJ / PJe / TRF)
    * 
    * AVISO METODOLÓGICO: Todas as sugestões produzidas são preliminares e auxiliares,
    * exigindo verificação e aprovação humana explícita antes de qualquer operação de tarjamento.
@@ -62,12 +62,12 @@ export class AiRedactionService {
     const results: DetectedRedactionItem[] = [];
     const totalPages = pagesData.length;
 
-    // 1. Fase 1: Análise por Padrões / Regex em todas as páginas (Sempre ativa, instantânea)
+    // 1. Fase 1: Análise por Padrões / Regex em todas as páginas (Determinística e instantânea)
     for (let i = 0; i < totalPages; i++) {
       const page = pagesData[i];
       onProgress?.({
-        message: `Analisando padrões e regras (Página ${i + 1}/${totalPages})...`,
-        percent: Math.round(((i + 1) / totalPages) * 35)
+        message: `Analisando padrões e regras LGPD (Página ${i + 1}/${totalPages})...`,
+        percent: Math.round(((i + 1) / totalPages) * 50)
       });
       await new Promise(r => setTimeout(r, 0));
 
@@ -75,23 +75,23 @@ export class AiRedactionService {
       results.push(...patternItems);
     }
 
-    // 2. Fase 2: Análise por IA Universal Zero-Shot por Classificação de Tokens (Motor Heurístico - confidence >= 0.85)
+    // 2. Fase 2: Análise Heurística de Entidades Documentais (confidence >= 0.85)
     for (let i = 0; i < totalPages; i++) {
       const page = pagesData[i];
       onProgress?.({
-        message: `Classificação semântica de tokens (Página ${i + 1}/${totalPages})...`,
-        percent: 35 + Math.round(((i + 1) / totalPages) * 35)
+        message: `Classificação de entidades documentais (Página ${i + 1}/${totalPages})...`,
+        percent: 50 + Math.round(((i + 1) / totalPages) * 45)
       });
       await new Promise(r => setTimeout(r, 0));
 
       if (!page.fullText || page.fullText.trim().length < 5) continue;
 
-      const zeroShotItems = UniversalAiClassifier.classifyPageTokens(
+      const entityItems = UniversalAiClassifier.classifyPageTokens(
         page,
         categories,
         aiSettings.rigorLevel || 'broad'
       );
-      for (const item of zeroShotItems) {
+      for (const item of entityItems) {
         // Trava de Confiança Estrita 0.85
         if (item.confidence < 0.85) continue;
 
@@ -104,80 +104,7 @@ export class AiRedactionService {
       }
     }
 
-    // 3. Fase 3: Reconhecimento Inteligente Assistido de Entidades Nomeadas (NER Local via Transformers.js)
-    // Recurso opcional de auxílio à triagem com confirmação humana prévia
-    if (aiSettings.mode !== 'pattern') {
-      const BATCH_SIZE = 2;
-      for (let i = 0; i < totalPages; i += BATCH_SIZE) {
-        const batchPages = pagesData.slice(i, i + BATCH_SIZE);
-
-        onProgress?.({
-          message: `Identificação assistida de dados sensíveis (Páginas ${i + 1}-${Math.min(i + BATCH_SIZE, totalPages)}/${totalPages})...`,
-          percent: 70 + Math.round(((i + Math.min(BATCH_SIZE, totalPages - i)) / totalPages) * 28)
-        });
-        await new Promise(r => setTimeout(r, 0));
-
-        await Promise.all(
-          batchPages.map(async (page) => {
-            if (!page.fullText || page.fullText.trim().length < 10) return;
-
-            let aiEntities: { text: string; category: string; reason: string; confidence?: number }[] = [];
-
-            try {
-              if (categories.names || categories.addresses) {
-                const nerEntities = await LocalNerService.extractEntities(page.fullText);
-                aiEntities.push(...nerEntities.map(e => ({ ...e, confidence: 0.90 })));
-              }
-            } catch (nerErr) {
-              console.warn('[AiRedactionService] Extração NER local falhou na página:', page.pageIndex + 1, nerErr);
-            }
-
-            // Processar entidades detectadas da IA com validações cirúrgicas
-            for (const ent of aiEntities) {
-              if (!ent.text || ent.text.trim().length < 2) continue;
-              if (ent.confidence !== undefined && ent.confidence < 0.85) continue; // Trava Estrita 0.85
-
-              const cleanPhrase = ent.text.trim();
-
-              // Blindagem de Whitelist e Advogados OAB
-              if (
-                UniversalAiClassifier.isWhitelistedTerm(cleanPhrase) ||
-                UniversalAiClassifier.isAttorneyOabName(cleanPhrase, page)
-              ) {
-                continue;
-              }
-
-              const categoryName = (ent.category as any) || 'Nome de Pessoa';
-              const alreadyExists = results.some(
-                r => r.pageIndex === page.pageIndex && r.text.toLowerCase().trim() === cleanPhrase.toLowerCase()
-              );
-              if (alreadyExists) continue;
-
-              const rects = PdfTextExtractor.findTextRectangles(page, cleanPhrase);
-              for (const rect of rects) {
-                results.push({
-                  id: 'ai-' + Math.random().toString(36).substring(7),
-                  pageIndex: page.pageIndex,
-                  text: cleanPhrase,
-                  category: categoryName,
-                  reason: ent.reason || 'Identificado por Análise Semântica de IA (LGPD)',
-                  confidence: ent.confidence || 0.95,
-                  selected: true,
-                  rect: {
-                    ...rect,
-                    text: cleanPhrase,
-                    category: categoryName,
-                    reason: ent.reason || 'Identificado por Análise Semântica de IA (LGPD)'
-                  }
-                });
-              }
-            }
-          })
-        );
-      }
-    }
-
-    // 4. Cobertura Automática da Margem Lateral Judicial (e-SAJ / PJe / TRF)
+    // 3. Cobertura Automática da Margem Lateral Judicial (e-SAJ / PJe / TRF)
     const esajRegex = /(?:esaj\.tjsp\.jus\.br|abrirConferenciaDocumento|código\s+[A-Z0-9]{5,8}|protocolado em|sob o número\s+\d{7})/gi;
     for (const page of pagesData) {
       if (page.fullText && esajRegex.test(page.fullText)) {
@@ -203,7 +130,7 @@ export class AiRedactionService {
       }
     }
 
-    onProgress?.({ message: 'Análise concluída com sucesso!', percent: 100 });
+    onProgress?.({ message: 'Varredura LGPD concluída com sucesso!', percent: 100 });
     return results;
   }
 
@@ -348,35 +275,10 @@ export class AiRedactionService {
   }
 
   /**
-   * System Prompt Imperativo de Preservação do Contexto Jurídico para LLMs
-   */
-  private static getStrictLlmPrompt(text: string): string {
-    return `Você é um auditor sênior de privacidade e LGPD especialista em Engenharia de Documentos.
-SUA MISSÃO É RESTRITA EXCLUSIVAMENTE A EXTRAIR DADOS PESSOAIS IDENTIFICÁVEIS BRUTOS DE CIDADÃOS:
-- Nomes próprios de pessoas físicas (autores, réus, clientes, testemunhas, pacientes).
-- Documentos Pessoais (CPFs, RGs, Passaportes, SSN, SWIFT).
-- Endereços residenciais privados e CEPs.
-- Dados bancários específicos, favorecidos de PIX e salários/valores R$ isolados.
-
-INSTRUÇÕES IMPERATIVAS DE PRESERVAÇÃO (NUNCA EXTRAIR):
-1. PRESERVE E IGNORE CONCEITOS ABSTRATOS (ex: "Dignidade da Pessoa Humana", "Boa-Fé Objetiva", "Segurança Jurídica").
-2. PRESERVE E IGNORE LATIM JURÍDICO (ex: "data venia", "fumus boni iuris", "periculum in mora", "ex tunc", "ex nunc").
-3. PRESERVE E IGNORE TRANSCRIÇÕES JURISPRUDENCIAIS, EMENTAS DE ACÓRDÃOS E CITAÇÕES DOUTRINÁRIAS.
-4. PRESERVE E IGNORE NOMES DE LEIS, TRIBUNAIS, ÓRGÃOS PÚBLICOS E MUNICÍPIOS (ex: "Código Civil", "Constituição Federal", "Prefeitura Municipal").
-5. PRESERVE E IGNORE TÍTULOS E CARGOS (ex: "Juiz de Direito", "Vossa Excelência", "Desembargador").
-
-Responda EXCLUSIVAMENTE em formato JSON com o seguinte esquema:
-{"entities": [{"text": "Trecho Exato do Documento", "category": "Nome de Pessoa|Endereço|Financeiro|Saúde", "reason": "Motivo LGPD Art. 5º"}]}
-
-Texto a analisar:
-${text.substring(0, 3800)}`;
-  }
-
-  /**
    * Anonimiza o texto substituindo PIIs (CPFs, CNPJs, E-mails, Telefones e Dados Sensíveis)
-   * por tokens genéricos seguros antes do processamento em APIs de nuvem.
+   * por tokens genéricos seguros.
    */
-  static anonymizeTextForCloud(text: string): { anonymizedText: string; tokenMap: Record<string, string> } {
+  static anonymizeText(text: string): { anonymizedText: string; tokenMap: Record<string, string> } {
     if (!text) return { anonymizedText: '', tokenMap: {} };
 
     const tokenMap: Record<string, string> = {};
@@ -417,3 +319,5 @@ ${text.substring(0, 3800)}`;
     return { anonymizedText, tokenMap };
   }
 }
+
+export { AiRedactionService as RedactionService };

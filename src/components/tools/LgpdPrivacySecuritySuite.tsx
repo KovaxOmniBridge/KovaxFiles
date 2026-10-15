@@ -59,11 +59,10 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   const [auditRecords, setAuditRecords] = useState<LgpdAuditRecord[]>([]);
 
   // ==========================================
-  // ESTADOS DA ABA 1: TARJAMENTO LGPD (IA)
+  // ESTADOS DA ABA 1: TARJAMENTO LGPD
   // ==========================================
-  const [aiMode] = useState<AiEngineMode>('embedded');
+  const [aiMode] = useState<AiEngineMode>('pattern');
   const [rigorLevel] = useState<AiRigorLevel>('broad');
-  const [geminiApiKey] = useState<string>('');
 
   const [categories, setCategories] = useState<RedactionCategoryOptions>({
     cpf: true,
@@ -243,7 +242,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
           const items = await AiRedactionService.analyzePdf(
             pagesData,
             categories,
-            { mode: aiMode, geminiApiKey, rigorLevel }
+            { mode: aiMode, rigorLevel }
           );
           allDetections.push(...items);
         }
@@ -768,8 +767,8 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4" />
-                    Iniciar Análise Inteligente de Risco
+                    <ShieldCheck className="w-4 h-4" />
+                    Iniciar Varredura LGPD de Risco
                   </>
                 )}
               </button>
@@ -792,8 +791,8 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
 
                 {!hasAnalyzed ? (
                   <div className="h-64 flex flex-col items-center justify-center border border-dashed border-slate-800 rounded-xl p-6 text-center text-slate-500">
-                    <Brain className="w-10 h-10 text-slate-700 mb-2" />
-                    <p className="text-xs">Clique em "Iniciar Análise Inteligente" para rastrear dados pessoais e sensíveis.</p>
+                    <ShieldCheck className="w-10 h-10 text-slate-700 mb-2" />
+                    <p className="text-xs">Clique em "Iniciar Varredura LGPD de Risco" para rastrear dados pessoais e sensíveis.</p>
                   </div>
                 ) : detectedItems.length === 0 ? (
                   <div className="h-64 flex flex-col items-center justify-center border border-dashed border-slate-800 rounded-xl p-6 text-center text-slate-400">

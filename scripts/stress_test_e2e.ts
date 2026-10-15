@@ -27,9 +27,10 @@ async function runUniversalStressTestSuite() {
   }
 
   // -------------------------------------------------------------------------
-  // MÓDULO 1: RESILIÊNCIA E CONCORRÊNCIA DA FILA DE IA (Módulos 2 e 8)
   // -------------------------------------------------------------------------
-  console.log('📌 SUITE 1: COMPORTAMENTO E RESILIÊNCIA DA FILA DE IA & FALLBACK');
+  // MÓDULO 1: RESILIÊNCIA E CONCORRÊNCIA DA VARREDURA LGPD DETERMINÍSTICA
+  // -------------------------------------------------------------------------
+  console.log('📌 SUITE 1: COMPORTAMENTO E RESILIÊNCIA DA VARREDURA LGPD DETERMINÍSTICA');
 
   // Teste 1.1: Concorrência de CPU (Múltiplas requisições simultâneas)
   try {
@@ -52,10 +53,7 @@ async function runUniversalStressTestSuite() {
     };
 
     const aiSettings: AiSettings = {
-      mode: 'ollama',
-      ollamaUrl: 'http://localhost:11434/api/generate',
-      ollamaModel: 'llama3.2',
-      geminiApiKey: ''
+      mode: 'pattern'
     };
 
     const startTime = performance.now();
@@ -75,7 +73,7 @@ async function runUniversalStressTestSuite() {
     assert(false, 'Teste 1.1: Concorrência simultânea de CPU', err.message);
   }
 
-  // Teste 1.2: Fallback Transparente quando Motor 3 (LLM) sofre AbortController Timeout (5s) ou Erro
+  // Teste 1.2: Detecção precisa de dados sensíveis e diagnósticos de saúde (CID-10)
   try {
     const singlePage: PageTextData = {
       pageIndex: 0,
@@ -95,23 +93,20 @@ async function runUniversalStressTestSuite() {
       names: true, addresses: true, financial: true, health: true, customKeywords: []
     };
 
-    // Configuração apontando para porta inválida para forçar recuo/fallback imediato
-    const invalidAiSettings: AiSettings = {
-      mode: 'embedded',
-      ollamaUrl: 'http://127.0.0.1:99999/invalid',
-      ollamaModel: 'invalid-model',
-      geminiApiKey: ''
+    const testSettings: AiSettings = {
+      mode: 'pattern'
     };
 
-    const fallbackResults = await AiRedactionService.analyzePdf([singlePage], categories, invalidAiSettings);
+    const detectedResults = await AiRedactionService.analyzePdf([singlePage], categories, testSettings);
 
-    const foundCpf = fallbackResults.some(r => r.category === 'CPF');
+    const foundCpf = detectedResults.some(r => r.category === 'CPF');
+    const foundHealth = detectedResults.some(r => r.category === 'Saúde');
     assert(
-      foundCpf && fallbackResults.length > 0,
-      'Teste 1.2: Recuo automático (Fallback) para Motor 2 ativado transparentemente após erro/timeout de LLM'
+      foundCpf && foundHealth && detectedResults.length >= 2,
+      'Teste 1.2: Varredura determinística identificou corretamente dados de CPF e CID-10 de saúde'
     );
   } catch (err: any) {
-    assert(false, 'Teste 1.2: Fallback transparente em erro de LLM', err.message);
+    assert(false, 'Teste 1.2: Detecção determinística de CPF e Saúde', err.message);
   }
 
   console.log('');

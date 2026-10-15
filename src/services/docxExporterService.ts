@@ -124,12 +124,12 @@ export class DocxExporterService {
         <body>
           <div class="Section1">
             <div class="header-banner">
-              <h1>KOVAXFILES - PARECER JURÍDICO OFICIAL</h1>
-              <p>Relatório de Inteligência Documental & Análise de Conformidade (PJe / ABNT)</p>
+              <h1>KOVAXFILES - RELATÓRIO JURÍDICO OFICIAL</h1>
+              <p>Relatório de Engenharia Documental & Análise de Conformidade (PJe / ABNT)</p>
             </div>
 
             <div class="meta-box">
-              <strong>Especialidade / Perfil:</strong> ${options.authorName || 'Consultor Jurídico de IA'} ${options.roleTitle ? `(${options.roleTitle})` : ''}<br>
+              <strong>Especialidade / Perfil:</strong> ${options.authorName || 'Pesquisa Jurídica Oficial'} ${options.roleTitle ? `(${options.roleTitle})` : ''}<br>
               <strong>Data de Emissão:</strong> ${formattedDate} às ${formattedTime}<br>
               ${options.profileBadge ? `<strong>Módulo Ativo:</strong> ${options.profileBadge}<br>` : ''}
               ${options.retrievedLawsSummary ? `<strong>Ancoragem Legislativa:</strong> ${options.retrievedLawsSummary}` : ''}

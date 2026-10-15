@@ -1,7 +1,8 @@
 import { PageTextData, PdfTextExtractor } from './pdfTextExtractor';
 import { DetectedRedactionItem, RedactionCategoryOptions } from './aiRedactionService';
 
-export type AiRigorLevel = 'essential' | 'broad' | 'maximum';
+export type DetectionRigorLevel = 'essential' | 'broad' | 'maximum';
+export type AiRigorLevel = DetectionRigorLevel;
 
 export type LegalRegimeType = 'DIREITO_PUBLICO' | 'DIREITO_PRIVADO' | 'MISTO';
 
@@ -216,7 +217,7 @@ export class UniversalAiClassifier {
       for (const fm of fullMatches) {
         const foundName = fm[1].trim();
         if (foundName.length > 5) {
-          this.addDetectedPhrase(page, foundName, 'Nome de Pessoa', 'Identificado como Nome Próprio de Cidadão (IA Local LGPD)', 0.88, detected);
+          this.addDetectedPhrase(page, foundName, 'Nome de Pessoa', 'Identificado como Nome Próprio de Cidadão (Varredura Algorítmica LGPD)', 0.88, detected);
         }
       }
 

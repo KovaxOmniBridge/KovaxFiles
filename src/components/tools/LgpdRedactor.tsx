@@ -57,10 +57,9 @@ export const LgpdRedactor: React.FC = () => {
   // Configuração dos Arquivos Selecionados
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   
-  // Configuração de Modo da IA - Padrão: Reconhecimento Inteligente Assistido (NER Local WASM)
-  const [aiMode, setAiMode] = useState<AiEngineMode>('assisted_ner');
+  // Configuração de Modo de Varredura - Padrão: Varredura Completa Determinística
+  const [aiMode, setAiMode] = useState<AiEngineMode>('pattern');
   const [rigorLevel, setRigorLevel] = useState<AiRigorLevel>('broad');
-  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
 
   // Configuração de Rasterização e Critérios de Qualidade (Achatamento Seguro)
   const [rasterProfile, setRasterProfile] = useState<RasterizationQualityProfile>('balanced');
@@ -168,8 +167,7 @@ export const LgpdRedactor: React.FC = () => {
 
     const aiSettings: AiSettings = {
       mode: aiMode,
-      rigorLevel,
-      geminiApiKey
+      rigorLevel
     };
 
     try {
@@ -184,7 +182,7 @@ export const LgpdRedactor: React.FC = () => {
         const pagesData = await PdfTextExtractor.extractTextWithBounds(buffer);
         newPagesMap.set(file.name, pagesData);
 
-        // Executa varredura por IA e Padrões com progresso por página em tempo real
+        // Executa varredura por padrões e regras LGPD com progresso por página em tempo real
         const items = await AiRedactionService.analyzePdf(
           pagesData,
           categories,
@@ -199,7 +197,7 @@ export const LgpdRedactor: React.FC = () => {
       setHasAnalyzed(true);
       setAnalysisProgress(100);
     } catch (err: any) {
-      setErrorMessage('Erro durante a análise por Inteligência Artificial: ' + (err?.message || 'Falha desconhecida.'));
+      setErrorMessage('Erro durante a análise de dados sensíveis: ' + (err?.message || 'Falha desconhecida.'));
     } finally {
       setIsAnalyzing(false);
     }
@@ -455,7 +453,7 @@ export const LgpdRedactor: React.FC = () => {
             </div>
             <h2 className="text-xl font-bold text-slate-100">Tarjador & Anonimizador LGPD Universal</h2>
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              Burn-in Definitivo + IA + OCR + Desenho Manual
+              Burn-in Definitivo + Padrões LGPD + OCR + Desenho Manual
             </span>
           </div>
           <p className="text-xs text-slate-400">
@@ -468,21 +466,21 @@ export const LgpdRedactor: React.FC = () => {
       <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <Brain className="w-4 h-4 text-emerald-400" />
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span>Motor de Triagem e Detecção de Dados Sensíveis:</span>
           </label>
 
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-medium bg-emerald-500/10 border-emerald-500/30 text-emerald-300">
             <span className="w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-emerald-500/30" />
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>100% Local & Autônomo (Zero Vazamento Externo)</span>
+            <span>100% Local & Determinístico (Zero Vazamento Externo)</span>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Opção 1: Reconhecimento Inteligente Assistido (Opcional - NER Local) */}
+          {/* Opção 1: Varredura Algorítmica Ampla */}
           <div
-            onClick={() => setAiMode('assisted_ner')}
+            onClick={() => setAiMode('comprehensive')}
             className={`p-4 rounded-xl border cursor-pointer transition-all ${
               aiMode !== 'pattern'
                 ? 'bg-emerald-950/50 border-emerald-500/70 ring-1 ring-emerald-500/40 shadow-lg shadow-emerald-950/50'
@@ -491,8 +489,8 @@ export const LgpdRedactor: React.FC = () => {
           >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
-                <Brain className="w-4 h-4" />
-                <span>Reconhecimento Inteligente Assistido (NER Local WASM)</span>
+                <FileText className="w-4 h-4" />
+                <span>Varredura Algorítmica Ampla (Padrões + Nomes/Endereços)</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
@@ -502,12 +500,12 @@ export const LgpdRedactor: React.FC = () => {
               </div>
             </div>
             <p className="text-[11px] text-slate-300 leading-relaxed mb-2">
-              Utiliza rede neural local (BERT / Transformers.js em WebAssembly) para sugerir nomes de pessoas, logradouros e dados contextuais em petições e laudos.
+              Varre o documento por expressões regulares e heurísticas estruturadas para sugerir nomes de partes, médicos, logradouros, dados financeiros e diagnósticos CID-10 com proteção de OAB.
             </p>
             <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/20 text-[10px] text-emerald-300/90 leading-normal flex items-start gap-1.5">
               <Info className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
               <span>
-                <strong>Supervisão Humana Ativa:</strong> As sugestões da IA são exclusivamente auxiliares. Cada item detectado deve ser revisado e validado pelo operador antes da aplicação das tarjas.
+                <strong>Supervisão Humana Ativa:</strong> As sugestões de detecção são auxiliares. Cada item detectado deve ser revisado e validado pelo operador antes da aplicação das tarjas.
               </span>
             </div>
           </div>
@@ -528,7 +526,7 @@ export const LgpdRedactor: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-800 text-slate-400 border border-slate-700">
-                  Zero ML
+                  Instantâneo
                 </span>
                 {aiMode === 'pattern' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
               </div>
@@ -546,15 +544,15 @@ export const LgpdRedactor: React.FC = () => {
         </div>
       </div>
 
-      {/* Seletor de Rigor da IA Universal Zero-Shot (Para qualquer documento inédito) */}
+      {/* Seletor de Rigor da Varredura Algorítmica */}
       <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-emerald-400" />
-            <span>Intensidade de Análise de IA Universal Zero-Shot (Documentos Inéditos):</span>
+            <span>Rigor da Varredura Algorítmica LGPD:</span>
           </label>
           <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-            ✨ Zero Pré-configuração
+            ✨ Análise Local
           </span>
         </div>
 
@@ -666,7 +664,7 @@ export const LgpdRedactor: React.FC = () => {
               onChange={(e) => setCategories({ ...categories, names: e.target.checked })}
               className="w-4 h-4 accent-emerald-600 rounded"
             />
-            <span className="font-medium text-slate-300">Nomes de Pessoas (IA)</span>
+            <span className="font-medium text-slate-300">Nomes de Pessoas (Partes/Médicos)</span>
           </label>
 
           <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-slate-700 transition-all">
@@ -676,7 +674,7 @@ export const LgpdRedactor: React.FC = () => {
               onChange={(e) => setCategories({ ...categories, addresses: e.target.checked })}
               className="w-4 h-4 accent-emerald-600 rounded"
             />
-            <span className="font-medium text-slate-300">Endereços (IA)</span>
+            <span className="font-medium text-slate-300">Endereços & CEP</span>
           </label>
 
           <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-slate-700 transition-all">
@@ -686,7 +684,7 @@ export const LgpdRedactor: React.FC = () => {
               onChange={(e) => setCategories({ ...categories, financial: e.target.checked })}
               className="w-4 h-4 accent-emerald-600 rounded"
             />
-            <span className="font-medium text-slate-300">Financeiro (IA)</span>
+            <span className="font-medium text-slate-300">Financeiro (R$ e Contas)</span>
           </label>
 
           <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-slate-700 transition-all">
@@ -696,7 +694,7 @@ export const LgpdRedactor: React.FC = () => {
               onChange={(e) => setCategories({ ...categories, health: e.target.checked })}
               className="w-4 h-4 accent-emerald-600 rounded"
             />
-            <span className="font-medium text-slate-300">Saúde / Laudos (IA)</span>
+            <span className="font-medium text-slate-300">Saúde (CID-10 e CRM)</span>
           </label>
         </div>
       </div>
@@ -952,12 +950,12 @@ export const LgpdRedactor: React.FC = () => {
               {isAnalyzing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Analisando com IA + OCR... ({analysisProgress}%)</span>
+                  <span>Analisando padrões LGPD... ({analysisProgress}%)</span>
                 </>
               ) : (
                 <>
-                  <Brain className="w-4 h-4" />
-                  <span>Analisar & Detectar Dados Sigilosos por IA ({selectedFiles.length} PDF)</span>
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Analisar & Detectar Dados Sigilosos ({selectedFiles.length} PDF)</span>
                 </>
               )}
             </button>

@@ -9,7 +9,6 @@ import {
   Scale, 
   FolderCheck,
   ShieldAlert,
-  Bot,
   Eraser,
   RefreshCw,
   FileText,
@@ -56,7 +55,7 @@ export const TABS: TabItem[] = [
     label: 'Privacidade, Tarjador & Criptografia',
     category: 'Geral',
     icon: ShieldCheck,
-    description: 'Tarjamento LGPD com I.A., expurgo de metadados, criptografia e senhas',
+    description: 'Tarjamento definitivo LGPD, expurgo de metadados, criptografia e senhas',
     badge: 'Segurança Total'
   },
   {

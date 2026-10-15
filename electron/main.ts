@@ -2,8 +2,6 @@ import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import os from 'os';
-import http from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,16 +20,6 @@ import {
   validateSafeFilePath
 } from './pathSecurity.ts';
 
-import {
-  probeAiDiagnostics,
-  evaluateInstructionAdherence,
-  evaluateLegalBenchmark,
-  type AiDiagnosticTier,
-  type AiDiagnosticResult,
-  type InstructionTestResult,
-  type LegalBenchmarkResult
-} from './aiDiagnostic.ts';
-
 export {
   ALLOWED_EXTENSIONS,
   DANGEROUS_EXTENSIONS,
@@ -41,14 +29,7 @@ export {
   authorizeSessionDirectory,
   clearSessionAuthorizations,
   validateFileContentMatchesType,
-  validateSafeFilePath,
-  probeAiDiagnostics,
-  evaluateInstructionAdherence,
-  evaluateLegalBenchmark,
-  type AiDiagnosticTier,
-  type AiDiagnosticResult,
-  type InstructionTestResult,
-  type LegalBenchmarkResult
+  validateSafeFilePath
 };
 
 function createWindow() {
@@ -255,15 +236,5 @@ ipcMain.handle('system:showItemInFolder', async (_, filePath: string) => {
   }
   shell.showItemInFolder(validation.normalizedPath);
   return true;
-});
-
-// IPC Handler para diagnóstico da IA local em 4 níveis (Disponibilidade, Modelo, Inferência, Qualidade Jurídica)
-ipcMain.handle('ai:getStatus', async () => {
-  return await probeAiDiagnostics({
-    port: 18888,
-    healthTimeoutMs: 1500,
-    modelsTimeoutMs: 2500,
-    inferenceTimeoutMs: 8000
-  });
 });
 
