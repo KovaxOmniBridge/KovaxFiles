@@ -5,6 +5,12 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      allow_unsigned_dev:
+        description: 'Permitir compilação de desenvolvimento não assinada (APENAS para testes internos; NUNCA publicado como release oficial)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -40,17 +46,37 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
         run: |
+          IS_OFFICIAL_RELEASE="${{ startsWith(github.ref, 'refs/tags/') }}"
+          ALLOW_UNSIGNED="${{ inputs.allow_unsigned_dev }}"
+
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             if [ -n "${{ secrets.WIN_CSC_LINK }}" ]; then
-              echo "==> Compilando instalador Windows com assinatura digital obrigatória..."
-              npm run package:release
+              echo "==> Compilando instalador Windows com assinatura digital obrigatória (forceCodeSigning=true)..."
+              npm run package:release:win
             else
-              echo "::warning title=Assinatura Digital::Segredo WIN_CSC_LINK não detectado. Para distribuição institucional a órgãos públicos e tribunais, configure o certificado em WIN_CSC_LINK."
-              npm run package:win
+              # Em tags de release oficiais ou se allow_unsigned_dev for falso, a ausência de certificado é um ERRO FATAL
+              if [ "$IS_OFFICIAL_RELEASE" = "true" ] || [ "$ALLOW_UNSIGNED" != "true" ]; then
+                echo "::error title=Bloqueio de Segurança Crítico::Distribuição institucional abortada. O canal oficial de release exige assinatura digital obrigatória no Windows (WIN_CSC_LINK). É estritamente proibido publicar instaladores não assinados para órgãos públicos, tribunais e advocacia."
+                exit 1
+              fi
+              echo "::warning title=Build de Desenvolvimento::Gerando binário de teste não assinado (NÃO HOMOLOGADO PARA DISTRIBUIÇÃO INSTITUCIONAL)."
+              npm run package:dev:win
             fi
           elif [ "${{ matrix.os }}" = "macos-latest" ]; then
-            npm run package:mac
+            if [ -n "${{ secrets.MAC_CSC_LINK }}" ] || [ -n "${{ secrets.CSC_LINK }}" ]; then
+              echo "==> Compilando pacote macOS com assinatura Apple Developer ID obrigatória..."
+              npm run package:release:mac
+            else
+              if [ "$IS_OFFICIAL_RELEASE" = "true" ] || [ "$ALLOW_UNSIGNED" != "true" ]; then
+                echo "::error title=Bloqueio de Segurança Crítico::Distribuição institucional abortada. O canal oficial de release para macOS exige certificado Apple Developer ID (CSC_LINK / MAC_CSC_LINK)."
+                exit 1
+              fi
+              echo "::warning title=Build de Desenvolvimento::Gerando binário macOS não assinado para testes internos."
+              npm run package:mac
+            fi
           else
             npm run package:linux
           fi
@@ -58,19 +84,33 @@ jobs:
 
       - name: Generate SHA-256 Integrity Manifest
         run: |
+          cat << 'EOF' > release/SHA256SUMS.txt
+# ==============================================================================
+# MANIFESTO DE INTEGRIDADE CRIPTOGRÁFICA (SHA-256) - KOVAXFILES DESKTOP
+# ==============================================================================
+# NOTA DE SEGURANÇA INSTITUCIONAL:
+# 1. Os hashes abaixo atestam exclusivamente a INTEGRIDADE DE TRANSPORTE dos
+#    arquivos contra corrupção física ou truncamento acidental de download.
+# 2. Hashes SHA-256 NÃO ATESTAM AUTORIA, NÃO COMPROVAM IDENTIDADE DO PUBLICADOR
+#    E NÃO SUBSTITUEM ASSINATURA DIGITAL (Authenticode / Apple Developer ID / PKI).
+# 3. Em ambientes institucionais (Tribunais, Prefeituras e Escritórios Jurídicos),
+#    valide OBRIGATORIAMENTE a assinatura digital embutida no binário executável:
+#      PowerShell: Get-AuthenticodeSignature .\KovaxFiles-Setup-*.exe
+# ==============================================================================
+EOF
           cd release
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum * > SHA256SUMS.txt 2>/dev/null || true
+            sha256sum *.exe *.dmg *.AppImage *.deb *.rpm *.zip 2>/dev/null >> SHA256SUMS.txt || true
           else
-            shasum -a 256 * > SHA256SUMS.txt 2>/dev/null || true
+            shasum -a 256 *.exe *.dmg *.AppImage *.deb *.rpm *.zip 2>/dev/null >> SHA256SUMS.txt || true
           fi
-          echo "Manifesto SHA-256 gerado:"
+          echo "Manifesto SHA-256 gerado com sucesso:"
           cat SHA256SUMS.txt
         shell: bash
 
       - name: Upload Binaries and Checksums to GitHub Releases
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && (inputs.allow_unsigned_dev != true)
         with:
           files: |
             release/*.exe

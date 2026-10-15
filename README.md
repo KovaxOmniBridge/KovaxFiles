@@ -153,7 +153,8 @@ Os pacotes `.dmg` (Mac) e `.AppImage` (Linux) serão gerados na pasta `release/`
 ## 🛡️ Assinatura Digital e Procedência Institucional
 
 Para implantação em órgãos públicos, tribunais e escritórios de advocacia, o KovaxFiles segue padrões rigorosos de distribuição:
+* **Assinatura Digital Obrigatória em Release**: Compilações oficiais no canal de release exigem certificado digital corporativo (`WIN_CSC_LINK` com `forceCodeSigning=true`). O pipeline de CI/CD aborta automaticamente caso a assinatura não esteja configurada, impedindo a publicação acidental de binários não assinados.
 * **Validação Criptográfica de Atualizações**: A diretiva `verifyUpdateCodeSignature: true` está rigorosamente habilitada no empacotador, impedindo que o mecanismo de atualização receba ou execute binários que não provenham da chave criptográfica do publicador original.
-* **Integridade de Pacotes**: Todas as compilações oficiais de release geram e publicam um manifesto de hashes `SHA256SUMS.txt` no GitHub Releases.
-* **Homologação Corporativa**: Consulte [docs/SECURITY_DISTRIBUTION.md](docs/SECURITY_DISTRIBUTION.md) para o guia de verificação via PowerShell (`Get-AuthenticodeSignature`, `Get-FileHash`), requisitos para certificados EV / ICP-Brasil e parâmetros de whitelist para AppLocker e Windows Defender Application Control (WDAC).
+* **Distinção entre Integridade (SHA-256) e Autoria (Assinatura Digital)**: A lista de hashes `SHA256SUMS.txt` atesta apenas a integridade física de transporte do download. A autenticidade da autoria, reputação do SmartScreen e não-repúdio são garantidos exclusivamente pela assinatura digital Authenticode embutida no `.exe`.
+* **Homologação Corporativa**: Consulte [docs/SECURITY_DISTRIBUTION.md](docs/SECURITY_DISTRIBUTION.md) para o guia completo de auditoria forense via PowerShell (`Get-AuthenticodeSignature`, `Get-FileHash`), requisitos para certificados EV / ICP-Brasil e parâmetros de whitelist para AppLocker e Windows Defender Application Control (WDAC).
 
