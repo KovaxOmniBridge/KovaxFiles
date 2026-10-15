@@ -2,29 +2,36 @@ import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { PdfCompressor } from './components/tools/PdfCompressor';
-import { LgpdRedactor } from './components/tools/LgpdRedactor';
-import { PdfMetadataSanitizer } from './components/tools/PdfMetadataSanitizer';
+import { LgpdPrivacySecuritySuite } from './components/tools/LgpdPrivacySecuritySuite';
 import { FileConverter } from './components/tools/FileConverter';
 import { ProcessStamper } from './components/tools/ProcessStamper';
 import { PdfManipulator } from './components/tools/PdfManipulator';
 import { OcrScanner } from './components/tools/OcrScanner';
 import { LexmlSearchTool } from './components/tools/LexmlSearchTool';
+import { DocEditor } from './components/tools/DocEditor';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<string>('lexml');
+  const [activeTab, setActiveTab] = useState<string>('editor');
 
   const renderActiveTool = () => {
     switch (activeTab) {
+      case 'editor':
+        return <DocEditor />;
       case 'lexml':
         return <LexmlSearchTool />;
       case 'compressor':
         return <PdfCompressor />;
       case 'converter':
         return <FileConverter />;
+      case 'privacy_suite':
       case 'lgpd':
-        return <LgpdRedactor />;
+        return <LgpdPrivacySecuritySuite initialSubTab="redactor" />;
       case 'sanitizer':
-        return <PdfMetadataSanitizer />;
+        return <LgpdPrivacySecuritySuite initialSubTab="sanitizer" />;
+      case 'encryption':
+        return <LgpdPrivacySecuritySuite initialSubTab="encryption" />;
+      case 'certificate':
+        return <LgpdPrivacySecuritySuite initialSubTab="certificate" />;
       case 'stamper':
         return <ProcessStamper />;
       case 'manipulator':
@@ -32,7 +39,7 @@ export const App: React.FC = () => {
       case 'ocr':
         return <OcrScanner />;
       default:
-        return <LexmlSearchTool />;
+        return <DocEditor />;
     }
   };
 

@@ -11,7 +11,10 @@ import {
   ShieldAlert,
   Bot,
   Eraser,
-  RefreshCw
+  RefreshCw,
+  FileText,
+  Lock,
+  ShieldCheck
 } from 'lucide-react';
 
 export interface TabItem {
@@ -24,6 +27,14 @@ export interface TabItem {
 }
 
 export const TABS: TabItem[] = [
+  {
+    id: 'editor',
+    label: 'Editor de Documentos',
+    category: 'Advocacia',
+    icon: FileText,
+    description: 'Crie e edite petições, procurações e pareceres com formatação ABNT/PJe',
+    badge: 'Estilo Docs'
+  },
   {
     id: 'compressor',
     label: 'Compressor Tribunais / PJe',
@@ -41,20 +52,12 @@ export const TABS: TabItem[] = [
     badge: 'Multimídia'
   },
   {
-    id: 'lgpd',
-    label: 'Tarjador LGPD Local',
+    id: 'privacy_suite',
+    label: 'Privacidade, Tarjador & Criptografia',
     category: 'Geral',
-    icon: EyeOff,
-    description: 'Ocultação definitiva de CPFs, CNPJs e dados sensíveis',
-    badge: 'Segurança'
-  },
-  {
-    id: 'sanitizer',
-    label: 'Higienizador de Metadados',
-    category: 'Geral',
-    icon: Eraser,
-    description: 'Expurge autor, software criador e históricos ocultos LGPD',
-    badge: 'LGPD'
+    icon: ShieldCheck,
+    description: 'Tarjamento LGPD com I.A., expurgo de metadados, criptografia e senhas',
+    badge: 'Segurança Total'
   },
   {
     id: 'lexml',

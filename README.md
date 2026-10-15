@@ -22,7 +22,7 @@ O repositório inclui a página estática de apresentação e solicitação de p
 
 1. **Zero Server Upload**: Todos os arquivos processados (PDFs, petições, anexos e escaneamentos) permanecem exclusivamente na memória RAM e CPU do computador do usuário.
 2. **Processamento em Memória & WASM**: Motores de manipulação de PDF (`pdf-lib`), anonimização e OCR (`tesseract.js`) executam localmente via WebAssembly.
-3. **Censura LGPD Definitiva (*Burn-In*)**: As tarjas pretas aplicadas sobre CPFs, CNPJs e dados sigilosos são queimadas diretamente no vetor do PDF, impedindo seleção ou recuperação de dados por cópia de texto.
+3. **Anonimização LGPD & Sanitização Documental**: A plataforma oferece detecção inteligente de dados sensíveis e sanitização documental. A anonimização efetiva contra extração forense exige o descarte físico de fluxos de texto (Achatamento Rasterizado / Flattening 300 DPI), uma vez que a simples sobreposição de retângulos visuais preserva os dados no fluxo vetorial original. Expressões de anonimização irreversível estão sujeitas aos limites e diretrizes da bateria forense de testes integrada.
 
 ---
 
@@ -40,8 +40,9 @@ O repositório inclui a página estática de apresentação e solicitação de p
   - **Sistemas Municipais de Prefeitura** (Máx 15.0 MB)
 
 ### 3. 🛡️ Tarjador & Anonimizador LGPD Local
-- Identificação e tarjamento automático de CPFs, CNPJs, RGs, e-mails e termos customizados.
-- Aplicação de tarjas pretas definitivas com eliminação do texto subjacente.
+- Identificação de CPFs, CNPJs, RGs, e-mails e termos customizados via Regex e IA local.
+- Cobertura de termos com tarjas e opção de sanitização profunda por Achatamento Rasterizado (Flattening 300 DPI) para destruição física de camadas de texto, anotações e formulários.
+- Bateria de testes de segurança automatizada para validação contra extração de texto, inspeção de objetos e análise forense de pixels.
 
 ### 4. 🏷️ Juntada & Carimbo de Autos
 - Chancela automática de numeração sequencial de folhas (`Fl. 001/2026`, `Fl. 002/2026`).
@@ -58,6 +59,32 @@ O repositório inclui a página estática de apresentação e solicitação de p
 - Divisão de autos judiciais extensos em volumes ou páginas individuais.
 
 ---
+
+## 🔬 Auditoria Forense de Anonimização (Bateria de Testes em 5 Vetores)
+
+A garantia de anonimização exige mais do que desenhar um retângulo preto sobre o documento. Um arquivo PDF convencional pode preservar texto subjacente, anotações (`/Annots`), formulários (`/AcroForm`), árvores de acessibilidade (`/StructTreeRoot`) e metadados XMP mesmo sob tarjas visuais.
+
+Para validar a integridade dos dados tarjados, o repositório disponibiliza uma suíte de testes de estresse forense:
+
+```bash
+npm run test:security-redaction
+```
+
+A bateria submete o documento a **5 vetores de ataque independentes**:
+1. **Extração de Texto**: Tenta recuperar dados por múltiplos motores independentes (`pypdf`, `pdfminer.six`, `pymupdf`).
+2. **Inspeção de Objetos e Streams**: Analisa streams `/Contents` descomprimidos, dicionários de anotações (`/Annots`), campos de formulário (`/AcroForm`) e metadados.
+3. **Renderização e Forense de Pixels**: Renderiza a 300 DPI e faz amostragem RGB dentro das caixas delimitadoras para certificar 100% de cobertura sólida (ausência de vazamento de contornos ou canal alfa).
+4. **Pesquisa e Pattern Matching**: Executa buscas por regex de PIIs e busca literal de caracteres (`Ctrl+F`).
+5. **Ferramentas Independentes & Byte-Level Carving**: Varre o binário bruto do arquivo PDF e decodifica streams zlib em busca de ocorrências de dados.
+
+### Matriz de Resiliência Validada
+
+| Método de Anonimização | Extração de Texto | Inspeção de Streams/Objetos | Pixels / Bleed | Pesquisa / Ctrl+F | Carving Binário | Veredito |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Tarja Vetorial Simples** (Apenas retângulo preto) | ❌ FAIL (Recuperável) | ❌ FAIL (Recuperável) | ⚠️ OK (Visual) | ❌ FAIL (Recuperável) | ❌ FAIL (Recuperável) | **Vulnerável** |
+| **Sanitização por Achatamento** (Raster 300 DPI) | ✅ OK (Destruído) | ✅ OK (Destruído) | ✅ OK (Sólido) | ✅ OK (Zero ocorrências) | ✅ OK (Zero ocorrências) | **Protegido** |
+
+> ⚠️ **Aviso de Segurança:** A expressão *anonimização irreversível* refere-se exclusivamente ao modo de sanitização por achatamento rasterizado auditado. O tarjamento vetorial simples é uma sobreposição visual e não deve ser utilizado isoladamente quando houver risco de extração técnica por terceiros.
 
 ## 📂 Estrutura do Repositório
 

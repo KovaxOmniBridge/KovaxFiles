@@ -967,7 +967,7 @@ export const LgpdRedactor: React.FC = () => {
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Queimar Tarjas Definitivas em Burn-in ({selectedCount})</span>
+                  <span>Aplicar Tarjamento e Sanitização LGPD ({selectedCount})</span>
                 </>
               )}
             </button>
@@ -991,7 +991,7 @@ export const LgpdRedactor: React.FC = () => {
               <CheckCircle2 className="w-6 h-6 text-emerald-400" />
               <div>
                 <h3 className="text-sm font-bold text-slate-100">{results.length} Documento(s) Anonimizado(s) com Sucesso!</h3>
-                <p className="text-xs text-slate-400">Tarjas pretas definitivas aplicadas em camada vetorial (Burn-in seguro).</p>
+                <p className="text-xs text-slate-400">Tarjas pretas aplicadas com sanitização documental por achatamento rasterizado (300 DPI).</p>
               </div>
             </div>
 

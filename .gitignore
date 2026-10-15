@@ -20,3 +20,5 @@ Thumbs.db
 .idea/
 .env
 .env.local
+.venv/
+test_output/

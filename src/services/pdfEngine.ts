@@ -681,30 +681,97 @@ export class LocalPdfEngine {
       }
     });
 
-    // 4. Expurgo completo de Metadados XMP e Anotações para Garantir o Sigilo LGPD
+    // 4. Expurgo completo de Metadados XMP, Formularios, Estrutura e Anotacoes para Garantir o Sigilo LGPD
     try {
       doc.setTitle('Documento Tarjado e Protegido (LGPD)');
       doc.setAuthor('KovaxFiles Anonimizador');
-      doc.setSubject('Segredo de Justiça / Proteção LGPD');
+      doc.setSubject('Segredo de Justica / Protecao LGPD');
       doc.catalog.delete(PDFName.of('Metadata'));
       doc.catalog.delete(PDFName.of('PieceInfo'));
+      
+      // Expurga Formularios Interativos (AcroForm)
+      if (doc.catalog.has(PDFName.of('AcroForm'))) {
+        doc.catalog.delete(PDFName.of('AcroForm'));
+      }
+      // Expurga Arvore de Acessibilidade / Tagged PDF (StructTreeRoot)
+      if (doc.catalog.has(PDFName.of('StructTreeRoot'))) {
+        doc.catalog.delete(PDFName.of('StructTreeRoot'));
+      }
+      // Expurga Arquivos Embutidos e Nomes (/Names)
+      if (doc.catalog.has(PDFName.of('Names'))) {
+        doc.catalog.delete(PDFName.of('Names'));
+      }
+      // Expurga Marcadores / Indice (/Outlines)
+      if (doc.catalog.has(PDFName.of('Outlines'))) {
+        doc.catalog.delete(PDFName.of('Outlines'));
+      }
     } catch {}
 
-    // 5. Sanitização Absoluta por Achatamento Rasterizado (Flattening 300 DPI):
-    // Destrói fisicamente a camada oculta de texto dos caracteres anonimizados, tornando 100% impossível o Ctrl+C ou inspeção de bytes.
+    // Expurga Anotacoes (/Annots) de todas as paginas
+    pages.forEach(p => {
+      try {
+        if (p.node.has(PDFName.of('Annots'))) {
+          p.node.delete(PDFName.of('Annots'));
+        }
+      } catch {}
+    });
+
     const redactedVectorBuffer = await doc.save();
+
+    // 5. Verificacao de Modo de Sanitizacao:
+    // O Achatamento Rasterizado (Flattening 300 DPI) e a etapa que fisicamente
+    // destroi a camada oculta de texto dos caracteres anonimizados.
+    const shouldFlatten = options?.sanitizeFlatten !== false;
+    if (!shouldFlatten) {
+      console.warn('[LocalPdfEngine] AVISO DE SEGURANCA: Tarjamento executado em Modo Vetorial puro (sem achatamento). A camada de texto original e preservada sob as tarjas.');
+      return redactedVectorBuffer;
+    }
+
     return await this.sanitizeFlattenPdf(redactedVectorBuffer);
   }
 
   /**
-   * Sanitização Absoluta por Achatamento Rasterizado (Flattening):
-   * Transforma as páginas em imagens de alta definição (300 DPI), destruindo fisicamente qualquer fluxo de texto subjacente.
+   * Sanitizacao Absoluta por Achatamento Rasterizado (Flattening):
+   * Transforma as paginas em imagens de alta definicao (300 DPI), destruindo fisicamente qualquer fluxo de texto subjacente.
+   * Suporta renderizacao via Canvas (Browser / Electron) e fallback headless (Node.js).
    */
   private static async sanitizeFlattenPdf(redactedPdfBuffer: Uint8Array): Promise<Uint8Array> {
+    // 1. Fallback Headless para ambientes Node.js / CLI sem DOM
     if (typeof document === 'undefined') {
+      if (typeof process !== 'undefined' && (process as any).versions?.node) {
+        try {
+          const { spawnSync } = await import('child_process');
+          const fs = await import('fs');
+          const path = await import('path');
+          const os = await import('os');
+          
+          const tmpIn = path.join(os.tmpdir(), `kovax_redact_in_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
+          const tmpOut = path.join(os.tmpdir(), `kovax_redact_out_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
+          fs.writeFileSync(tmpIn, redactedPdfBuffer);
+
+          const flattenerScript = path.resolve('scripts/headless_flattener.py');
+          const venvPython = path.resolve('.venv/Scripts/python.exe');
+          const pythonExe = fs.existsSync(venvPython) ? venvPython : 'python';
+
+          if (fs.existsSync(flattenerScript)) {
+            const res = spawnSync(pythonExe, [flattenerScript, tmpIn, tmpOut, '300'], { stdio: 'pipe' });
+            if (res.status === 0 && fs.existsSync(tmpOut)) {
+              const outBytes = fs.readFileSync(tmpOut);
+              try { fs.unlinkSync(tmpIn); fs.unlinkSync(tmpOut); } catch {}
+              return new Uint8Array(outBytes);
+            }
+          }
+          try { if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn); } catch {}
+        } catch (nodeErr) {
+          console.warn('[LocalPdfEngine] Fallback headless flattener indisponivel:', nodeErr);
+        }
+      }
+
+      console.warn('[LocalPdfEngine] AVISO CRITICO: Ambiente sem suporte a DOM/Canvas. O achatamento rasterizado requer ambiente browser/Electron renderer para destruicao fisica de camadas de texto.');
       return redactedPdfBuffer;
     }
 
+    // 2. Pipeline Nativo de Navegador / Electron Renderer (Canvas HTML5)
     const loadingTask = pdfjsLib.getDocument({
       data: redactedPdfBuffer,
       useSystemFonts: true,
@@ -716,7 +783,7 @@ export class LocalPdfEngine {
 
     for (let i = 1; i <= pdfDoc.numPages; i++) {
       const page = await pdfDoc.getPage(i);
-      const scale = 2.0; // Alta Definição ~300 DPI
+      const scale = 2.0; // Alta Definicao ~300 DPI
       const viewport = page.getViewport({ scale });
 
       const canvas = document.createElement('canvas');

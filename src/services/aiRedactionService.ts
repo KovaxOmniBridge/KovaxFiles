@@ -208,7 +208,7 @@ export class AiRedactionService {
           pageIndex: page.pageIndex,
           text: 'Margem Lateral de Autenticação Judicial (e-SAJ/TJSP)',
           category: 'RG',
-          reason: 'Proteção Definitiva de Sigilo: Cobertura da Margem Lateral com Link e Código de Verificação e-SAJ/TJSP',
+          reason: 'Proteção de Sigilo Judicial: Cobertura da Margem Lateral com Link e Código de Verificação e-SAJ/TJSP',
           confidence: 1.0,
           selected: true,
           rect: {
@@ -219,7 +219,7 @@ export class AiRedactionService {
             height: page.pageHeight,
             text: 'Margem Lateral de Autenticação Judicial (e-SAJ/TJSP)',
             category: 'RG',
-            reason: 'Proteção Definitiva de Sigilo: Cobertura da Margem Lateral com Link e Código de Verificação e-SAJ/TJSP'
+            reason: 'Proteção de Sigilo Judicial: Cobertura da Margem Lateral com Link e Código de Verificação e-SAJ/TJSP'
           }
         });
       }

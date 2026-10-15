@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "electron:dev": "vite",
     "test:stress": "npx tsx scripts/stress_test_e2e.ts",
+    "test:security-redaction": "npx tsx scripts/run_redaction_security_suite.ts",
     "package:win": "npm run build && electron-builder --win",
     "package:mac": "npm run build && electron-builder --mac",
     "package:linux": "npm run build && electron-builder --linux",
