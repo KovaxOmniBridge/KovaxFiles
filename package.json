@@ -15,6 +15,7 @@
     "test:path-integration": "npx tsx scripts/test_path_security_integration.ts",
     "test:dist-security": "npx tsx scripts/verify_distribution_security.ts",
     "test:pdf-edge-cases": "npx tsx scripts/test_advanced_pdf_edge_cases.ts",
+    "test:raster-quality": "npx tsx scripts/test_raster_quality_criteria.ts",
     "test:ai-diagnostics": "npx tsx scripts/test_ai_diagnostic_tiers.ts",
     "test:distribution-prerequisites": "npx tsx scripts/verify_distribution_prerequisites.ts",
     "test:sandbox-isolation": "electron scripts/test_runtime_sandbox_isolation.cjs",

@@ -24,10 +24,21 @@ import {
   MousePointer,
   Maximize2,
   Folder,
-  ExternalLink
+  ExternalLink,
+  Gauge,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
+  Info
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { LocalPdfEngine } from '../../services/pdfEngine';
+import {
+  LocalPdfEngine,
+  RasterizationQualityProfile,
+  RasterizationQualityReport,
+  RASTER_QUALITY_PROFILES,
+  AnonymizePdfOptions
+} from '../../services/pdfEngine';
 import { CompressionEngine } from '../../services/compressionEngine';
 import { PdfTextExtractor, PageTextData } from '../../services/pdfTextExtractor';
 import { AiRedactionService, AiEngineMode, AiSettings, DetectedRedactionItem, RedactionCategoryOptions } from '../../services/aiRedactionService';
@@ -39,6 +50,7 @@ export interface RedactResultItem {
   data: Uint8Array;
   redactionCount: number;
   savedPath?: string;
+  rasterReport?: RasterizationQualityReport;
 }
 
 export const LgpdRedactor: React.FC = () => {
@@ -49,6 +61,14 @@ export const LgpdRedactor: React.FC = () => {
   const [aiMode, setAiMode] = useState<AiEngineMode>('embedded');
   const [rigorLevel, setRigorLevel] = useState<AiRigorLevel>('broad');
   const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+
+  // Configuração de Rasterização e Critérios de Qualidade (Achatamento Seguro)
+  const [rasterProfile, setRasterProfile] = useState<RasterizationQualityProfile>('balanced');
+  const [customTargetDpi, setCustomTargetDpi] = useState<number>(300);
+  const [customMinDpi, setCustomMinDpi] = useState<number>(150);
+  const [customQuality, setCustomQuality] = useState<number>(88);
+  const [customMaxPixels, setCustomMaxPixels] = useState<number>(25);
+  const [expandedReportIdx, setExpandedReportIdx] = useState<number | null>(null);
 
   // Status do Servidor de IA Local (Distinção em 4 Níveis: Servidor, Modelo, Inferência e Qualidade Jurídica)
   const [embeddedAiStatus, setEmbeddedAiStatus] = useState<{
@@ -600,12 +620,21 @@ export const LgpdRedactor: React.FC = () => {
           rectsToApply = autoItems.map(i => i.rect);
         }
 
-        const redactedBytes = await LocalPdfEngine.anonymizePdf(buffer, rectsToApply);
+        const rasterOptions: AnonymizePdfOptions = {
+          profile: rasterProfile,
+          dpi: rasterProfile === 'custom' ? customTargetDpi : undefined,
+          minDpi: rasterProfile === 'custom' ? customMinDpi : undefined,
+          quality: rasterProfile === 'custom' ? customQuality / 100 : undefined,
+          maxPixelsPerPage: rasterProfile === 'custom' ? customMaxPixels * 1_000_000 : undefined
+        };
+
+        const anonymizeRes = await LocalPdfEngine.anonymizePdfWithReport(buffer, rectsToApply, rasterOptions);
 
         processedResults.push({
           fileName: file.name.replace(/\.pdf$/i, '_anonimizado_LGPD.pdf'),
-          data: redactedBytes,
-          redactionCount: rectsToApply.length
+          data: anonymizeRes.pdfBytes,
+          redactionCount: rectsToApply.length,
+          rasterReport: anonymizeRes.report
         });
       }
 
@@ -1007,6 +1036,187 @@ export const LgpdRedactor: React.FC = () => {
         </div>
       </div>
 
+      {/* 2.1 Critérios de Qualidade e Perfil de Rasterização (Achatamento Seguro) */}
+      <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+            <Gauge className="w-4 h-4 text-emerald-400" />
+            <span>Perfil de Rasterização & Critérios de Qualidade Mínima:</span>
+          </label>
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 w-fit">
+            🛡️ Achatamento 100% Inviolável em Todos os Perfis
+          </span>
+        </div>
+
+        <p className="text-[11px] text-slate-400 leading-relaxed">
+          O achatamento adaptativo transforma o PDF em imagens de alta definição, destruindo fisicamente qualquer texto ou metadados subjacentes.
+          Escolha o perfil adequado entre qualidade gráfica, tamanho do arquivo e consumo de memória — <strong>sem comprometer o sigilo e a irreversibilidade da anonimização</strong>.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+          {/* Equilibrado */}
+          <div
+            onClick={() => setRasterProfile('balanced')}
+            className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+              rasterProfile === 'balanced'
+                ? 'bg-emerald-950/50 border-emerald-500/70 ring-1 ring-emerald-500/40'
+                : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-emerald-400">⚖️ Equilibrado (Padrão)</span>
+              {rasterProfile === 'balanced' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">
+              300 DPI nominais com piso de 150 DPI para plantas/páginas grandes. Ideal para processos jurídicos e autos gerais.
+            </p>
+            <div className="text-[10px] text-slate-500 space-y-0.5 border-t border-slate-800/80 pt-1.5 font-mono">
+              <div>• Alvo: 300 DPI | Piso: 150 DPI</div>
+              <div>• Qualidade: 88% | Teto: 25 MP</div>
+            </div>
+          </div>
+
+          {/* Alta Fidelidade */}
+          <div
+            onClick={() => setRasterProfile('high_quality')}
+            className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+              rasterProfile === 'high_quality'
+                ? 'bg-purple-950/50 border-purple-500/70 ring-1 ring-purple-500/40'
+                : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-purple-400">🔍 Alta Fidelidade Forense</span>
+              {rasterProfile === 'high_quality' && <CheckCircle2 className="w-4 h-4 text-purple-400" />}
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">
+              300 DPI nominais com piso rigoroso de 220 DPI e teto de 50 MP. Preserva carimbos diminutos e assinaturas manuscritas.
+            </p>
+            <div className="text-[10px] text-slate-500 space-y-0.5 border-t border-slate-800/80 pt-1.5 font-mono">
+              <div>• Alvo: 300 DPI | Piso: 220 DPI</div>
+              <div>• Qualidade: 95% | Teto: 50 MP</div>
+            </div>
+          </div>
+
+          {/* Econômico */}
+          <div
+            onClick={() => setRasterProfile('compact')}
+            className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+              rasterProfile === 'compact'
+                ? 'bg-blue-950/50 border-blue-500/70 ring-1 ring-blue-500/40'
+                : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-blue-400">⚡ Econômico (PJe / Uploads)</span>
+              {rasterProfile === 'compact' && <CheckCircle2 className="w-4 h-4 text-blue-400" />}
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">
+              200 DPI nominais com piso de 100 DPI e compressão otimizada. Para portais com restrição severa de tamanho (ex: PJe 10MB).
+            </p>
+            <div className="text-[10px] text-slate-500 space-y-0.5 border-t border-slate-800/80 pt-1.5 font-mono">
+              <div>• Alvo: 200 DPI | Piso: 100 DPI</div>
+              <div>• Qualidade: 75% | Teto: 12 MP</div>
+            </div>
+          </div>
+
+          {/* Personalizado */}
+          <div
+            onClick={() => setRasterProfile('custom')}
+            className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+              rasterProfile === 'custom'
+                ? 'bg-amber-950/50 border-amber-500/70 ring-1 ring-amber-500/40'
+                : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-amber-400">⚙️ Personalizado</span>
+              {rasterProfile === 'custom' && <CheckCircle2 className="w-4 h-4 text-amber-400" />}
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">
+              Ajuste fino manual de DPI alvo, piso mínimo garantido, qualidade JPEG e teto de memória.
+            </p>
+            <div className="text-[10px] text-slate-500 space-y-0.5 border-t border-slate-800/80 pt-1.5 font-mono">
+              <div>• Alvo: {customTargetDpi} DPI | Piso: {customMinDpi} DPI</div>
+              <div>• Qualidade: {customQuality}% | Teto: {customMaxPixels} MP</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Controles do Modo Personalizado */}
+        {rasterProfile === 'custom' && (
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">
+                DPI Nominal Alvo: <span className="text-emerald-400 font-mono">{customTargetDpi} DPI</span>
+              </label>
+              <input
+                type="range"
+                min="100"
+                max="600"
+                step="25"
+                value={customTargetDpi}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setCustomTargetDpi(val);
+                  if (customMinDpi > val) setCustomMinDpi(val);
+                }}
+                className="w-full accent-emerald-500 cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-500">Resolução desejada para páginas padrão</span>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">
+                Piso Mínimo Garantido: <span className="text-amber-400 font-mono">{customMinDpi} DPI</span>
+              </label>
+              <input
+                type="range"
+                min="72"
+                max={customTargetDpi}
+                step="10"
+                value={customMinDpi}
+                onChange={(e) => setCustomMinDpi(Number(e.target.value))}
+                className="w-full accent-amber-500 cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-500">Nunca reduz abaixo deste valor em páginas grandes</span>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">
+                Qualidade de Imagem JPEG: <span className="text-purple-400 font-mono">{customQuality}%</span>
+              </label>
+              <input
+                type="range"
+                min="50"
+                max="100"
+                step="5"
+                value={customQuality}
+                onChange={(e) => setCustomQuality(Number(e.target.value))}
+                className="w-full accent-purple-500 cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-500">Balanço entre nitidez e tamanho do PDF</span>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">
+                Teto de Memória por Página: <span className="text-blue-400 font-mono">{customMaxPixels} MP</span>
+              </label>
+              <input
+                type="range"
+                min="5"
+                max="60"
+                step="5"
+                value={customMaxPixels}
+                onChange={(e) => setCustomMaxPixels(Number(e.target.value))}
+                className="w-full accent-blue-500 cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-500">Megapixels máximos antes de ativar adaptação</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 3. Upload Dropzone */}
       <div className="dropzone p-8 text-center cursor-pointer relative rounded-2xl border-2 border-dashed border-slate-800 hover:border-emerald-500/50 bg-slate-900/40 transition-all">
         <input
@@ -1346,60 +1556,151 @@ export const LgpdRedactor: React.FC = () => {
 
           <div className="space-y-2">
             {results.map((res, idx) => (
-              <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs gap-3">
-                <div className="flex items-center gap-2 truncate">
-                  <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <div className="truncate">
-                    <span className="text-slate-200 font-bold truncate block">{res.fileName}</span>
-                    {res.savedPath && (
-                      <span className="text-[10px] text-emerald-400/80 font-mono truncate block" title={res.savedPath}>
-                        ✓ Salvo em: {res.savedPath}
-                      </span>
+              <div key={idx} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 truncate">
+                    <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div className="truncate">
+                      <span className="text-slate-200 font-bold truncate block">{res.fileName}</span>
+                      {res.savedPath && (
+                        <span className="text-[10px] text-emerald-400/80 font-mono truncate block" title={res.savedPath}>
+                          ✓ Salvo em: {res.savedPath}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 shrink-0">
+                      {res.redactionCount} tarja(s) aplicadas
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {res.savedPath ? (
+                      <>
+                        <button
+                          onClick={async () => {
+                            if (window.electronAPI?.openPath) {
+                              await window.electronAPI.openPath(res.savedPath!);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-all"
+                          title="Abrir o arquivo PDF no leitor padrão do sistema operacional"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Abrir PDF
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (window.electronAPI?.showItemInFolder) {
+                              await window.electronAPI.showItemInFolder(res.savedPath!);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 transition-all"
+                          title="Revelar o arquivo na pasta do sistema de arquivos"
+                        >
+                          <Folder className="w-3.5 h-3.5" />
+                          Ver na Pasta
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleDownloadSingle(res)}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-all"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Salvar PDF
+                      </button>
                     )}
                   </div>
-                  <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 shrink-0">
-                    {res.redactionCount} tarja(s) aplicadas
-                  </span>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  {res.savedPath ? (
-                    <>
+                {/* Resolução Efetivamente Utilizada & Critérios de Qualidade */}
+                {res.rasterReport && (
+                  <div className="pt-2 border-t border-slate-800/80">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-mono">
+                          DPI Efetivo Médio: {res.rasterReport.averageEffectiveDpi} DPI
+                        </span>
+                        {res.rasterReport.adaptedPagesCount > 0 ? (
+                          <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-medium flex items-center gap-1">
+                            ⚠️ {res.rasterReport.adaptedPagesCount} página(s) grande(s) adaptada(s) (Piso de {res.rasterReport.minDpi} DPI preservado para carimbos e assinaturas)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-medium">
+                            ✓ 100% no DPI Alvo Nominal ({res.rasterReport.targetDpi} DPI)
+                          </span>
+                        )}
+                      </div>
+
                       <button
-                        onClick={async () => {
-                          if (window.electronAPI?.openPath) {
-                            await window.electronAPI.openPath(res.savedPath!);
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-all"
-                        title="Abrir o arquivo PDF no leitor padrão do sistema operacional"
+                        onClick={() => setExpandedReportIdx(expandedReportIdx === idx ? null : idx)}
+                        className="text-slate-400 hover:text-slate-200 underline text-[10px] flex items-center gap-1 cursor-pointer ml-auto"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        Abrir PDF
+                        {expandedReportIdx === idx ? (
+                          <>
+                            <ChevronUp className="w-3 h-3" />
+                            <span>Ocultar Detalhes de Resolução</span>
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-3 h-3" />
+                            <span>Ver Resolução por Página ({res.rasterReport.totalPages})</span>
+                          </>
+                        )}
                       </button>
-                      <button
-                        onClick={async () => {
-                          if (window.electronAPI?.showItemInFolder) {
-                            await window.electronAPI.showItemInFolder(res.savedPath!);
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 transition-all"
-                        title="Revelar o arquivo na pasta do sistema de arquivos"
-                      >
-                        <Folder className="w-3.5 h-3.5" />
-                        Ver na Pasta
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => handleDownloadSingle(res)}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-all"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      Salvar PDF
-                    </button>
-                  )}
-                </div>
+                    </div>
+
+                    {expandedReportIdx === idx && (
+                      <div className="mt-2.5 p-3 rounded-lg bg-slate-900 border border-slate-800 text-[10px] overflow-x-auto space-y-2">
+                        <div className="flex items-center justify-between text-slate-400 pb-1 border-b border-slate-800">
+                          <span className="font-semibold text-slate-300">Detalhamento de Qualidade Gráfica:</span>
+                          <span className="text-[9px]">Piso Mínimo Configurado: {res.rasterReport.minDpi} DPI</span>
+                        </div>
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-800/80 text-slate-400">
+                              <th className="py-1 px-2">Página</th>
+                              <th className="py-1 px-2">Dimensões Originais</th>
+                              <th className="py-1 px-2">DPI Alvo vs Efetivo</th>
+                              <th className="py-1 px-2">Megapixels</th>
+                              <th className="py-1 px-2">Critério de Nitidez</th>
+                              <th className="py-1 px-2">Diagnóstico de Legibilidade</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60 font-mono">
+                            {res.rasterReport.pages.map((p) => (
+                              <tr key={p.pageNumber} className="hover:bg-slate-800/30">
+                                <td className="py-1.5 px-2 text-slate-300 font-bold">Pág. {p.pageNumber}</td>
+                                <td className="py-1.5 px-2 text-slate-400">{p.widthPt}x{p.heightPt} pt</td>
+                                <td className="py-1.5 px-2">
+                                  <span className={p.wasAdapted ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                                    {p.effectiveDpi} DPI
+                                  </span>
+                                  <span className="text-slate-500 text-[9px]"> (Alvo: {p.targetDpi})</span>
+                                </td>
+                                <td className="py-1.5 px-2 text-slate-300">{p.megaPixels} MP</td>
+                                <td className="py-1.5 px-2 font-sans">
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                                    p.status === 'optimal'
+                                      ? 'bg-emerald-500/20 text-emerald-300'
+                                      : p.status === 'adapted_acceptable'
+                                        ? 'bg-amber-500/20 text-amber-300'
+                                        : 'bg-red-500/20 text-red-300'
+                                  }`}>
+                                    {p.status === 'optimal' ? 'Ótima Nitidez' : 'Piso Garantido'}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 px-2 font-sans text-slate-400">
+                                  {p.qualityWarning || 'Resolução plena sem redução operacional.'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

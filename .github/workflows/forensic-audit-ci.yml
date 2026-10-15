@@ -61,6 +61,9 @@ jobs:
       - name: Run PDF Edge Cases Diagnostics
         run: npm run test:pdf-edge-cases
 
+      - name: Run Raster Quality Criteria & Effective Resolution Tests
+        run: npm run test:raster-quality
+
       - name: Run 4-Tier AI Diagnostics Benchmark
         run: npm run test:ai-diagnostics
 
