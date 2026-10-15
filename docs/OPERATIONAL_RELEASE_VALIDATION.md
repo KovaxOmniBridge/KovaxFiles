@@ -178,3 +178,50 @@ Mesmo uma matriz de CI multiplataforma aprovada testa os códigos-fonte e binár
 3. Verificar a ausência de alertas de fornecedor desconhecido (*SmartScreen* / *Gatekeeper*).
 4. Executar operações reais de anonimização e juntada processual, coletando o hash SHA-256 e o relatório forense emitido pelo aplicativo.
 
+---
+
+## 7. Delimitação de Escopo de IA: Reconhecimento Inteligente Assistido vs. Desacoplamento de Chatbot Jurídico
+
+Em consonância com as melhores práticas de governança tecnológica para o setor jurídico e público, o KovaxFiles separa estritamente duas dimensões tecnológicas que não devem ser confundidas:
+
+```mermaid
+flowchart TD
+    subgraph RETIDO_NO_NUCLEO["NÚCLEO OBRIGATÓRIO (Engenharia Documental Soberana)"]
+        direction TB
+        A["Compressão Inteligente de PDF"]
+        B["Sanitização & Anonimização Forense LGPD"]
+        C["Juntada & Indexação Processual (PJe / Projudi)"]
+        D["Vade Mecum & LexML Offline (Legislação Local)"]
+        E["Carimbador & Assinatura Digital"]
+    end
+
+    subgraph RECURSO_OPCIONAL["RECURSO AUXILIAR OPCIONAL (Supervisão Humana Ativa)"]
+        direction TB
+        F["IA Local Leve (BERT-NER / Transformers.js WASM)"]
+        G["Classificação Heurística de Tokens Sensíveis"]
+        H["👉 Sugestões Preliminares de Tarjamento"]
+        F & G --> H
+        H --> I["REVISÃO & CONFIRMAÇÃO HUMANA OBRIGATÓRIA"]
+    end
+
+    subgraph DESACOPLADO_NESTA_FASE["DESACOPLADO DO NÚCLEO (Fora do Escopo Atual)"]
+        direction TB
+        J["Chatbot Jurídico Conversacional"]
+        K["Interpretação e Orientação Normativa Generativa"]
+        L["Emissão Automatizada de Teses ou Pareceres"]
+        J & K & L --> M["Motivos: Complexidade de Infraestrutura (8B LLMs, VRAM, C++ Sidecars),\nRisco Severo de Alucinação Jurídica e Ausência de Diferencial Competitivo"]
+    end
+```
+
+### 7.1 IA para Auxílio na Identificação de Dados Sensíveis (Mantida como Recurso Opcional)
+* **Objetivo:** Acelerar a triagem de documentos extensos (petições, contratos, laudos periciais) identificando nomes de partes, testemunhas, logradouros e dados de contexto não cobertos por expressões regulares rígidas.
+* **Arquitetura:** Executada localmente via WebAssembly (`LocalNerService` baseado em `@xenova/transformers`), sem necessidade de servidores externos, sem envio de telemetria ou dados para a nuvem.
+* **Supervisão Humana Obrigatória (*Human-in-the-Loop*):** As marcações geradas pela IA são tratadas como **sugestões pendentes de validação**. O operador humano mantém controle visual e explícito de seleção/deseleção de cada retângulo antes de autorizar o *burn-in* definitivo.
+
+### 7.2 Desacoplamento da IA Jurídica Generativa (Chatbot / Pareceres)
+* **Retirada do Núcleo Obrigatório:** Foram eliminadas as dependências e expectativas de servidores locais pesados de LLM (ex.: modelos de 8B GGUF na porta 18888, prompts de chatbot e rotinas que pretendiam atestar competência jurídica com smoke tests sintéticos).
+* **Fundamentação Estratégica:**
+  1. **Solidez e Usabilidade Comercial:** O valor comercial central do KovaxFiles reside na sua velocidade, confiabilidade matemática e soberania como **estação de trabalho documental offline** (PJe, LGPD, compressão e juntada). Ele não depende de um assistente de conversação para ser indispensável.
+  2. **Risco Jurídico e Ético de Alucinação:** A geração autônoma de aconselhamento legal por LLMs locais apresenta riscos inaceitáveis de alucinação de jurisprudência, erro na citação de prazos processuais e responsabilização ética perante órgãos de classe (OAB).
+  3. **Eficiência de Distribuição:** Desacoplar modelos generativos reduz gigabytes no instalador, elimina dependências de aceleração por GPU/CUDA e assegura compatibilidade imediata em computadores corporativos modestos de gabinetes e prefeituras.
+

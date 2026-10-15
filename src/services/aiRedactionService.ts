@@ -2,7 +2,7 @@ import { PageTextData, PdfTextExtractor } from './pdfTextExtractor';
 import { LocalNerService } from './localNerService';
 import { UniversalAiClassifier, AiRigorLevel } from './universalAiClassifier';
 
-export type AiEngineMode = 'pattern' | 'embedded';
+export type AiEngineMode = 'pattern' | 'assisted_ner' | 'embedded';
 
 export interface RedactionCategoryOptions {
   cpf: boolean;
@@ -45,7 +45,13 @@ export interface AiSettings {
 
 export class AiRedactionService {
   /**
-   * Executa a análise completa (Regex + IA Universal Zero-Shot + LLMs com Calibração de Confiança >= 0.85)
+   * Executa a análise completa:
+   * 1. Varredura por Padrões / Regex (Determinístico e Instantâneo: CPF, CNPJ, etc.)
+   * 2. Classificação Semântica Zero-Shot de Tokens (quando ativado o modo assistido)
+   * 3. Extração Neural Local de Entidades (NER via Transformers.js/BERT em WebAssembly)
+   * 
+   * AVISO METODOLÓGICO: Todas as sugestões produzidas são preliminares e auxiliares,
+   * exigindo verificação e aprovação humana explícita antes de qualquer operação de tarjamento.
    */
   static async analyzePdf(
     pagesData: PageTextData[],
@@ -69,7 +75,7 @@ export class AiRedactionService {
       results.push(...patternItems);
     }
 
-    // 2. Fase 2: Análise por IA Universal Zero-Shot por Classificação de Tokens (Motor 2 - Limitado a confidence >= 0.85)
+    // 2. Fase 2: Análise por IA Universal Zero-Shot por Classificação de Tokens (Motor Heurístico - confidence >= 0.85)
     for (let i = 0; i < totalPages; i++) {
       const page = pagesData[i];
       onProgress?.({
@@ -98,14 +104,15 @@ export class AiRedactionService {
       }
     }
 
-    // 3. Fase 3: Fila Assíncrona de Lote de Páginas e Resiliência com Fallback (Motor 3 LLMs -> Motor 2)
+    // 3. Fase 3: Reconhecimento Inteligente Assistido de Entidades Nomeadas (NER Local via Transformers.js)
+    // Recurso opcional de auxílio à triagem com confirmação humana prévia
     if (aiSettings.mode !== 'pattern') {
       const BATCH_SIZE = 2;
       for (let i = 0; i < totalPages; i += BATCH_SIZE) {
         const batchPages = pagesData.slice(i, i + BATCH_SIZE);
 
         onProgress?.({
-          message: `Auditando com IA (${aiSettings.mode.toUpperCase()}) (Páginas ${i + 1}-${Math.min(i + BATCH_SIZE, totalPages)}/${totalPages})...`,
+          message: `Identificação assistida de dados sensíveis (Páginas ${i + 1}-${Math.min(i + BATCH_SIZE, totalPages)}/${totalPages})...`,
           percent: 70 + Math.round(((i + Math.min(BATCH_SIZE, totalPages - i)) / totalPages) * 28)
         });
         await new Promise(r => setTimeout(r, 0));
@@ -115,43 +122,14 @@ export class AiRedactionService {
             if (!page.fullText || page.fullText.trim().length < 10) return;
 
             let aiEntities: { text: string; category: string; reason: string; confidence?: number }[] = [];
-            let llmFailed = false;
 
             try {
-              if (aiSettings.mode === 'embedded') {
-                aiEntities = await this.analyzeWithEmbeddedServer(page.fullText, categories);
-              }
-
-              if (!aiEntities || aiEntities.length === 0) {
-                llmFailed = true;
-              }
-            } catch (err) {
-              console.warn(
-                `[AiRedactionService] Motor 3 (${aiSettings.mode}) falhou ou estourou o tempo de 5.0s na Página ${page.pageIndex + 1}. Executando recuo (Fallback) para Motor 2 com sensibilidade máxima.`,
-                err
-              );
-              llmFailed = true;
-            }
-
-            // Recuo Automático (Fallback): Ativa Motor 2 com Sensibilidade Máxima
-            if (llmFailed) {
-              const fallbackItems = UniversalAiClassifier.classifyPageTokens(page, categories, 'maximum');
-              for (const item of fallbackItems) {
-                if (item.confidence < 0.85) continue;
-                const alreadyExists = results.some(
-                  r => r.pageIndex === item.pageIndex && Math.abs(r.rect.x - item.rect.x) < 5 && Math.abs(r.rect.y - item.rect.y) < 5
-                );
-                if (!alreadyExists) {
-                  results.push(item);
-                }
-              }
-
-              try {
+              if (categories.names || categories.addresses) {
                 const nerEntities = await LocalNerService.extractEntities(page.fullText);
-                aiEntities.push(...nerEntities);
-              } catch (nerErr) {
-                console.warn('[AiRedactionService] Fallback LocalNer falhou na página:', page.pageIndex + 1, nerErr);
+                aiEntities.push(...nerEntities.map(e => ({ ...e, confidence: 0.90 })));
               }
+            } catch (nerErr) {
+              console.warn('[AiRedactionService] Extração NER local falhou na página:', page.pageIndex + 1, nerErr);
             }
 
             // Processar entidades detectadas da IA com validações cirúrgicas
@@ -392,202 +370,6 @@ Responda EXCLUSIVAMENTE em formato JSON com o seguinte esquema:
 
 Texto a analisar:
 ${text.substring(0, 3800)}`;
-  }
-
-  /**
-   * Integração com a IA Local Embutida no App (Servidor Llama Local 100% Autônomo com System Prompt Imperativo)
-   */
-  private static async analyzeWithEmbeddedServer(
-    text: string,
-    categories: RedactionCategoryOptions
-  ): Promise<{ text: string; category: string; reason: string; confidence?: number }[]> {
-    const activeCategoriesText: string[] = [];
-    if (categories.names) activeCategoriesText.push('Nome de Pessoa');
-    if (categories.addresses) activeCategoriesText.push('Endereço');
-    if (categories.financial) activeCategoriesText.push('Financeiro');
-    if (categories.health) activeCategoriesText.push('Saúde');
-
-    if (activeCategoriesText.length === 0) return [];
-
-    const results: { text: string; category: string; reason: string; confidence?: number }[] = [];
-    try {
-      const nerResults = await LocalNerService.extractEntities(text);
-      results.push(...nerResults.map((e: { text: string; category: string; reason: string }) => ({ ...e, confidence: 0.92 })));
-    } catch (err) {
-      console.warn('[AiRedactionService] Aviso na análise estática/local:', err);
-    }
-
-    return results;
-  }
-
-  /**
-  }
-
-  /**
-   * Envia uma mensagem direta de chat para o modelo de IA selecionado
-   */
-  /**
-   * Helper assíncrono para aguardar a pronta operacionalidade do servidor nativo (HTTP 200 OK em /health)
-   */
-  /**
-   * Helper assíncrono para aguardar a pronta operacionalidade do servidor nativo (HTTP 200 OK em /health)
-   */
-  public static async waitForHealth(timeoutMs: number = 90000): Promise<boolean> {
-    const startTime = Date.now();
-    let lastLog = 0;
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        const res = await fetch('http://127.0.0.1:18888/health', {
-          signal: AbortSignal.timeout(1000)
-        }).catch(() => null);
-
-        if (res && res.status === 200) {
-          return true;
-        }
-
-        if (res && res.status === 503) {
-          if (Date.now() - lastLog > 5000) {
-            console.log('[LlamaSidecar] Servidor nativo C++ alocando modelo na memória RAM (HTTP 503). Aguardando...');
-            lastLog = Date.now();
-          }
-        }
-      } catch {
-        // Ignora erros temporários de conexão
-      }
-      await new Promise(r => setTimeout(r, 800));
-    }
-    return false;
-  }
-
-  /**
-   * Helper assíncrono para execução de fetch com resiliência de rede e retry gracioso (aguarda 503 de carregamento na RAM)
-   */
-  public static async fetchWithRetry(
-    url: string,
-    options: RequestInit,
-    maxRetries: number = 10,
-    delayMs: number = 1000
-  ): Promise<Response | null> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await fetch(url, options);
-        if (response && response.status === 503) {
-          console.log(`[LlamaSidecar] Servidor inicializando tensores na RAM (HTTP 503). Aguardando pronta resposta (${attempt}/${maxRetries})...`);
-          await new Promise(r => setTimeout(r, delayMs));
-          continue;
-        }
-        if (response && response.ok) {
-          return response;
-        }
-        if (response && !response.ok && response.status !== 503) {
-          return response;
-        }
-      } catch (err: any) {
-        if (attempt === maxRetries) {
-          return null;
-        }
-        await new Promise(r => setTimeout(r, delayMs));
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Envia uma mensagem direta de chat para o modelo de IA local integrado (Porta 18888)
-   */
-  static async chatDirectWithAi(
-    userMessage: string,
-    settings?: Partial<AiSettings>,
-    preferredEngine: 'kovaxlegal' | 'qwen' | 'llama3.2' = 'kovaxlegal',
-    useWebSearch?: boolean,
-    customSystemPrompt?: string,
-    maxTokens: number = 2048,
-    temperature: number = 0.7
-  ): Promise<{ reply: string; engineName: string; latencyMs: number }> {
-    const startTime = performance.now();
-
-    // Apenas tenta o motor preferencial ativado para evitar reiniciar o processo de sidecar
-    const enginesToTry: ('kovaxlegal' | 'qwen' | 'llama3.2')[] = [preferredEngine];
-
-    const defaultBasePrompt = 'Você é o KovaxLegal AI, assistente jurídico especialista em legislação brasileira. Responda EXCLUSIVAMENTE com base nos artigos de lei fornecidos no contexto do RAG. Não use conhecimentos externos nem altere números de artigos ou prazos. Seja preciso, direto e fundamentado.';
-
-    let systemPromptToUse = customSystemPrompt || defaultBasePrompt;
-    if (customSystemPrompt && !customSystemPrompt.includes('Responda EXCLUSIVAMENTE')) {
-      systemPromptToUse += '\n\nREGRA GERAL IMPERATIVA: Responda EXCLUSIVAMENTE com base nos artigos de lei fornecidos no contexto do RAG. Não use conhecimentos externos nem altere números de artigos ou prazos.';
-    }
-
-    for (const engine of enginesToTry) {
-      const targetModelFile = engine === 'kovaxlegal' 
-        ? 'KovaxLegal-8B-Q8_0.gguf' 
-        : engine === 'llama3.2' 
-          ? 'llama-3.2-1b-instruct-q4_k_m.gguf' 
-          : 'qwen2.5-1.5b-instruct-q4_k_m.gguf';
-
-      const targetDisplayName = engine === 'kovaxlegal'
-        ? 'KovaxLegal AI 8B (Nativo C++ Fine-Tunado - Porta 18888)'
-        : engine === 'llama3.2' 
-          ? 'Llama 3.2 1B (Nativo C++ - Porta 18888)' 
-          : 'Qwen 2.5 1.5B (Nativo C++ - Porta 18888)';
-
-      if (typeof window !== 'undefined' && (window as any).electronAPI?.startAiServer) {
-        try {
-          await (window as any).electronAPI.startAiServer(targetModelFile);
-        } catch {
-          // Ignora erros no IPC
-        }
-      }
-
-      // Aguarda o servidor responder. Se não houver launcher nativo IPC, faz probe rápido de 2.5s.
-      const timeoutToUse = (typeof window !== 'undefined' && (window as any).electronAPI?.startAiServer) ? 45000 : 2500;
-      const isServerReady = await this.waitForHealth(timeoutToUse);
-      if (!isServerReady) {
-        console.warn(`[chatDirectWithAi] Servidor local não respondeu 200 OK no tempo limite para ${engine}.`);
-        continue;
-      }
-
-      try {
-        const response = await this.fetchWithRetry(
-          'http://127.0.0.1:18888/v1/chat/completions',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'KovaxLegal-8B',
-              messages: [
-                { role: 'system', content: systemPromptToUse },
-                { role: 'user', content: userMessage }
-              ],
-              max_tokens: Math.min(maxTokens || 1024, 1536),
-              temperature: 0.0,
-              top_p: 0.1,
-              frequency_penalty: 0.0,
-              presence_penalty: 0.0
-            })
-          },
-          10,
-          1000
-        );
-
-        if (response && response.ok) {
-          const data = await response.json();
-          const reply = data.choices?.[0]?.message?.content || 'Sem resposta do modelo.';
-          const latencyMs = Math.round(performance.now() - startTime);
-          return { reply, engineName: targetDisplayName, latencyMs };
-        }
-      } catch (err) {
-        console.warn(`[chatDirectWithAi] Tentativa com motor local ${engine} falhou. Tentando modelo secundário...`, err);
-      }
-    }
-
-    const latencyMs = Math.round(performance.now() - startTime);
-    const friendlyAlert = `⚠️ **Serviço Local de IA Integrado Indisponível (Porta 18888)**\n\n` +
-      `Não foi possível comunicar com o servidor nativo em C++ (Porta 18888). Certifique-se de que a aplicação desktop iniciou o servidor nativo localmente.`;
-
-    return {
-      reply: friendlyAlert,
-      engineName: 'Servidor Local C++ Não Respondendo',
-      latencyMs
-    };
   }
 
   /**
