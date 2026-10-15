@@ -10,80 +10,25 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 
-// Extensões de arquivos expressamente autorizadas para manipulação e visualização documental
-const ALLOWED_EXTENSIONS = new Set([
-  '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.heic',
-  '.docx', '.txt', '.md', '.json', '.zip', '.csv'
-]);
+import {
+  ALLOWED_EXTENSIONS,
+  DANGEROUS_EXTENSIONS,
+  sessionAuthorizedFiles,
+  sessionAuthorizedDirectories,
+  authorizeSessionPath,
+  validateFileContentMatchesType,
+  validateSafeFilePath
+} from './pathSecurity.ts';
 
-// Lista de extensões perigosas ou executáveis bloqueadas incondicionalmente
-const DANGEROUS_EXTENSIONS = new Set([
-  '.exe', '.bat', '.cmd', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh',
-  '.ps1', '.ps1xml', '.ps2', '.ps2xml', '.psc1', '.psc2', '.msh', '.msh1', '.msh2',
-  '.msi', '.msp', '.com', '.scr', '.pif', '.reg', '.dll', '.cpl', '.hta', '.jar', '.lnk',
-  '.scf', '.inf', '.sys', '.sh', '.bash', '.app', '.dmg', '.pkg'
-]);
-
-/**
- * Validador estrito de caminhos de arquivos para mitigar riscos de Path Traversal,
- * injeção de executáveis e acesso indevido ao sistema operacional pelo renderer.
- */
-function validateSafeFilePath(inputPath: unknown): { valid: boolean; normalizedPath?: string; error?: string } {
-  if (typeof inputPath !== 'string' || inputPath.trim().length === 0) {
-    return { valid: false, error: 'Caminho de arquivo inválido ou vazio.' };
-  }
-
-  // Previne injeção de byte nulo (\0 poisoning)
-  if (inputPath.includes('\0')) {
-    return { valid: false, error: 'Tentativa de injeção de caractere nulo detectada.' };
-  }
-
-  // Previne caminhos UNC remotos (ex: \\malicious.com\share ou //smb/...)
-  if (inputPath.startsWith('\\\\') || inputPath.startsWith('//')) {
-    return { valid: false, error: 'Caminhos de rede UNC remotos não são permitidos por segurança.' };
-  }
-
-  // Previne esquemas de protocolos perigosos (javascript:, data:, vbscript:, etc.)
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(inputPath) && !/^[a-zA-Z]:[\\\/]/.test(inputPath)) {
-    return { valid: false, error: 'Esquemas de protocolo de URL não são autorizados em caminhos locais.' };
-  }
-
-  try {
-    const resolved = path.resolve(inputPath);
-
-    // Exige caminho canônico e absoluto
-    if (!path.isAbsolute(resolved)) {
-      return { valid: false, error: 'O caminho do arquivo deve ser absoluto.' };
-    }
-
-    // Valida existência física no disco
-    if (!fs.existsSync(resolved)) {
-      return { valid: false, error: 'O arquivo ou diretório especificado não foi encontrado.' };
-    }
-
-    // Resolve links simbólicos (symlinks / junctions) para inspecionar o arquivo real de destino
-    const canonical = fs.realpathSync(resolved);
-
-    const stat = fs.statSync(canonical);
-    if (stat.isDirectory()) {
-      return { valid: true, normalizedPath: canonical };
-    }
-
-    // Se for arquivo regular, valida a extensão real
-    const ext = path.extname(canonical).toLowerCase();
-    if (DANGEROUS_EXTENSIONS.has(ext)) {
-      return { valid: false, error: `Abertura bloqueada: extensões executáveis (${ext}) são proibidas por segurança.` };
-    }
-
-    if (!ALLOWED_EXTENSIONS.has(ext)) {
-      return { valid: false, error: `Extensão não autorizada (${ext}). Apenas documentos e imagens permitidos.` };
-    }
-
-    return { valid: true, normalizedPath: canonical };
-  } catch (err: any) {
-    return { valid: false, error: `Falha na sanitização de caminho: ${err?.message || 'Caminho malformado'}` };
-  }
-}
+export {
+  ALLOWED_EXTENSIONS,
+  DANGEROUS_EXTENSIONS,
+  sessionAuthorizedFiles,
+  sessionAuthorizedDirectories,
+  authorizeSessionPath,
+  validateFileContentMatchesType,
+  validateSafeFilePath
+};
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -185,6 +130,9 @@ ipcMain.handle('dialog:openFile', async (_, options?: { multi?: boolean; extensi
   });
 
   if (result.canceled || !result.filePaths) return null;
+  for (const filePath of result.filePaths) {
+    authorizeSessionPath(filePath);
+  }
   return result.filePaths;
 });
 
@@ -206,7 +154,8 @@ ipcMain.handle('dialog:saveFile', async (_, defaultName?: string) => {
     filters: [{ name: 'Documento PDF', extensions: ['pdf'] }]
   });
 
-  if (result.canceled) return null;
+  if (result.canceled || !result.filePath) return null;
+  authorizeSessionPath(result.filePath);
   return result.filePath;
 });
 
