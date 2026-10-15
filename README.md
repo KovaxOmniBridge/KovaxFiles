@@ -147,3 +147,13 @@ chmod +x compilar-desktop.sh
 ./compilar-desktop.sh
 ```
 Os pacotes `.dmg` (Mac) e `.AppImage` (Linux) serão gerados na pasta `release/`.
+
+---
+
+## 🛡️ Assinatura Digital e Procedência Institucional
+
+Para implantação em órgãos públicos, tribunais e escritórios de advocacia, o KovaxFiles segue padrões rigorosos de distribuição:
+* **Validação Criptográfica de Atualizações**: A diretiva `verifyUpdateCodeSignature: true` está rigorosamente habilitada no empacotador, impedindo que o mecanismo de atualização receba ou execute binários que não provenham da chave criptográfica do publicador original.
+* **Integridade de Pacotes**: Todas as compilações oficiais de release geram e publicam um manifesto de hashes `SHA256SUMS.txt` no GitHub Releases.
+* **Homologação Corporativa**: Consulte [docs/SECURITY_DISTRIBUTION.md](docs/SECURITY_DISTRIBUTION.md) para o guia de verificação via PowerShell (`Get-AuthenticodeSignature`, `Get-FileHash`), requisitos para certificados EV / ICP-Brasil e parâmetros de whitelist para AppLocker e Windows Defender Application Control (WDAC).
+
