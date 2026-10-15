@@ -47,35 +47,41 @@ export const LgpdRedactor: React.FC = () => {
   const [rigorLevel, setRigorLevel] = useState<AiRigorLevel>('broad');
   const [geminiApiKey, setGeminiApiKey] = useState<string>('');
 
-  // Status do Servidor de IA Local (Inicializado como Indisponível até verificação de saúde)
+  // Status do Servidor de IA Local (Inicializado como Indisponível até validação real de inferência)
   const [embeddedAiStatus, setEmbeddedAiStatus] = useState<{
     running: boolean;
     checking: boolean;
     cpuCores: number;
     modelName: string;
+    inferenceVerified?: boolean;
+    inferenceLatencyMs?: number;
+    statusMessage?: string;
   }>({
     running: false,
     checking: true,
     cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
-    modelName: 'Verificando conectividade com motor local...'
+    modelName: 'Verificando conectividade e inferência com motor local...'
   });
 
   useEffect(() => {
     let isMounted = true;
 
     async function probeAiHealth() {
-      // 1. Tenta consulta via IPC no Electron se disponível
+      // 1. Tenta consulta via IPC no Electron se disponível (inclui teste real de inferência)
       if (typeof window !== 'undefined' && window.electronAPI?.getAiStatus) {
         try {
           const status = await window.electronAPI.getAiStatus();
           if (isMounted && status) {
             setEmbeddedAiStatus({
-              running: status.running,
+              running: status.running && !!status.inferenceVerified,
               checking: false,
               cpuCores: status.cpuCores || (typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 4) || 4,
-              modelName: status.running 
-                ? (status.modelName || 'Motor Local C++ Ativo') 
-                : 'Servidor Local Offline (Porta 18888)'
+              modelName: status.running
+                ? (status.modelName || 'Motor Local C++ Ativo')
+                : (status.modelName || 'Servidor Local Offline (Porta 18888)'),
+              inferenceVerified: status.inferenceVerified,
+              inferenceLatencyMs: status.inferenceLatencyMs,
+              statusMessage: status.statusMessage
             });
             return;
           }
@@ -84,38 +90,97 @@ export const LgpdRedactor: React.FC = () => {
         }
       }
 
-      // 2. Fallback: Probe HTTP direto em http://127.0.0.1:18888/health
+      // 2. Fallback Browser: Probe em 3 etapas (Socket / Models / Inferência Real com Timeout de 3500ms)
       try {
-        const res = await fetch('http://127.0.0.1:18888/health', {
-          signal: AbortSignal.timeout(1500)
+        // Etapa 1: /health
+        const healthRes = await fetch('http://127.0.0.1:18888/health', {
+          signal: AbortSignal.timeout(1200)
         });
 
-        if (res.ok) {
-          let detectedModel = 'Motor Local C++ Ativo (Porta 18888)';
+        if (healthRes.ok) {
+          // Etapa 2: /v1/models
+          let detectedModel = '';
           try {
             const modelsRes = await fetch('http://127.0.0.1:18888/v1/models', {
-              signal: AbortSignal.timeout(1200)
+              signal: AbortSignal.timeout(1500)
             });
             if (modelsRes.ok) {
               const data = await modelsRes.json();
-              if (data.data?.[0]?.id) {
+              if (Array.isArray(data.data) && data.data[0]?.id) {
                 detectedModel = data.data[0].id;
               }
             }
           } catch {}
 
+          if (!detectedModel) {
+            if (isMounted) {
+              setEmbeddedAiStatus({
+                running: false,
+                checking: false,
+                cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
+                modelName: 'Servidor HTTP Ativo (Nenhum modelo neural carregado)',
+                inferenceVerified: false
+              });
+              return;
+            }
+          }
+
+          // Etapa 3: Teste Real de Inferência (Smoke Test)
+          const startTime = Date.now();
+          try {
+            const inferRes = await fetch('http://127.0.0.1:18888/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: detectedModel,
+                messages: [
+                  { role: 'system', content: 'Responda com uma palavra: OK' },
+                  { role: 'user', content: 'Ping' }
+                ],
+                max_tokens: 5,
+                temperature: 0.0
+              }),
+              signal: AbortSignal.timeout(3500)
+            });
+
+            if (inferRes.ok) {
+              const inferJson = await inferRes.json();
+              const reply = inferJson.choices?.[0]?.message?.content;
+              const latencyMs = Date.now() - startTime;
+
+              if (typeof reply === 'string' && reply.trim().length > 0) {
+                if (isMounted) {
+                  setEmbeddedAiStatus({
+                    running: true,
+                    checking: false,
+                    cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
+                    modelName: detectedModel,
+                    inferenceVerified: true,
+                    inferenceLatencyMs: latencyMs,
+                    statusMessage: `Inferência validada (${latencyMs}ms)`
+                  });
+                  return;
+                }
+              }
+            }
+          } catch {
+            // Falha na inferência
+          }
+
           if (isMounted) {
             setEmbeddedAiStatus({
-              running: true,
+              running: false,
               checking: false,
               cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
-              modelName: detectedModel
+              modelName: `${detectedModel} (Falha no teste de inferência)`,
+              inferenceVerified: false,
+              statusMessage: 'Servidor respondeu mas a inferência falhou ou excedeu 3500ms'
             });
             return;
           }
         }
       } catch {
-        // Servidor offline ou não iniciado
+        // Servidor offline ou porta fechada
       }
 
       if (isMounted) {
@@ -123,7 +188,8 @@ export const LgpdRedactor: React.FC = () => {
           running: false,
           checking: false,
           cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
-          modelName: 'Servidor Local Offline (Porta 18888)'
+          modelName: 'Servidor Local Offline (Porta 18888)',
+          inferenceVerified: false
         });
       }
     }
@@ -597,13 +663,13 @@ export const LgpdRedactor: React.FC = () => {
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                   : 'bg-slate-800 text-slate-400 border border-slate-700'
               }`}>
-                {embeddedAiStatus.running ? 'Online' : 'Offline'}
+                {embeddedAiStatus.running ? 'Inferência Comprovada' : 'Offline'}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
               {embeddedAiStatus.running
-                ? `Modelo ativo: ${embeddedAiStatus.modelName}. Processo verificado na porta 18888.`
-                : 'Servidor C++ não detectado na porta 18888. O aplicativo opera via motor neural local WASM.'}
+                ? `Modelo: ${embeddedAiStatus.modelName}. Inferência ativa comprovada (${embeddedAiStatus.inferenceLatencyMs ? embeddedAiStatus.inferenceLatencyMs + 'ms' : 'OK'}).`
+                : `${embeddedAiStatus.modelName}. O aplicativo opera via motor neural local WASM.`}
             </p>
           </div>
         </div>
