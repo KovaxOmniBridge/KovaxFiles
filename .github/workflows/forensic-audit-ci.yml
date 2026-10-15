@@ -1,0 +1,73 @@
+name: Forensic Redaction Security Audit & CI Artifacts
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  forensic-audit:
+    name: Forensic Security Battery & Evidence Preservation (Clean Environment)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Forensic Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pymupdf pypdf pdfminer.six pillow
+
+      - name: Install Node.js Dependencies
+        run: npm ci
+
+      - name: Run Forensic Redaction Security Battery (Synthetic + Realistic Legal Corpus)
+        run: npm run test:security-redaction
+
+      - name: Run Path Security Session Integration Tests
+        run: npm run test:path-integration
+
+      - name: Run PDF Edge Cases Diagnostics
+        run: npm run test:pdf-edge-cases
+
+      - name: Run 4-Tier AI Diagnostics Benchmark
+        run: npm run test:ai-diagnostics
+
+      - name: Publish Forensic Report to GitHub Step Summary
+        if: always()
+        run: |
+          if [ -f test_output/battery/relatorio_forense_resumo.md ]; then
+            cat test_output/battery/relatorio_forense_resumo.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Archive Forensic Reports & Audit Evidence (90-Day Retention)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: forensic-redaction-audit-evidence
+          path: |
+            test_output/battery/relatorio_forense_anonimizacao.json
+            test_output/battery/relatorio_forense_resumo.md
+            test_output/battery/*.pdf
+            test_output/realistic_corpus/*.pdf
+            test_output/*.pdf
+          retention-days: 90
