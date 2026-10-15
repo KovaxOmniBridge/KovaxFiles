@@ -7,7 +7,7 @@ console.log('  KOVAXFILES — SUÍTE DE TESTES FORENSES DE ANONIMIZAÇÃO LGPD  
 console.log('================================================================\n');
 
 // 1. Executa o teste do motor atual do aplicativo
-console.log('[1/2] Gerando artefatos de teste através do LocalPdfEngine...');
+console.log('[1/3] Gerando artefatos de teste através do LocalPdfEngine...');
 const engineTest = spawnSync('npx', ['tsx', 'scripts/test_engine_behavior.ts'], {
   stdio: 'inherit',
   shell: true
@@ -18,8 +18,20 @@ if (engineTest.status !== 0) {
   process.exit(engineTest.status || 1);
 }
 
-// 2. Executa a bateria forense independente em Python (PyMuPDF, pypdf, pdfminer.six, Pillow)
-console.log('\n[2/2] Executando Auditoria Forense em 5 Vetores de Ataque...');
+// 2. Valida o modo de falha de segurança (interrupção obrigatória caso a sanitização não seja comprovada)
+console.log('\n[2/3] Validando garantia de interrupção estrita (sem fallback silencioso inseguro)...');
+const failureModeTest = spawnSync('npx', ['tsx', 'scripts/test_sanitization_failure_mode.ts'], {
+  stdio: 'inherit',
+  shell: true
+});
+
+if (failureModeTest.status !== 0) {
+  console.error('[ERRO] Falha na validação do modo de falha de segurança!');
+  process.exit(failureModeTest.status || 1);
+}
+
+// 3. Executa a bateria forense independente em Python (PyMuPDF, pypdf, pdfminer.six, Pillow)
+console.log('\n[3/3] Executando Auditoria Forense em 5 Vetores de Ataque...');
 const venvPy = path.resolve('.venv/Scripts/python.exe');
 const pythonCmd = fs.existsSync(venvPy) ? venvPy : 'python';
 

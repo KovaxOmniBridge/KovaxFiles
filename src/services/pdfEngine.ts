@@ -718,60 +718,84 @@ export class LocalPdfEngine {
 
     const redactedVectorBuffer = await doc.save();
 
-    // 5. Verificacao de Modo de Sanitizacao:
-    // O Achatamento Rasterizado (Flattening 300 DPI) e a etapa que fisicamente
-    // destroi a camada oculta de texto dos caracteres anonimizados.
+    // 5. Verificação de Modo de Sanitização:
+    // O Achatamento Rasterizado (Flattening 300 DPI) é a etapa essencial que
+    // destrói fisicamente a camada oculta de texto dos caracteres anonimizados.
     const shouldFlatten = options?.sanitizeFlatten !== false;
     if (!shouldFlatten) {
-      console.warn('[LocalPdfEngine] AVISO DE SEGURANCA: Tarjamento executado em Modo Vetorial puro (sem achatamento). A camada de texto original e preservada sob as tarjas.');
+      console.warn('[LocalPdfEngine] AVISO DE SEGURANÇA: Tarjamento explicitamente solicitado em Modo Vetorial puro (sem achatamento). A camada de texto original permanece sob as tarjas.');
       return redactedVectorBuffer;
     }
 
-    return await this.sanitizeFlattenPdf(redactedVectorBuffer);
+    try {
+      return await this.sanitizeFlattenPdf(redactedVectorBuffer);
+    } catch (err: any) {
+      console.error('[LocalPdfEngine] Falha crítica de sanitização por achatamento:', err);
+      // NUNCA retornar redactedVectorBuffer em caso de falha: a exportação DEVE ser interrompida
+      // para evitar entrega de arquivo com texto confidencial recuperável.
+      throw new Error(`Falha crítica de segurança na anonimização: Não foi possível comprovar a destruição da camada de texto subjacente (${err?.message || 'Erro na etapa de rasterização'}). A exportação foi interrompida para impedir vazamento de dados confidenciais.`);
+    }
   }
 
   /**
-   * Sanitizacao Absoluta por Achatamento Rasterizado (Flattening):
-   * Transforma as paginas em imagens de alta definicao (300 DPI), destruindo fisicamente qualquer fluxo de texto subjacente.
-   * Suporta renderizacao via Canvas (Browser / Electron) e fallback headless (Node.js).
+   * Sanitização Absoluta por Achatamento Rasterizado (Flattening):
+   * Transforma as páginas em imagens de alta definição a 300 DPI nominais (fator de escala 300 / 72 ≈ 4.1667),
+   * destruindo fisicamente qualquer fluxo de texto subjacente.
+   * Suporta renderização via Canvas HTML5 (Browser / Electron) e fallback headless com PyMuPDF (Node.js).
+   * 
+   * IMPORTANTE: Se o processo de rasterização falhar ou não estiver disponível,
+   * este método DISPARA UMA EXCEÇÃO e NUNCA entrega silenciosamente um PDF vetorial com texto recuperável.
    */
   private static async sanitizeFlattenPdf(redactedPdfBuffer: Uint8Array): Promise<Uint8Array> {
     // 1. Fallback Headless para ambientes Node.js / CLI sem DOM
     if (typeof document === 'undefined') {
       if (typeof process !== 'undefined' && (process as any).versions?.node) {
+        let tmpIn: string | undefined;
+        let tmpOut: string | undefined;
         try {
           const { spawnSync } = await import('child_process');
           const fs = await import('fs');
           const path = await import('path');
           const os = await import('os');
           
-          const tmpIn = path.join(os.tmpdir(), `kovax_redact_in_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
-          const tmpOut = path.join(os.tmpdir(), `kovax_redact_out_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
+          tmpIn = path.join(os.tmpdir(), `kovax_redact_in_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
+          tmpOut = path.join(os.tmpdir(), `kovax_redact_out_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
           fs.writeFileSync(tmpIn, redactedPdfBuffer);
 
           const flattenerScript = path.resolve('scripts/headless_flattener.py');
           const venvPython = path.resolve('.venv/Scripts/python.exe');
           const pythonExe = fs.existsSync(venvPython) ? venvPython : 'python';
 
-          if (fs.existsSync(flattenerScript)) {
-            const res = spawnSync(pythonExe, [flattenerScript, tmpIn, tmpOut, '300'], { stdio: 'pipe' });
-            if (res.status === 0 && fs.existsSync(tmpOut)) {
-              const outBytes = fs.readFileSync(tmpOut);
-              try { fs.unlinkSync(tmpIn); fs.unlinkSync(tmpOut); } catch {}
-              return new Uint8Array(outBytes);
-            }
+          if (!fs.existsSync(flattenerScript)) {
+            throw new Error(`Script headless_flattener.py não encontrado em: ${flattenerScript}`);
           }
-          try { if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn); } catch {}
-        } catch (nodeErr) {
-          console.warn('[LocalPdfEngine] Fallback headless flattener indisponivel:', nodeErr);
+
+          const res = spawnSync(pythonExe, [flattenerScript, tmpIn, tmpOut, '300'], { stdio: 'pipe' });
+          if (res.status === 0 && fs.existsSync(tmpOut)) {
+            const outBytes = fs.readFileSync(tmpOut);
+            try {
+              if (tmpIn && fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
+              if (tmpOut && fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+            } catch {}
+            return new Uint8Array(outBytes);
+          } else {
+            const stderr = res.stderr?.toString() || 'Erro desconhecido ao executar script de achatamento';
+            throw new Error(`Falha no motor headless de achatamento (código ${res.status}): ${stderr}`);
+          }
+        } catch (nodeErr: any) {
+          try {
+            const fs = await import('fs');
+            if (tmpIn && fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
+            if (tmpOut && fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+          } catch {}
+          throw new Error(`Falha crítica no ambiente Node.js: Não foi possível executar o achatamento rasterizado (${nodeErr?.message || 'Motor indisponível'}). A exportação foi interrompida para impedir vazamento de dados confidenciais.`);
         }
       }
 
-      console.warn('[LocalPdfEngine] AVISO CRITICO: Ambiente sem suporte a DOM/Canvas. O achatamento rasterizado requer ambiente browser/Electron renderer para destruicao fisica de camadas de texto.');
-      return redactedPdfBuffer;
+      throw new Error('Falha crítica de segurança: Ambiente sem suporte a DOM/Canvas e sem interpretador Node.js disponível para achatamento. A exportação foi interrompida para impedir vazamento de dados confidenciais.');
     }
 
-    // 2. Pipeline Nativo de Navegador / Electron Renderer (Canvas HTML5)
+    // 2. Pipeline Nativo de Navegador / Electron Renderer (Canvas HTML5 a 300 DPI)
     const loadingTask = pdfjsLib.getDocument({
       data: redactedPdfBuffer,
       useSystemFonts: true,
@@ -779,33 +803,49 @@ export class LocalPdfEngine {
     });
 
     const pdfDoc = await loadingTask.promise;
+    if (pdfDoc.numPages === 0) {
+      throw new Error('Falha de sanitização: O documento PDF fornecido não possui páginas válidas.');
+    }
+
     const sanitizedDoc = await PDFDocument.create();
+
+    // Resolução nominal de 300 DPI: fator de escala baseado na razão padrão de 72 pontos por polegada (300 / 72 ≈ 4.166666666666667)
+    const TARGET_DPI = 300;
+    const PDF_BASE_POINTS_PER_INCH = 72;
+    const scale = TARGET_DPI / PDF_BASE_POINTS_PER_INCH;
 
     for (let i = 1; i <= pdfDoc.numPages; i++) {
       const page = await pdfDoc.getPage(i);
-      const scale = 2.0; // Alta Definicao ~300 DPI
       const viewport = page.getViewport({ scale });
+      const baseViewport = page.getViewport({ scale: 1.0 });
 
       const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
       const ctx = canvas.getContext('2d');
 
-      if (ctx) {
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        const imgDataUrl = canvas.toDataURL('image/jpeg', 0.92);
-
-        const imgBytes = dataURLtoUint8Array(imgDataUrl);
-        const embeddedImg = await sanitizedDoc.embedJpg(imgBytes);
-
-        const pdfPage = sanitizedDoc.addPage([viewport.width / scale, viewport.height / scale]);
-        pdfPage.drawImage(embeddedImg, {
-          x: 0,
-          y: 0,
-          width: viewport.width / scale,
-          height: viewport.height / scale
-        });
+      if (!ctx) {
+        throw new Error(`Falha crítica de renderização: Não foi possível instanciar o contexto gráfico 2D do Canvas para a página ${i}. A exportação foi cancelada por segurança.`);
       }
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const imgDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+      const imgBytes = dataURLtoUint8Array(imgDataUrl);
+      const embeddedImg = await sanitizedDoc.embedJpg(imgBytes);
+
+      // Preserva as dimensões físicas originais da página (em pontos a 72 DPI), garantindo que a renderização visual possua densidade real de 300 DPI
+      const pdfPage = sanitizedDoc.addPage([baseViewport.width, baseViewport.height]);
+      pdfPage.drawImage(embeddedImg, {
+        x: 0,
+        y: 0,
+        width: baseViewport.width,
+        height: baseViewport.height
+      });
+    }
+
+    if (sanitizedDoc.getPageCount() !== pdfDoc.numPages) {
+      throw new Error(`Falha de integridade na sanitização: Esperadas ${pdfDoc.numPages} páginas, mas apenas ${sanitizedDoc.getPageCount()} foram processadas.`);
     }
 
     return await sanitizedDoc.save();

@@ -40,7 +40,7 @@ export const FileConverter: React.FC = () => {
   const [pdfForImages, setPdfForImages] = useState<File | null>(null);
   const [imageFormat, setImageFormat] = useState<'jpeg' | 'png'>('jpeg');
   const [imageQuality, setImageQuality] = useState<number>(0.92);
-  const [imageScale, setImageScale] = useState<number>(2.0);
+  const [imageScale, setImageScale] = useState<number>(300 / 72);
 
   // --- MODO 3: Texto ➔ PDF ---
   const [txtFile, setTxtFile] = useState<File | null>(null);
@@ -518,9 +518,9 @@ export const FileConverter: React.FC = () => {
                 onChange={(e: any) => setImageScale(Number(e.target.value))}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 font-medium"
               >
-                <option value={1.5}>150 DPI (Padrão Web)</option>
-                <option value={2.0}>300 DPI (Alta Definição - Recomendado)</option>
-                <option value={3.0}>450 DPI (Ultra Definição)</option>
+                <option value={150 / 72}>150 DPI (Padrão Web)</option>
+                <option value={300 / 72}>300 DPI (Alta Definição - Recomendado)</option>
+                <option value={450 / 72}>450 DPI (Ultra Definição)</option>
               </select>
             </div>
 
