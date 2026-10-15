@@ -59,8 +59,9 @@ export const LgpdRedactor: React.FC = () => {
     serverAvailable?: boolean;
     modelLoaded?: boolean;
     inferenceFunctional?: boolean;
+    basicLegalSmokeTestPassed?: boolean;
     legalQualityValidated?: boolean;
-    tier?: 'offline' | 'server_available' | 'model_loaded' | 'warming_up' | 'inference_functional' | 'fully_validated';
+    tier?: 'offline' | 'server_available' | 'model_loaded' | 'warming_up' | 'inference_functional' | 'basic_legal_smoke_test_passed';
     isWarmingUp?: boolean;
     inferenceVerified?: boolean;
     inferenceLatencyMs?: number;
@@ -91,6 +92,7 @@ export const LgpdRedactor: React.FC = () => {
               serverAvailable: status.serverAvailable,
               modelLoaded: status.modelLoaded,
               inferenceFunctional: status.inferenceFunctional,
+              basicLegalSmokeTestPassed: status.basicLegalSmokeTestPassed,
               legalQualityValidated: status.legalQualityValidated,
               tier: status.tier,
               isWarmingUp: status.isWarmingUp,
@@ -138,6 +140,7 @@ export const LgpdRedactor: React.FC = () => {
                 serverAvailable: true,
                 modelLoaded: false,
                 inferenceFunctional: false,
+                basicLegalSmokeTestPassed: false,
                 legalQualityValidated: false,
                 tier: 'server_available',
                 inferenceVerified: false,
@@ -192,6 +195,7 @@ export const LgpdRedactor: React.FC = () => {
                 serverAvailable: true,
                 modelLoaded: true,
                 inferenceFunctional: false,
+                basicLegalSmokeTestPassed: false,
                 legalQualityValidated: false,
                 isWarmingUp: true,
                 tier: 'warming_up',
@@ -215,6 +219,7 @@ export const LgpdRedactor: React.FC = () => {
                 serverAvailable: true,
                 modelLoaded: true,
                 inferenceFunctional: false,
+                basicLegalSmokeTestPassed: false,
                 legalQualityValidated: false,
                 tier: 'model_loaded',
                 inferenceVerified: false,
@@ -261,14 +266,15 @@ export const LgpdRedactor: React.FC = () => {
               serverAvailable: true,
               modelLoaded: true,
               inferenceFunctional: true,
-              legalQualityValidated: legalPassed,
-              tier: legalPassed ? 'fully_validated' : 'inference_functional',
+              basicLegalSmokeTestPassed: legalPassed,
+              legalQualityValidated: false,
+              tier: legalPassed ? 'basic_legal_smoke_test_passed' : 'inference_functional',
               inferenceVerified: true,
               inferenceLatencyMs: latencyMs,
               instructionFollowed: true,
               statusMessage: legalPassed
-                ? `IA Jurídica Homologada (Nível 4): CLT/Trabalhista validado (${latencyMs}ms)`
-                : `Inferência funcional com obediência (Nível 3: ${latencyMs}ms), mas validação jurídica pendente.`
+                ? `Smoke Test Jurídico Preliminar Aprovado (Nível 4): CLT/Trabalhista detectado (${latencyMs}ms)`
+                : `Inferência funcional com obediência (Nível 3: ${latencyMs}ms), mas triagem jurídica preliminar pendente.`
             });
             return;
           }
@@ -286,6 +292,7 @@ export const LgpdRedactor: React.FC = () => {
           serverAvailable: false,
           modelLoaded: false,
           inferenceFunctional: false,
+          basicLegalSmokeTestPassed: false,
           legalQualityValidated: false,
           tier: 'offline',
           inferenceVerified: false,
@@ -700,8 +707,8 @@ export const LgpdRedactor: React.FC = () => {
               ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
               : embeddedAiStatus.isWarmingUp
                 ? 'bg-orange-500/10 border-orange-500/30 text-orange-300'
-                : embeddedAiStatus.legalQualityValidated
-                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm shadow-emerald-950/50'
+                : embeddedAiStatus.basicLegalSmokeTestPassed
+                  ? 'bg-teal-500/15 border-teal-500/40 text-teal-300 shadow-sm shadow-teal-950/50'
                   : embeddedAiStatus.inferenceFunctional
                     ? 'bg-teal-500/10 border-teal-500/30 text-teal-300'
                     : embeddedAiStatus.modelLoaded
@@ -715,8 +722,8 @@ export const LgpdRedactor: React.FC = () => {
                 ? 'bg-amber-400 animate-pulse'
                 : embeddedAiStatus.isWarmingUp
                   ? 'bg-orange-400 animate-pulse'
-                  : embeddedAiStatus.legalQualityValidated
-                    ? 'bg-emerald-400 animate-pulse ring-2 ring-emerald-500/30'
+                  : embeddedAiStatus.basicLegalSmokeTestPassed
+                    ? 'bg-teal-400 animate-pulse ring-2 ring-teal-500/30'
                     : embeddedAiStatus.inferenceFunctional
                       ? 'bg-teal-400 animate-pulse'
                       : embeddedAiStatus.modelLoaded
@@ -726,13 +733,13 @@ export const LgpdRedactor: React.FC = () => {
                           : 'bg-slate-500'
             }`} />
             <Cpu className="w-3.5 h-3.5" />
-            <span>
+            <span title={embeddedAiStatus.basicLegalSmokeTestPassed ? "Smoke test preliminar aprovado (termos CLT/Trabalhista detectados). Não atesta competência jurídica integral nem ausência de alucinações (exige avaliação com profissionais habilitados)." : undefined}>
               {embeddedAiStatus.checking
                 ? 'Diagnosticando Motor Local em 4 Níveis (Porta 18888)...'
                 : embeddedAiStatus.isWarmingUp
                   ? `Motor C++ em Aquecimento Inicial: ${embeddedAiStatus.modelName} (Cold-Start Lento)`
-                  : embeddedAiStatus.legalQualityValidated
-                    ? `🟢 Nível 4 Homologado (CLT/Trabalhista): ${embeddedAiStatus.modelName}`
+                  : embeddedAiStatus.basicLegalSmokeTestPassed
+                    ? `🟢 Nível 4: Triagem Jurídica Básica (Smoke Test CLT): ${embeddedAiStatus.modelName}`
                     : embeddedAiStatus.inferenceFunctional
                       ? `🟡 Nível 3 Funcional (Obediência 'PRONTO'): ${embeddedAiStatus.modelName}`
                       : embeddedAiStatus.modelLoaded
@@ -802,8 +809,8 @@ export const LgpdRedactor: React.FC = () => {
                 <span>Servidor Local C++ (Porta 18888)</span>
               </div>
               <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                embeddedAiStatus.legalQualityValidated
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                embeddedAiStatus.basicLegalSmokeTestPassed
+                  ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
                   : embeddedAiStatus.inferenceFunctional
                     ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
                     : embeddedAiStatus.isWarmingUp
@@ -814,8 +821,8 @@ export const LgpdRedactor: React.FC = () => {
                           ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                           : 'bg-slate-800 text-slate-400 border border-slate-700'
               }`}>
-                {embeddedAiStatus.legalQualityValidated
-                  ? 'Nível 4: Juridicamente Homologada'
+                {embeddedAiStatus.basicLegalSmokeTestPassed
+                  ? 'Nível 4: Smoke Test Jurídico Aprovado'
                   : embeddedAiStatus.inferenceFunctional
                     ? 'Nível 3: Inferência Funcional'
                     : embeddedAiStatus.isWarmingUp
@@ -834,6 +841,11 @@ export const LgpdRedactor: React.FC = () => {
                   : `${embeddedAiStatus.modelName}. O aplicativo opera via motor neural local WASM.`
               )}
             </p>
+            {embeddedAiStatus.basicLegalSmokeTestPassed && (
+              <p className="text-[10px] text-teal-400/80 mt-1 italic">
+                * Triagem sintética preliminar (CLT/Trabalhista). Homologação jurídica plena requer avaliação contínua por profissionais habilitados.
+              </p>
+            )}
           </div>
         </div>
 

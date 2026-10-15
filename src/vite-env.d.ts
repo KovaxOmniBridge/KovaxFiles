@@ -19,8 +19,9 @@ interface Window {
       serverAvailable?: boolean;
       modelLoaded?: boolean;
       inferenceFunctional?: boolean;
+      basicLegalSmokeTestPassed?: boolean;
       legalQualityValidated?: boolean;
-      tier?: 'offline' | 'server_available' | 'model_loaded' | 'warming_up' | 'inference_functional' | 'fully_validated';
+      tier?: 'offline' | 'server_available' | 'model_loaded' | 'warming_up' | 'inference_functional' | 'basic_legal_smoke_test_passed';
       isWarmingUp?: boolean;
       inferenceVerified?: boolean;
       inferenceLatencyMs?: number;

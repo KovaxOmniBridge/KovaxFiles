@@ -73,6 +73,7 @@ async function runTestSuite() {
       120
     );
     assert(b1.passed && b1.score === 100, 'Resposta contendo "Trabalhista" e "CLT" deve obter score 100 e status passed: true');
+    assert(b1.methodologyDisclaimer.includes('smoke test preliminar'), 'Benchmark deve conter aviso metodológico explicando limitações do teste preliminar');
 
     const b2 = evaluateLegalBenchmark(
       'As relações de trabalho são fundamentais para o desenvolvimento econômico.',
@@ -106,6 +107,7 @@ async function runTestSuite() {
     assert(!res.serverAvailable, 'serverAvailable deve ser false');
     assert(!res.modelLoaded, 'modelLoaded deve ser false');
     assert(!res.inferenceFunctional, 'inferenceFunctional deve ser false');
+    assert(!res.basicLegalSmokeTestPassed, 'basicLegalSmokeTestPassed deve ser false');
     assert(!res.legalQualityValidated, 'legalQualityValidated deve ser false');
     assert(!res.running, 'running deve ser false quando servidor está offline');
   }
@@ -139,6 +141,7 @@ async function runTestSuite() {
     assert(res.serverAvailable === true, 'Nível 1 (serverAvailable) deve ser true');
     assert(res.modelLoaded === false, 'Nível 2 (modelLoaded) deve ser false');
     assert(res.inferenceFunctional === false, 'Nível 3 (inferenceFunctional) deve ser false');
+    assert(res.basicLegalSmokeTestPassed === false, 'Nível 4 (basicLegalSmokeTestPassed) deve ser false');
     assert(res.legalQualityValidated === false, 'Nível 4 (legalQualityValidated) deve ser false');
     assert(!res.running, 'running deve ser false quando não há modelos em memória');
 
@@ -241,9 +244,11 @@ async function runTestSuite() {
     assert(res.modelLoaded === true, 'Nível 2 (modelLoaded): true');
     assert(res.inferenceFunctional === true, 'Nível 3 (inferenceFunctional): true (obediência confirmada)');
     assert(res.instructionTest?.followed === true, 'instructionTest.followed deve ser true');
-    assert(res.legalQualityValidated === true, 'Nível 4 (legalQualityValidated): true');
+    assert(res.basicLegalSmokeTestPassed === true, 'Nível 4 (basicLegalSmokeTestPassed): true');
+    assert(res.legalQualityValidated === false, 'legalQualityValidated deve ser false (expressão reservada para avaliação com profissionais)');
     assert(res.legalBenchmark?.score === 100, 'legalBenchmark.score deve ser 100');
-    assert(res.tier === 'fully_validated', 'tier deve ser "fully_validated"');
+    assert(res.legalBenchmark?.methodologyDisclaimer.includes('smoke test preliminar'), 'Aviso metodológico deve estar presente');
+    assert(res.tier === 'basic_legal_smoke_test_passed', 'tier deve ser "basic_legal_smoke_test_passed"');
     assert(res.running === true, 'running deve ser true quando Nível 3 e Nível 4 são satisfeitos');
 
     await new Promise((r) => server.close(r));
@@ -281,6 +286,7 @@ async function runTestSuite() {
     assert(res.modelLoaded === true, 'modelLoaded deve ser true');
     assert(res.inferenceFunctional === false, 'inferenceFunctional deve ser FALSE quando a palavra PRONTO não é obedecida');
     assert(res.instructionTest?.followed === false, 'instructionTest.followed deve ser false');
+    assert(res.basicLegalSmokeTestPassed === false, 'basicLegalSmokeTestPassed não pode ser true');
     assert(res.legalQualityValidated === false, 'legalQualityValidated não pode ser true');
     assert(res.tier === 'model_loaded', 'tier deve permanecer como "model_loaded"');
     assert(!res.running, 'running deve ser false quando a instrução falha');

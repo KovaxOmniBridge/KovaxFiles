@@ -2,12 +2,12 @@ import http from 'http';
 import os from 'os';
 
 export type AiDiagnosticTier =
-  | 'offline'                 // Porta fechada ou socket inacessível
-  | 'server_available'        // Servidor HTTP ativo (/health 200), mas sem modelos carregados
-  | 'model_loaded'            // Modelo carregado em memória (/v1/models), mas inferência pendente
-  | 'warming_up'              // Modelo carregado, mas em cold-start / aquecimento inicial
-  | 'inference_functional'    // Inferência validada com estrita obediência à instrução (ex: PRONTO)
-  | 'fully_validated';        // Homologado: obediência a instrução + qualidade jurídica comprovada
+  | 'offline'                      // Porta fechada ou socket inacessível
+  | 'server_available'             // Servidor HTTP ativo (/health 200), mas sem modelos carregados
+  | 'model_loaded'                 // Modelo carregado em memória (/v1/models), mas inferência pendente
+  | 'warming_up'                   // Modelo carregado, mas em cold-start / aquecimento inicial
+  | 'inference_functional'         // Inferência validada com estrita obediência à instrução sintética (PRONTO)
+  | 'basic_legal_smoke_test_passed'; // Triagem preliminar básica: acerto de termos-chave (CLT/Trabalhista) em smoke test sintético
 
 export interface InstructionTestResult {
   expectedWord: string;
@@ -18,6 +18,9 @@ export interface InstructionTestResult {
   latencyMs: number;
 }
 
+export const LEGAL_SMOKE_TEST_DISCLAIMER =
+  "AVISO METODOLÓGICO: Este teste é exclusivamente um smoke test preliminar de triagem sintética para detecção de termos-chave elementares (Direito Trabalhista e CLT). A pontuação 100/100 atesta unicamente a presença dessas referências na resposta gerada. NÃO comprova competência jurídica, interpretação normativa, fundamentação técnica ou ausência de alucinações. A expressão 'qualidade jurídica validada' permanece estritamente reservada para baterias extensivas com dezenas ou centenas de casos reais avaliados por profissionais de Direito habilitados.";
+
 export interface LegalBenchmarkResult {
   score: number; // 0 a 100
   passed: boolean;
@@ -27,6 +30,7 @@ export interface LegalBenchmarkResult {
   foundConcepts: string[];
   missingConcepts: string[];
   latencyMs: number;
+  methodologyDisclaimer: string;
 }
 
 export interface AiDiagnosticResult {
@@ -36,11 +40,12 @@ export interface AiDiagnosticResult {
   modelName: string;
   isGpuAccelerated: boolean;
 
-  // 4 Níveis Distintos Requeridos
-  serverAvailable: boolean;       // Nível 1: Disponibilidade do Servidor HTTP
-  modelLoaded: boolean;           // Nível 2: Modelo Carregado na Memória
-  inferenceFunctional: boolean;   // Nível 3: Inferência Funcional com Obediência
-  legalQualityValidated: boolean; // Nível 4: Qualidade Jurídica Validada
+  // 4 Níveis Distintos
+  serverAvailable: boolean;           // Nível 1: Disponibilidade do Servidor HTTP
+  modelLoaded: boolean;               // Nível 2: Modelo Carregado na Memória
+  inferenceFunctional: boolean;       // Nível 3: Inferência Funcional com Obediência
+  basicLegalSmokeTestPassed: boolean; // Nível 4: Smoke Test Jurídico Preliminar Aprovado
+  legalQualityValidated?: boolean;    // Deprecated: reservado para avaliação com profissionais habilitados
 
   // Diagnóstico Detalhado
   tier: AiDiagnosticTier;
@@ -150,7 +155,8 @@ export function evaluateLegalBenchmark(
     expectedConcepts: ['Direito Trabalhista', 'CLT'],
     foundConcepts,
     missingConcepts,
-    latencyMs
+    latencyMs,
+    methodologyDisclaimer: LEGAL_SMOKE_TEST_DISCLAIMER
   };
 }
 
@@ -233,6 +239,7 @@ export async function probeAiDiagnostics(options?: ProbeOptions): Promise<AiDiag
     serverAvailable: false,
     modelLoaded: false,
     inferenceFunctional: false,
+    basicLegalSmokeTestPassed: false,
     legalQualityValidated: false,
     tier: 'offline',
     isWarmingUp: false,
@@ -451,13 +458,15 @@ export async function probeAiDiagnostics(options?: ProbeOptions): Promise<AiDiag
       baseResult.legalBenchmark = legalEval;
 
       if (legalEval.passed) {
-        // Nível 4 APROVADO: Homologação Completa de Qualidade Jurídica
-        baseResult.legalQualityValidated = true;
-        baseResult.tier = 'fully_validated';
-        baseResult.statusMessage = `IA Jurídica Homologada (Nível 4): CLT/Trabalhista validado em ${benchResponse.latencyMs}ms`;
+        // Nível 4 APROVADO: Triagem Preliminar Básica (Smoke Test)
+        baseResult.basicLegalSmokeTestPassed = true;
+        baseResult.legalQualityValidated = false; // Expressão 'qualidade jurídica validada' reservada para avaliação com profissionais habilitados
+        baseResult.tier = 'basic_legal_smoke_test_passed';
+        baseResult.statusMessage = `Smoke Test Jurídico Preliminar Aprovado (Nível 4): termos CLT/Trabalhista detectados em ${benchResponse.latencyMs}ms (Triagem sintética — não atesta competência jurídica plena)`;
       } else {
+        baseResult.basicLegalSmokeTestPassed = false;
         baseResult.legalQualityValidated = false;
-        baseResult.statusMessage = `Inferência funcional (${inferResponse.latencyMs}ms), mas validação jurídica incompleta (score ${legalEval.score}/100 - Ausente: ${legalEval.missingConcepts.join(', ')})`;
+        baseResult.statusMessage = `Inferência funcional (${inferResponse.latencyMs}ms), mas triagem jurídica preliminar incompleta (score ${legalEval.score}/100 - Ausente: ${legalEval.missingConcepts.join(', ')})`;
       }
     } else {
       baseResult.statusMessage = `Inferência básica funcional, mas benchmark jurídico retornou HTTP ${benchResponse.statusCode}`;
