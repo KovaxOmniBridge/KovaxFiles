@@ -32,7 +32,10 @@ export function normalizeSessionKey(p: string): string {
 }
 
 /**
- * Registra um caminho e seu diretório pai como explicitamente autorizados na sessão.
+ * Registra um caminho explicitamente autorizado na sessão.
+ * Princípio do Menor Privilégio: Se o caminho for um arquivo, autoriza estritamente o arquivo.
+ * O diretório pai NÃO é registrado automaticamente em sessionAuthorizedDirectories,
+ * impedindo a ampliação indevida de privilégio para abertura do diretório via IPC.
  */
 export function authorizeSessionPath(rawPath: string) {
   try {
@@ -44,14 +47,39 @@ export function authorizeSessionPath(rawPath: string) {
         sessionAuthorizedDirectories.add(normalizeSessionKey(canonical));
       } else {
         sessionAuthorizedFiles.add(normalizeSessionKey(canonical));
-        sessionAuthorizedDirectories.add(normalizeSessionKey(path.dirname(canonical)));
       }
     } else {
       // Caminho de destino sugerido que ainda será gravado (ex: saveFileDialog)
       sessionAuthorizedFiles.add(normalizeSessionKey(resolved));
-      sessionAuthorizedDirectories.add(normalizeSessionKey(path.dirname(resolved)));
     }
   } catch {}
+}
+
+/**
+ * Registra um diretório expressamente autorizado na sessão (ex: quando o usuário
+ * seleciona uma pasta de destino para exportação em lote).
+ */
+export function authorizeSessionDirectory(rawDirPath: string) {
+  try {
+    const resolved = path.resolve(rawDirPath);
+    if (fs.existsSync(resolved)) {
+      const canonical = fs.realpathSync(resolved);
+      const stat = fs.statSync(canonical);
+      if (stat.isDirectory()) {
+        sessionAuthorizedDirectories.add(normalizeSessionKey(canonical));
+      }
+    } else {
+      sessionAuthorizedDirectories.add(normalizeSessionKey(resolved));
+    }
+  } catch {}
+}
+
+/**
+ * Limpa as autorizações da sessão ativa (utilizado em testes e encerramento de sessão).
+ */
+export function clearSessionAuthorizations() {
+  sessionAuthorizedFiles.clear();
+  sessionAuthorizedDirectories.clear();
 }
 
 /**

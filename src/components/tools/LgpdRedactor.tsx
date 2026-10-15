@@ -22,7 +22,9 @@ import {
   Cpu,
   ScanText,
   MousePointer,
-  Maximize2
+  Maximize2,
+  Folder,
+  ExternalLink
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { LocalPdfEngine } from '../../services/pdfEngine';
@@ -36,6 +38,7 @@ export interface RedactResultItem {
   fileName: string;
   data: Uint8Array;
   redactionCount: number;
+  savedPath?: string;
 }
 
 export const LgpdRedactor: React.FC = () => {
@@ -607,8 +610,27 @@ export const LgpdRedactor: React.FC = () => {
     }
   };
 
-  // Downloads
-  const handleDownloadSingle = (res: RedactResultItem) => {
+  // Downloads e Exportação com Suporte a Autorização de Sessão Nativa
+  const handleDownloadSingle = async (res: RedactResultItem) => {
+    // Se estiver executando no Electron Desktop, utiliza a gravação nativa com autorização de sessão
+    if (typeof window !== 'undefined' && window.electronAPI?.saveExportedFile) {
+      try {
+        const saveRes = await window.electronAPI.saveExportedFile(res.fileName, res.data);
+        if (saveRes?.success && saveRes.filePath) {
+          setResults(prev => prev ? prev.map(r => r.fileName === res.fileName ? { ...r, savedPath: saveRes.filePath } : r) : prev);
+          return;
+        } else if (saveRes?.error) {
+          setErrorMessage(`Falha na exportação nativa: ${saveRes.error}`);
+          return;
+        } else if (saveRes?.canceled) {
+          return;
+        }
+      } catch (err: any) {
+        console.warn('Falha no salvamento nativo do Electron, tentando download web:', err);
+      }
+    }
+
+    // Fallback de navegador web via Blob
     const blob = new Blob([new Uint8Array(res.data)], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1312,21 +1334,60 @@ export const LgpdRedactor: React.FC = () => {
 
           <div className="space-y-2">
             {results.map((res, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+              <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs gap-3">
                 <div className="flex items-center gap-2 truncate">
                   <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="text-slate-200 font-bold truncate">{res.fileName}</span>
-                  <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="truncate">
+                    <span className="text-slate-200 font-bold truncate block">{res.fileName}</span>
+                    {res.savedPath && (
+                      <span className="text-[10px] text-emerald-400/80 font-mono truncate block" title={res.savedPath}>
+                        ✓ Salvo em: {res.savedPath}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 shrink-0">
                     {res.redactionCount} tarja(s) aplicadas
                   </span>
                 </div>
-                <button
-                  onClick={() => handleDownloadSingle(res)}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-all"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Baixar PDF
-                </button>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {res.savedPath ? (
+                    <>
+                      <button
+                        onClick={async () => {
+                          if (window.electronAPI?.openPath) {
+                            await window.electronAPI.openPath(res.savedPath!);
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-all"
+                        title="Abrir o arquivo PDF no leitor padrão do sistema operacional"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Abrir PDF
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (window.electronAPI?.showItemInFolder) {
+                            await window.electronAPI.showItemInFolder(res.savedPath!);
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 transition-all"
+                        title="Revelar o arquivo na pasta do sistema de arquivos"
+                      >
+                        <Folder className="w-3.5 h-3.5" />
+                        Ver na Pasta
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleDownloadSingle(res)}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-all"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Salvar PDF
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

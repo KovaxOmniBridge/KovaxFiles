@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFileDialog: (defaultName?: string): Promise<string | null> => {
     return ipcRenderer.invoke('dialog:saveFile', defaultName);
   },
+  saveExportedFile: (defaultName: string, buffer: Uint8Array | ArrayBuffer): Promise<{ canceled?: boolean; success?: boolean; filePath?: string; error?: string }> => {
+    return ipcRenderer.invoke('file:saveExportedFile', { defaultName, buffer });
+  },
   openPath: (filePath: string): Promise<string> => {
     return ipcRenderer.invoke('system:openPath', filePath);
   },

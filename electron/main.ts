@@ -16,6 +16,8 @@ import {
   sessionAuthorizedFiles,
   sessionAuthorizedDirectories,
   authorizeSessionPath,
+  authorizeSessionDirectory,
+  clearSessionAuthorizations,
   validateFileContentMatchesType,
   validateSafeFilePath
 } from './pathSecurity.ts';
@@ -36,6 +38,8 @@ export {
   sessionAuthorizedFiles,
   sessionAuthorizedDirectories,
   authorizeSessionPath,
+  authorizeSessionDirectory,
+  clearSessionAuthorizations,
   validateFileContentMatchesType,
   validateSafeFilePath,
   probeAiDiagnostics,
@@ -174,6 +178,64 @@ ipcMain.handle('dialog:saveFile', async (_, defaultName?: string) => {
   if (result.canceled || !result.filePath) return null;
   authorizeSessionPath(result.filePath);
   return result.filePath;
+});
+
+// Gravação e autorização de arquivos recém-exportados pela aplicação desktop
+ipcMain.handle('file:saveExportedFile', async (_, options: { defaultName?: string; buffer: Uint8Array | number[] | ArrayBuffer }) => {
+  let safeDefaultName = 'documento_anonimizado.pdf';
+  if (typeof options?.defaultName === 'string' && options.defaultName.trim().length > 0) {
+    const base = path.basename(options.defaultName.trim()).replace(/[/\\?%*:|"<>]/g, '_');
+    const ext = path.extname(base).toLowerCase();
+    if (ext && !DANGEROUS_EXTENSIONS.has(ext) && ALLOWED_EXTENSIONS.has(ext)) {
+      safeDefaultName = base;
+    } else {
+      const nameWithoutExt = ext ? base.slice(0, -ext.length) : base;
+      safeDefaultName = `${nameWithoutExt || 'documento_anonimizado'}.pdf`;
+    }
+  }
+
+  const ext = path.extname(safeDefaultName).toLowerCase() || '.pdf';
+  const extWithoutDot = ext.replace(/^\./, '');
+
+  const saveResult = await dialog.showSaveDialog(mainWindow!, {
+    defaultPath: safeDefaultName,
+    filters: [
+      { name: 'Documento Exportado', extensions: [extWithoutDot] },
+      { name: 'Todos os Arquivos', extensions: ['*'] }
+    ]
+  });
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { canceled: true };
+  }
+
+  const targetPath = saveResult.filePath;
+  const targetExt = path.extname(targetPath).toLowerCase();
+  if (DANGEROUS_EXTENSIONS.has(targetExt) || !ALLOWED_EXTENSIONS.has(targetExt)) {
+    return { success: false, error: `Extensão de arquivo não permitida (${targetExt})` };
+  }
+
+  try {
+    const nodeBuf = Buffer.from(options.buffer as any);
+    fs.writeFileSync(targetPath, nodeBuf);
+
+    // Valida assinatura mágica no arquivo recém-gravado
+    const magicCheck = validateFileContentMatchesType(targetPath, targetExt);
+    if (!magicCheck.valid) {
+      try { fs.unlinkSync(targetPath); } catch {}
+      return { success: false, error: magicCheck.error || 'Assinatura mágica do conteúdo incompatível.' };
+    }
+
+    // AUTORIZAÇÃO DE SESSÃO DO ARQUIVO RECÉM-EXPORTADO
+    authorizeSessionPath(targetPath);
+
+    return {
+      success: true,
+      filePath: targetPath
+    };
+  } catch (err: any) {
+    return { success: false, error: `Falha ao gravar arquivo em disco: ${err?.message || 'Erro de E/S'}` };
+  }
 });
 
 ipcMain.handle('system:openPath', async (_, filePath: string) => {

@@ -15,6 +15,7 @@ import {
   validateSafeFilePath,
   validateFileContentMatchesType,
   authorizeSessionPath,
+  authorizeSessionDirectory,
   sessionAuthorizedFiles,
   sessionAuthorizedDirectories
 } from '../electron/pathSecurity.ts';
@@ -88,11 +89,19 @@ async function runTestSuite() {
       );
     }
 
-    // Diretório autorizado na sessão (onde o usuário salvou ou selecionou arquivo)
+    // Diretório pai do arquivo selecionado NÃO deve ser aberto automaticamente (Princípio do Menor Privilégio)
+    const parentDirResult = validateSafeFilePath(tmpDir);
+    assert(
+      !parentDirResult.valid && !!parentDirResult.error?.includes('não foi explicitamente autorizado'),
+      'Diretório pai de arquivo selecionado NÃO deve ser autorizado automaticamente para abertura IPC'
+    );
+
+    // Somente quando expressamente registrado como diretório de trabalho/exportação
+    authorizeSessionDirectory(tmpDir);
     const authDirResult = validateSafeFilePath(tmpDir);
     assert(
       authDirResult.valid && authDirResult.normalizedPath === fs.realpathSync(tmpDir),
-      'Diretório associado a arquivo explicitamente salvo/autorizado na sessão deve ser permitido'
+      'Diretório explicitamente autorizado na sessão deve ser permitido'
     );
 
     // -------------------------------------------------------------------------

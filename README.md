@@ -98,6 +98,15 @@ Testado e homologado via `npm run test:pdf-edge-cases`:
 
 > 💡 **Nota sobre Pesquisabilidade (Ctrl+F) e Acessibilidade:** A destruição física da camada vetorial de texto é o único método tecnicamente infalível contra extração forense sob tarjas. Contudo, essa operação remove a capacidade de pesquisa por texto na página anonimizada. Para processos judiciais que exigem conformidade estrita com indexação textual e acessibilidade sem comprometer o sigilo LGPD, submeta o documento anonimizado final ao módulo **OCR Local & Scanner**, que recriará uma camada de texto limpa apenas sobre os dados remanescentes não tarjados.
 
+### 🛡️ Controle Estrito de Caminhos e Exportação de Sessão (Princípio do Menor Privilégio)
+
+O sistema de segurança do Electron implementa controle estrito baseado em capacidades (`npm run test:path-security` e `npm run test:path-integration`):
+
+* **Eliminação de Ampliação de Privilégio**: A seleção de um arquivo autoriza estritamente o arquivo em si (`sessionAuthorizedFiles`). Seu diretório pai **não** é adicionado a `sessionAuthorizedDirectories`. Requisições IPC para abrir ou navegar em diretórios arbitrários via `system:openPath` são sumariamente rejeitadas.
+* **Ciclo de Exportação com Autorização Nativa**: A rotina `file:saveExportedFile` no processo principal grava o buffer em disco, valida os Magic Bytes reais do arquivo exportado (impedindo qualquer camuflagem de binários) e autoriza imediatamente o novo arquivo na sessão.
+* **Abertura e Revelação Seguras**: Arquivos recém-exportados podem ser abertos (`system:openPath`) ou revelados no explorador de arquivos (`system:showItemInFolder`) diretamente pela interface React sem qualquer bloqueio de permissão.
+* **Proteção Pós-Exportação e Isolamento**: Arquivos irmãos não selecionados no mesmo diretório permanecem inacessíveis e qualquer adulteração física no disco (tampering com binários PE/ELF) é imediatamente detectada e bloqueada por inspeção de cabeçalhos.
+
 ### 🤖 Diagnóstico e Homologação de IA Local em 4 Níveis
 
 Para certificar que a inteligência artificial local não apenas está respondendo na rede, mas é funcional e apta a processar documentos jurídicos, o sistema adota uma esteira de diagnóstico em 4 níveis (`npm run test:ai-diagnostics`):

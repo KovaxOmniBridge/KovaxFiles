@@ -12,6 +12,7 @@
     "test:stress": "npx tsx scripts/stress_test_e2e.ts",
     "test:security-redaction": "npx tsx scripts/run_redaction_security_suite.ts",
     "test:path-security": "npx tsx scripts/test_path_validation_security.ts",
+    "test:path-integration": "npx tsx scripts/test_path_security_integration.ts",
     "test:dist-security": "npx tsx scripts/verify_distribution_security.ts",
     "test:pdf-edge-cases": "npx tsx scripts/test_advanced_pdf_edge_cases.ts",
     "test:ai-diagnostics": "npx tsx scripts/test_ai_diagnostic_tiers.ts",
