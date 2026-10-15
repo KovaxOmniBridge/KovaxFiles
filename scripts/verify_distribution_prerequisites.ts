@@ -1,13 +1,20 @@
 #!/usr/bin/env node
 /**
  * =============================================================================
- * KovaxFiles Desktop — Validação Operacional de Release e Assinatura Digital
+ * KovaxFiles Desktop — Verificação de Configuração e Pré-Requisitos de Distribuição
  * =============================================================================
- * Executa testes operacionais reais de:
- * 1. Ciclo de Vida e Versionamento de Release (SemVer, Tags, GitHub Releases)
- * 2. Validação Operacional de Assinatura pelo Sistema Operacional (Authenticode / Gatekeeper)
- * 3. Prova de Execução em Máquinas Limpas (Zero-Dev Environment / Ausência de Node/Python)
- * 4. Verificação de Isolamento do Bundle de Produção (app.asar, Sandboxing, IPC)
+ * Executa checagem técnica de:
+ * 1. Ciclo de Vida e Versionamento de Publicação (SemVer, Tags, GitHub Releases)
+ * 2. Validação da Infraestrutura de Assinatura Digital (Authenticode / Gatekeeper Hardened Runtime)
+ * 3. Pré-Requisitos de Execução em Máquinas Limpas (Zero-Dev Environment / Ausência de Node/Python)
+ * 4. Isolamento do Bundle de Produção (app.asar, Sandboxing e Bloqueio de Permissões)
+ *
+ * AVISO METODOLÓGICO:
+ * Esta suíte atesta a conformidade estática de configurações declarativas, scripts de build,
+ * integridade de arquivos empacotados e regras de pipeline de CI/CD.
+ * NÃO substitui nem constitui uma homologação operacional completa de ponta a ponta, a qual
+ * exige a instalação e execução física do instalador final assinado em máquinas limpas
+ * (Windows Sandbox / VM macOS) por operadores humanos com certificados oficiais instalados.
  * =============================================================================
  */
 
@@ -16,7 +23,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 
 console.log('='.repeat(80));
-console.log('  KOVAXFILES — VALIDAÇÃO OPERACIONAL DE RELEASE E DISTRIBUIÇÃO INSTITUCIONAL');
+console.log('  KOVAXFILES — VERIFICAÇÃO DE CONFIGURAÇÃO E PRÉ-REQUISITOS DE DISTRIBUIÇÃO');
 console.log('='.repeat(80) + '\n');
 
 let passedTests = 0;
@@ -37,7 +44,7 @@ const rootDir = process.cwd();
 // ============================================================================
 // FASE 1: Ciclo de Vida e Versionamento de Publicação de Versões
 // ============================================================================
-console.log('[1/4] Validando Fluxo de Publicação e Versionamento (Release Lifecycle)...');
+console.log('[1/4] Validando Configuração de Publicação e Versionamento (Release Lifecycle)...');
 const packageJsonPath = path.join(rootDir, 'package.json');
 const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 
@@ -84,14 +91,33 @@ assert(
 );
 
 // ============================================================================
-// FASE 2: Validação Operacional de Assinatura pelo Sistema Operacional
+// FASE 2: Validação de Pré-requisitos de Assinatura Digital no SO (Authenticode / Gatekeeper)
 // ============================================================================
-console.log('\n[2/4] Validando Assinatura Digital no Sistema Operacional (Authenticode / Gatekeeper)...');
+console.log('\n[2/4] Validando Pré-requisitos de Assinatura Digital (Authenticode e macOS Hardened Runtime)...');
 
+// 2.1 Validação Estrita de Configurações do macOS (Eliminando Tautologias)
+assert(
+  pkg.build?.mac?.hardenedRuntime === true,
+  'Configuração build.mac.hardenedRuntime deve ser estritamente true no electron-builder'
+);
+
+assert(
+  pkg.build?.mac?.gatekeeperAssess === true,
+  'Configuração build.mac.gatekeeperAssess deve ser true para inspeção pelo Gatekeeper'
+);
+
+const entitlementsPath = pkg.build?.mac?.entitlements
+  ? path.join(rootDir, pkg.build.mac.entitlements)
+  : '';
+assert(
+  typeof pkg.build?.mac?.entitlements === 'string' && fs.existsSync(entitlementsPath),
+  `Arquivo de entitlements para Hardened Runtime no macOS deve existir fisicamente (${pkg.build?.mac?.entitlements})`
+);
+
+// 2.2 Sonda do Mecanismo de Validação Authenticode no Windows (se executando no Windows)
 if (process.platform === 'win32') {
-  console.log('  -> Executando testes nativos via PowerShell / Windows Authenticode...');
+  console.log('  -> Executando verificação de mecanismo nativo do Windows Authenticode...');
 
-  // 2.1 Teste de Binário Não Assinado (Verifica detecção de NotSigned pelo SO)
   const electronExe = path.join(rootDir, 'node_modules/electron/dist/electron.exe');
   if (fs.existsSync(electronExe)) {
     const checkUnsigned = spawnSync('powershell', [
@@ -103,11 +129,10 @@ if (process.platform === 'win32') {
     const statusUnsigned = checkUnsigned.stdout?.trim();
     assert(
       statusUnsigned === 'NotSigned',
-      `SO detecta corretamente arquivo sem assinatura digital (Status: ${statusUnsigned})`
+      `Mecanismo do Windows detecta corretamente arquivo sem assinatura digital (Status: ${statusUnsigned})`
     );
   }
 
-  // 2.2 Teste de Binário Oficial do SO (Verifica detecção de Valid pelo SO)
   const psExe = path.join(process.env.WINDIR || 'C:\\Windows', 'System32\\WindowsPowerShell\\v1.0\\powershell.exe');
   if (fs.existsSync(psExe)) {
     const checkSigned = spawnSync('powershell', [
@@ -119,68 +144,15 @@ if (process.platform === 'win32') {
     const statusSigned = checkSigned.stdout?.trim();
     assert(
       statusSigned === 'Valid',
-      `SO valida com sucesso assinatura Authenticode de binário confiável (Status: ${statusSigned})`
+      `Mecanismo do Windows valida com sucesso assinatura Authenticode de binário do sistema (Status: ${statusSigned})`
     );
   }
-
-  // 2.3 Simulação Operacional Completa: Criação de Certificado, Assinatura e Inspeção de Cadeia
-  const testDir = path.join(rootDir, 'test_output/release_test');
-  fs.mkdirSync(testDir, { recursive: true });
-
-  const psScript = `
-    $ErrorActionPreference = 'Stop'
-    $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=KovaxFiles Homologacao Interna Teste" -CertStoreLocation "Cert:\\CurrentUser\\My"
-    $thumb = $cert.Thumbprint
-    $testExe = "${path.join(testDir, 'authenticode_probe.exe').replace(/\\/g, '\\\\')}"
-    Copy-Item "${electronExe.replace(/\\/g, '\\\\')}" $testExe -Force
-    $sig = Set-AuthenticodeSignature -FilePath $testExe -Certificate $cert -HashAlgorithm "SHA256"
-    $verify = Get-AuthenticodeSignature $testExe
-    
-    [PSCustomObject]@{
-      Thumbprint = $thumb
-      SignStatus = $sig.Status.ToString()
-      VerifyStatus = $verify.Status.ToString()
-      Subject = $verify.SignerCertificate.Subject
-      SignatureAlgo = $verify.SignerCertificate.SignatureAlgorithm.FriendlyName
-      StatusMessage = $verify.StatusMessage
-    } | ConvertTo-Json -Compress
-    
-    Remove-Item "Cert:\\CurrentUser\\My\\$thumb" -Force
-    Remove-Item $testExe -Force
-  `;
-
-  const probeRes = spawnSync('powershell', ['-NoProfile', '-Command', psScript], { encoding: 'utf8' });
-  try {
-    const probeData = JSON.parse(probeRes.stdout?.trim() || '{}');
-    assert(
-      probeData.Subject?.includes('KovaxFiles Homologacao Interna Teste'),
-      `Certificado de assinatura digital inspecionado com sucesso pelo SO: ${probeData.Subject}`
-    );
-    assert(
-      probeData.SignatureAlgo === 'sha256RSA' || probeData.SignatureAlgo?.includes('sha256'),
-      `Algoritmo de hash criptográfico utilizado na assinatura é SHA-256 (${probeData.SignatureAlgo})`
-    );
-    assert(
-      probeData.VerifyStatus === 'UnknownError' || probeData.VerifyStatus === 'Valid',
-      `Mecanismo Authenticode do Windows operou com integridade na validação da cadeia de certificação (Status: ${probeData.VerifyStatus})`
-    );
-  } catch (err: any) {
-    assert(false, 'Falha ao processar sonda Authenticode do Windows', err.message);
-  } finally {
-    try { fs.rmSync(testDir, { recursive: true, force: true }); } catch {}
-  }
-} else {
-  console.log('  -> Ambiente não-Windows: validando especificações de assinatura macOS Gatekeeper...');
-  assert(
-    pkg.build?.mac?.hardenedRuntime === true || !pkg.build?.mac?.hardenedRuntime,
-    'Configurações de Hardened Runtime validadas para empacotamento macOS'
-  );
 }
 
 // ============================================================================
-// FASE 3: Instalação e Execução em Máquinas sem Ambiente de Desenvolvimento
+// FASE 3: Pré-requisitos de Instalação em Máquinas sem Ambiente de Desenvolvimento
 // ============================================================================
-console.log('\n[3/4] Validando Instalação em Máquinas sem Ambiente de Desenvolvimento (Clean Runtime)...');
+console.log('\n[3/4] Validando Pré-requisitos para Execução em Máquinas Limpas (Clean Runtime)...');
 
 // 3.1 Verificação do Bundle de Produção Compilado
 const distIndexPath = path.join(rootDir, 'dist/index.html');
@@ -189,17 +161,17 @@ const distElectronPreload = path.join(rootDir, 'dist-electron/preload.cjs');
 
 assert(
   fs.existsSync(distIndexPath) && fs.statSync(distIndexPath).size > 0,
-  `Bundle web de produção compilado em dist/index.html (${fs.statSync(distIndexPath).size} bytes)`
+  `Bundle web de produção compilado em dist/index.html (${fs.existsSync(distIndexPath) ? fs.statSync(distIndexPath).size : 0} bytes)`
 );
 
 assert(
   fs.existsSync(distElectronMain) && fs.statSync(distElectronMain).size > 0,
-  `Processo principal compilado em dist-electron/main.js (${fs.statSync(distElectronMain).size} bytes)`
+  `Processo principal compilado em dist-electron/main.js (${fs.existsSync(distElectronMain) ? fs.statSync(distElectronMain).size : 0} bytes)`
 );
 
 assert(
   fs.existsSync(distElectronPreload) && fs.statSync(distElectronPreload).size > 0,
-  `Script de preload compilado em dist-electron/preload.cjs (${fs.statSync(distElectronPreload).size} bytes)`
+  `Script de preload compilado em dist-electron/preload.cjs (${fs.existsSync(distElectronPreload) ? fs.statSync(distElectronPreload).size : 0} bytes)`
 );
 
 // 3.2 Isolamento de Dependências: Garantir que apenas dist/ e dist-electron/ vão para o instalador
@@ -235,24 +207,24 @@ assert(
 );
 
 // ============================================================================
-// FASE 4: Isolamento de Sandboxing e Segurança de IPC em Produção
+// FASE 4: Configurações Declarativas de Sandboxing e Segurança de IPC
 // ============================================================================
-console.log('\n[4/4] Validando Segurança do Ambiente de Execução e Sandboxing...');
+console.log('\n[4/4] Validando Configurações Declarativas de Sandboxing e Isolamento de Processos...');
 const electronMainSrc = fs.readFileSync(path.join(rootDir, 'electron/main.ts'), 'utf8');
 
 assert(
   electronMainSrc.includes('contextIsolation: true'),
-  'Context Isolation ativado incondicionalmente no processo de renderização'
+  'Context Isolation declarado como ativado incondicionalmente no processo de renderização'
 );
 
 assert(
   electronMainSrc.includes('nodeIntegration: false'),
-  'Node Integration desativado para bloquear acesso indevido à API do Node pelo frontend'
+  'Node Integration declarado como desativado para bloquear acesso indevido à API do Node pelo frontend'
 );
 
 assert(
   electronMainSrc.includes('sandbox: true'),
-  'Chromium OS Sandbox ativado para isolamento de memória'
+  'Chromium OS Sandbox declarado como ativado para isolamento de memória'
 );
 
 assert(
@@ -266,18 +238,26 @@ assert(
 );
 
 // ============================================================================
-// RESUMO FINAL
+// RESUMO FINAL & AVISO METODOLÓGICO
 // ============================================================================
 console.log('\n' + '='.repeat(80));
-console.log('RESULTADO DA VALIDAÇÃO OPERACIONAL DE RELEASE:');
+console.log('RESULTADO DA VERIFICAÇÃO DE CONFIGURAÇÃO E PRÉ-REQUISITOS:');
 console.log(`  Total de Testes Aprovados: ${passedTests}`);
 console.log(`  Total de Falhas:           ${failedTests}`);
 console.log('='.repeat(80));
 
+console.log('\n' + '-'.repeat(80));
+console.log('AVISO METODOLÓGICO:');
+console.log('Esta suíte é uma verificação estática e declarativa de configurações, manifestos e');
+console.log('pré-requisitos de empacotamento para distribuição. NÃO substitui nem constitui');
+console.log('uma homologação operacional completa, a qual exige a instalação física do instalador');
+console.log('final assinado em máquinas limpas (Windows Sandbox / VM macOS) por operadores humanos.');
+console.log('-'.repeat(80) + '\n');
+
 if (failedTests > 0) {
-  console.error(`\n[FALHA FATAL] A homologação operacional reprovou com ${failedTests} problema(s).`);
+  console.error(`\n[FALHA] A verificação de pré-requisitos reprovou com ${failedTests} problema(s).`);
   process.exit(1);
 }
 
-console.log('\n[HOMOLOGAÇÃO CONCLUÍDA COM SUCESSO] Todos os requisitos operacionais de publicação, assinatura e ambiente limpo foram validados.\n');
+console.log('[CONFORME] Todos os pré-requisitos de configuração para distribuição foram verificados com sucesso.\n');
 process.exit(0);

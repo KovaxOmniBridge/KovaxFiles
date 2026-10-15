@@ -1,6 +1,9 @@
-# Guia Operacional de Validação de Release, Assinatura Digital e Ambiente Limpo
+# Guia Operacional de Release, Assinatura Digital e Pré-Requisitos de Distribuição
 
-Este documento estabelece o protocolo operacional para homologação de executáveis, validação de assinaturas digitais pelo sistema operacional e garantia de execução em computadores de usuários finais sem ambiente de desenvolvimento instalado.
+> [!IMPORTANT]
+> **AVISO DE ESCOPO E DISTINÇÃO METODOLÓGICA:**
+> A suíte automatizada de testes (`npm run test:distribution-prerequisites`) realiza uma **verificação estática e declarativa de configurações, manifestos e regras de CI/CD**.
+> Ela **NÃO substitui nem constitui a homologação operacional completa de ponta a ponta**. A homologação operacional definitiva requer a instalação e execução física do instalador compilado e assinado em computadores limpos (via **Windows Sandbox** ou máquinas virtuais isoladas), executada por operadores humanos ou runners dedicados equipados com certificados oficiais.
 
 ---
 
@@ -83,6 +86,18 @@ O **KovaxFiles Desktop** foi projetado para operar com **zero pré-requisitos t�
 - [x] **Execução Standalone ou Instalada:**
   - **Instalador NSIS (`KovaxFiles-Setup-*.exe`):** Instalação padrão em `%LOCALAPPDATA%\Programs\kovax-files-desktop\`, sem necessidade de privilégios de Administrador de Rede.
   - **Executável Portátil (`KovaxFiles-Portable-*.exe`):** Execução direta a partir de pen drives ou pastas seguras sem alterar o Registro do Windows.
+
+### 3.2 Teste Dinâmico de Isolamento do Processo em Execução (Sandboxing)
+
+Diferente de uma simples checagem de código, o repositório conta com um teste que executa uma instância real do Electron (`npm run test:sandbox-isolation` / `scripts/test_runtime_sandbox_isolation.cjs`):
+- Abre uma janela real com as `webPreferences` de produção (`sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`).
+- Executa sondas dinâmicas de injeção JavaScript dentro do Chromium renderizador.
+- **Validações Comprovadas em Tempo de Execução:**
+  1. `typeof window.require === 'undefined'` (Node.js inacessível no renderizador).
+  2. `typeof window.process.binding === 'undefined'` (módulos C++ internos inacessíveis).
+  3. Tentativas de invocação de `child_process` ou `fs` pelo renderizador disparam erro e são bloqueadas.
+  4. A fronteira de memória do `contextBridge` impede que poluição de protótipo (`Object.prototype`) no renderizador atinja o processo principal.
+  5. Requisições IPC para execução de binários externos perigosos (`.exe`, `.bat`) são sumariamente rejeitadas.
 
 ---
 

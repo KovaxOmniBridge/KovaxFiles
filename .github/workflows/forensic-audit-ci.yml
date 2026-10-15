@@ -43,8 +43,11 @@ jobs:
       - name: Build Application Assets
         run: npm run build
 
-      - name: Run Operational Release & Packaging Verification
-        run: npm run test:release-operational
+      - name: Run Distribution Prerequisites Verification
+        run: npm run test:distribution-prerequisites
+
+      - name: Run Dynamic Runtime Sandbox Isolation Test
+        run: xvfb-run --auto-servernum -- npm run test:sandbox-isolation
 
       - name: Run Distribution Security Architecture Tests
         run: npm run test:dist-security
