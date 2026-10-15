@@ -84,20 +84,20 @@ jobs:
 
       - name: Generate SHA-256 Integrity Manifest
         run: |
-          cat << 'EOF' > release/SHA256SUMS.txt
-# ==============================================================================
-# MANIFESTO DE INTEGRIDADE CRIPTOGRÁFICA (SHA-256) - KOVAXFILES DESKTOP
-# ==============================================================================
-# NOTA DE SEGURANÇA INSTITUCIONAL:
-# 1. Os hashes abaixo atestam exclusivamente a INTEGRIDADE DE TRANSPORTE dos
-#    arquivos contra corrupção física ou truncamento acidental de download.
-# 2. Hashes SHA-256 NÃO ATESTAM AUTORIA, NÃO COMPROVAM IDENTIDADE DO PUBLICADOR
-#    E NÃO SUBSTITUEM ASSINATURA DIGITAL (Authenticode / Apple Developer ID / PKI).
-# 3. Em ambientes institucionais (Tribunais, Prefeituras e Escritórios Jurídicos),
-#    valide OBRIGATORIAMENTE a assinatura digital embutida no binário executável:
-#      PowerShell: Get-AuthenticodeSignature .\KovaxFiles-Setup-*.exe
-# ==============================================================================
-EOF
+          printf "%s\n" \
+            "# ==============================================================================" \
+            "# MANIFESTO DE INTEGRIDADE CRIPTOGRÁFICA (SHA-256) - KOVAXFILES DESKTOP" \
+            "# ==============================================================================" \
+            "# NOTA DE SEGURANÇA INSTITUCIONAL:" \
+            "# 1. Os hashes abaixo atestam exclusivamente a INTEGRIDADE DE TRANSPORTE dos" \
+            "#    arquivos contra corrupção física ou truncamento acidental de download." \
+            "# 2. Hashes SHA-256 NÃO ATESTAM AUTORIA, NÃO COMPROVAM IDENTIDADE DO PUBLICADOR" \
+            "#    E NÃO SUBSTITUEM ASSINATURA DIGITAL (Authenticode / Apple Developer ID / PKI)." \
+            "# 3. Em ambientes institucionais (Tribunais, Prefeituras e Escritórios Jurídicos)," \
+            "#    valide OBRIGATORIAMENTE a assinatura digital embutida no binário executável:" \
+            "#      PowerShell: Get-AuthenticodeSignature .\KovaxFiles-Setup-*.exe" \
+            "# ==============================================================================" \
+            > release/SHA256SUMS.txt
           cd release
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum *.exe *.dmg *.AppImage *.deb *.rpm *.zip 2>/dev/null >> SHA256SUMS.txt || true
@@ -111,6 +111,8 @@ EOF
       - name: Upload Binaries and Checksums to GitHub Releases
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') && (inputs.allow_unsigned_dev != true)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: |
             release/*.exe
@@ -121,5 +123,3 @@ EOF
             release/*.zip
             release/SHA256SUMS.txt
             release/latest*.yml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
