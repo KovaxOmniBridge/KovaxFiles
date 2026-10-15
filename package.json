@@ -16,6 +16,7 @@
     "test:dist-security": "npx tsx scripts/verify_distribution_security.ts",
     "test:pdf-edge-cases": "npx tsx scripts/test_advanced_pdf_edge_cases.ts",
     "test:ai-diagnostics": "npx tsx scripts/test_ai_diagnostic_tiers.ts",
+    "test:release-operational": "npx tsx scripts/verify_operational_release.ts",
     "package:dev:win": "npm run build && electron-builder --win",
     "package:win": "npm run build && electron-builder --win",
     "package:mac": "npm run build && electron-builder --mac",

@@ -40,6 +40,15 @@ jobs:
       - name: Install Node.js Dependencies
         run: npm ci
 
+      - name: Build Application Assets
+        run: npm run build
+
+      - name: Run Operational Release & Packaging Verification
+        run: npm run test:release-operational
+
+      - name: Run Distribution Security Architecture Tests
+        run: npm run test:dist-security
+
       - name: Run Forensic Redaction Security Battery (Synthetic + Realistic Legal Corpus)
         run: npm run test:security-redaction
 
