@@ -13,6 +13,7 @@
     "test:security-redaction": "npx tsx scripts/run_redaction_security_suite.ts",
     "test:path-security": "npx tsx scripts/test_path_validation_security.ts",
     "test:dist-security": "npx tsx scripts/verify_distribution_security.ts",
+    "test:pdf-edge-cases": "npx tsx scripts/test_advanced_pdf_edge_cases.ts",
     "package:dev:win": "npm run build && electron-builder --win",
     "package:win": "npm run build && electron-builder --win",
     "package:mac": "npm run build && electron-builder --mac",

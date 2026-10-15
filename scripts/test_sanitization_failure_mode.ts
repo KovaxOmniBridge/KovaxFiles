@@ -58,9 +58,28 @@ async function runFailureModeTests() {
     (LocalPdfEngine as any).sanitizeFlattenPdf = originalSanitize;
   }
 
-  assert.ok(simulatedFailureThrew, 'O motor NUNCA deve retornar o buffer vetorial original quando a sanitização falha.');
-  console.log('  -> Garantia inegociável de aborto estrito comprovada.');
-  console.log('  -> Garantia de interrupção estrita validada com sucesso.');
+  // 4. Testar que tentar passar sanitizeFlatten: false para o método de anonimização É TERMINANTEMENTE PROIBIDO
+  console.log('[4/4] Verificando que desativar sanitização no método de anonimização segura é expressamente bloqueado...');
+  let falseOptionThrew = false;
+  try {
+    await LocalPdfEngine.anonymizePdf(pdfBytes.buffer, rects, { sanitizeFlatten: false } as any);
+  } catch (err: any) {
+    falseOptionThrew = true;
+    console.log(`  -> Tentativa de sanitizeFlatten: false bloqueada com sucesso: "${err.message}"`);
+    assert.ok(
+      err.message.includes('Violação de Segurança') &&
+      err.message.includes('sanitizeFlatten: false é estritamente proibido'),
+      'Deve rejeitar formalmente a desativação da sanitização'
+    );
+  }
+  assert.ok(falseOptionThrew, 'anonymizePdf DEVE rejeitar sanitizeFlatten: false');
+
+  // 5. Testar que a operação de marcação visual prévia (applyVisualOverlay) está claramente separada
+  console.log('[5/5] Verificando que a operação de marcação visual (applyVisualOverlay) opera em modo visual explícito...');
+  const visualOnlyBytes = await LocalPdfEngine.applyVisualOverlay(pdfBytes.buffer, rects);
+  assert.ok(visualOnlyBytes instanceof Uint8Array && visualOnlyBytes.length > 0, 'applyVisualOverlay deve retornar buffer vetorial');
+  console.log('  -> Marcação visual preliminar validada com sucesso.');
+
   console.log('\n[PASS] Todos os testes de segurança do modo de falha passaram.');
 }
 

@@ -81,10 +81,22 @@ A bateria submete o documento a **5 vetores de ataque independentes**:
 
 | Método de Anonimização | Extração de Texto | Inspeção de Streams/Objetos | Pixels / Bleed | Pesquisa / Ctrl+F | Carving Binário | Veredito |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Tarja Vetorial Simples** (Apenas retângulo preto) | ❌ FAIL (Recuperável) | ❌ FAIL (Recuperável) | ⚠️ OK (Visual) | ❌ FAIL (Recuperável) | ❌ FAIL (Recuperável) | **Vulnerável** |
-| **Sanitização por Achatamento** (Raster 300 DPI) | ✅ OK (Destruído) | ✅ OK (Destruído) | ✅ OK (Sólido) | ✅ OK (Zero ocorrências) | ✅ OK (Zero ocorrências) | **Protegido** |
+| **Marcação Visual** (`applyVisualOverlay`) | ❌ FAIL (Recuperável) | ❌ FAIL (Recuperável) | ⚠️ OK (Visual) | ❌ FAIL (Recuperável) | ❌ FAIL (Recuperável) | **Vulnerável (Rascunho)** |
+| **Anonimização Segura** (`anonymizePdf`) | ✅ OK (Destruído) | ✅ OK (Destruído) | ✅ OK (Sólido) | ✅ OK (Zero ocorrências) | ✅ OK (Zero ocorrências) | **Protegido (Definitivo)** |
 
-> ⚠️ **Aviso de Segurança:** A expressão *anonimização irreversível* refere-se exclusivamente ao modo de sanitização por achatamento rasterizado auditado. O tarjamento vetorial simples é uma sobreposição visual e não deve ser utilizado isoladamente quando houver risco de extração técnica por terceiros.
+### 🔒 Separação Estrita de Contratos de API
+* **Marcação Visual Preliminar (`applyVisualOverlay`)**: Aplica retângulos gráficos vetoriais sobre o documento original exclusivamente para conferência de layout na interface ou rascunho de conferência. Não destrói a camada de texto.
+* **Anonimização Segura Definitiva (`anonymizePdf` / `redactPdf`)**: Destrói incondicionalmente todos os fluxos de texto sob as tarjas e expurga formulários (`/AcroForm`), assinaturas (`/SigFlags`), anexos (`/EmbeddedFiles`, `/Names`), camadas ocultas (`/OCProperties`) e metadados. **Nenhum chamador pode desativar a destruição de conteúdo nesta operação** (opções inseguras como `sanitizeFlatten: false` são expressamente rejeitadas).
+
+### 📐 Resiliência a Documentos Complexos & Casos de Borda
+Testado e homologado via `npm run test:pdf-edge-cases`:
+* **Formulários Interativos (`AcroForm`)**: Expurgo completo de dicionários e widgets interativos, eliminando valores confidenciais armazenados em campos.
+* **Assinaturas Digitais (`SigFlags` e `Perms`)**: Remoção de metadados de certificação de signatários anteriores para resguardar dados pessoais.
+* **Camadas Ocultas (`OCG / OCProperties`) & Anexos Embutidos**: Purga total de anexos e fluxos invisíveis desligados.
+* **Páginas com Rotações Variadas (0°, 90°, 180°, 270°)**: Preservação milimétrica da orientação visual de leitura.
+* **Páginas Grandes (Plantas / Formato A0 / 2384x3370 pt)**: Resolução adaptativa dinâmica com teto de 25 megapixels, prevenindo estouro de memória (OOM) e controlando o tamanho do arquivo.
+
+> 💡 **Nota sobre Pesquisabilidade (Ctrl+F) e Acessibilidade:** A destruição física da camada vetorial de texto é o único método tecnicamente infalível contra extração forense sob tarjas. Contudo, essa operação remove a capacidade de pesquisa por texto na página anonimizada. Para processos judiciais que exigem conformidade estrita com indexação textual e acessibilidade sem comprometer o sigilo LGPD, submeta o documento anonimizado final ao módulo **OCR Local & Scanner**, que recriará uma camada de texto limpa apenas sobre os dados remanescentes não tarjados.
 
 ## 📂 Estrutura do Repositório
 

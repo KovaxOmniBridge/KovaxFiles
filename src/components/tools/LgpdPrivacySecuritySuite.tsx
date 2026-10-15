@@ -285,7 +285,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
         const buffer = await file.arrayBuffer();
         
         const rectsToApply = selectedToRedact.map(i => i.rect);
-        const redactedBuffer = await LocalPdfEngine.redactPdf(buffer, rectsToApply, { sanitizeFlatten: true });
+        const redactedBuffer = await LocalPdfEngine.anonymizePdf(buffer, rectsToApply);
 
         resultsList.push({
           fileName: file.name,

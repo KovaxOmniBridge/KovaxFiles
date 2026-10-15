@@ -493,7 +493,7 @@ export const LgpdRedactor: React.FC = () => {
           rectsToApply = autoItems.map(i => i.rect);
         }
 
-        const redactedBytes = await LocalPdfEngine.redactPdf(buffer, rectsToApply, { sanitizeFlatten: true });
+        const redactedBytes = await LocalPdfEngine.anonymizePdf(buffer, rectsToApply);
 
         processedResults.push({
           fileName: file.name.replace(/\.pdf$/i, '_anonimizado_LGPD.pdf'),
@@ -1141,7 +1141,7 @@ export const LgpdRedactor: React.FC = () => {
               <CheckCircle2 className="w-6 h-6 text-emerald-400" />
               <div>
                 <h3 className="text-sm font-bold text-slate-100">{results.length} Documento(s) Anonimizado(s) com Sucesso!</h3>
-                <p className="text-xs text-slate-400">Tarjas pretas aplicadas com sanitização documental por achatamento rasterizado (300 DPI).</p>
+                <p className="text-xs text-slate-400">Tarjas pretas definitivas aplicadas com sanitização por achatamento rasterizado adaptativo.</p>
               </div>
             </div>
 
@@ -1154,6 +1154,19 @@ export const LgpdRedactor: React.FC = () => {
                 <span>Baixar Todos em ZIP ({results.length})</span>
               </button>
             )}
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+            <div className="flex items-center gap-2 font-semibold text-slate-300">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Garantia de Anonimização Definitiva (LGPD):</span>
+            </div>
+            <p>
+              Todos os fluxos originais de texto, formulários interativos, assinaturas e metadados foram fisicamente destruídos.
+            </p>
+            <p className="text-slate-500 pt-0.5">
+              💡 <strong>Nota de Acessibilidade & Pesquisa (Ctrl+F):</strong> Como o texto original foi eliminado para assegurar proteção forense inviolável, caso o tribunal exija documentos pesquisáveis, envie o PDF baixado ao módulo <strong className="text-slate-400 font-semibold">OCR Local & Scanner</strong> para gerar uma nova camada de texto 100% limpa.
+            </p>
           </div>
 
           <div className="space-y-2">

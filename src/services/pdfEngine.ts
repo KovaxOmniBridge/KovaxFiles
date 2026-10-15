@@ -81,6 +81,36 @@ export interface RedactPatternOptions {
   customKeywords: string[];
 }
 
+export interface RedactionRectangle {
+  pageIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text?: string;
+  category?: string;
+  reason?: string;
+}
+
+export interface AnonymizePdfOptions {
+  dpi?: number;
+  quality?: number;
+  maxPixelsPerPage?: number;
+  onProgress?: (progress: { current: number; total: number; stage: string }) => void;
+  /**
+   * @deprecated sanitizeFlatten NÃO PODE ser desativado no método de anonimização.
+   * A tentativa de passar `false` resultará em lançamento de exceção de segurança.
+   * Para marcação visual de conferência sem destruição de dados, utilize `applyVisualOverlay`.
+   */
+  sanitizeFlatten?: true;
+}
+
+export interface VisualOverlayOptions {
+  color?: { r: number; g: number; b: number };
+  borderColor?: { r: number; g: number; b: number };
+  borderWidth?: number;
+}
+
 export interface CompressPreset {
   id: string;
   name: string;
@@ -577,22 +607,11 @@ export class LocalPdfEngine {
   }
 
   /**
-   * Anonimizador LGPD Universal com Queima Vetorial (Burn-In) e Destruição de Texto.
-   * Aplica retângulos pretos solidos rgb(0,0,0) cirúrgicos com tolerância justa de 6px
-   * e destrói permanentemente a camada de texto subjacente e metadados XMP.
+   * Consolidação e ajuste cirúrgico milimétrico de retângulos na mesma linha horizontal.
    */
-  static async redactPdf(
-    pdfBuffer: ArrayBuffer,
-    rectangles: { pageIndex: number; x: number; y: number; width: number; height: number; text?: string; category?: string; reason?: string }[],
-    options?: { sanitizeFlatten?: boolean }
-  ): Promise<Uint8Array> {
-    const doc = await PDFDocument.load(pdfBuffer);
-    const pages = doc.getPages();
-
-    // 0. Trava de Segurança Preventiva: Filtrar blocos longos de IA (validateRedactionSpan)
-    const validRects = rectangles.filter(r => this.validateRedactionSpan(r.text, r.category, r.reason));
-
-    // 1. Ajuste Milimétrico Cirúrgico de Coordenadas
+  private static mergeSurgicalRectangles(
+    validRects: RedactionRectangle[]
+  ): Map<number, { x: number; y: number; width: number; height: number }[]> {
     const surgicalRects = validRects.map(r => ({
       pageIndex: r.pageIndex,
       x: Math.max(0, r.x - 0.5),
@@ -601,7 +620,6 @@ export class LocalPdfEngine {
       height: r.height + 1
     }));
 
-    // 2. Fusão Inteligente Cirúrgica na MESMA LINHA HORIZONTAL (|y1 - y2| <= 4px) com Tolerância Estrita de +6px (Evita hiper-tarjamento)
     const mergedRectsByPage = new Map<number, { x: number; y: number; width: number; height: number }[]>();
 
     surgicalRects.forEach(rect => {
@@ -613,7 +631,6 @@ export class LocalPdfEngine {
       let merged = false;
       for (const existing of pageList) {
         const isSameHorizontalLine = Math.abs(existing.y - rect.y) <= 4.0;
-        // Tolerância cirúrgica de no máximo 6 pixels entre palavras da mesma linha
         const isCloseHorizontal = (rect.x <= existing.x + existing.width + 6.0) && (rect.x + rect.width >= existing.x - 6.0);
 
         if (isSameHorizontalLine && isCloseHorizontal) {
@@ -633,7 +650,6 @@ export class LocalPdfEngine {
       }
     });
 
-    // Passada secundária para consolidação de vizinhos adjacentes (<= 6px) na mesma linha
     mergedRectsByPage.forEach((pageRects) => {
       let changed = true;
       while (changed) {
@@ -663,7 +679,90 @@ export class LocalPdfEngine {
       }
     });
 
-    // 3. Desenhar retângulos pretos solidos rgb(0,0,0) em Burn-in cirúrgico
+    return mergedRectsByPage;
+  }
+
+  /**
+   * MARCAÇÃO VISUAL PRELIMINAR (Apenas Sobreposição Vetorial)
+   * 
+   * AVISO DE SEGURANÇA INSTITUCIONAL:
+   * Este método desenha apenas retângulos visuais de marcação no documento vetorial original.
+   * O texto original, formulários, anotações e fluxos de dados PERMANECEM INTEGRALMENTE RECUPERÁVEIS
+   * sob as tarjas por qualquer ferramenta de extração de texto, busca ou análise forense.
+   * 
+   * Utilize este método EXCLUSIVAMENTE para conferência visual na interface, rascunhos ou pré-visualização.
+   * Para anonimização definitiva que impeça extração de dados pessoais sob a LGPD,
+   * utilize OBRIGATORIAMENTE o método `anonymizePdf`.
+   */
+  static async applyVisualOverlay(
+    pdfBuffer: ArrayBuffer | Uint8Array,
+    rectangles: RedactionRectangle[],
+    options?: VisualOverlayOptions
+  ): Promise<Uint8Array> {
+    console.warn('[LocalPdfEngine] AVISO: applyVisualOverlay desenhou apenas retângulos visuais. A camada de texto e objetos subjacentes permanecem intactos. Não utilize este arquivo para distribuição confidencial.');
+    const doc = await PDFDocument.load(pdfBuffer instanceof Uint8Array ? pdfBuffer : new Uint8Array(pdfBuffer));
+    const pages = doc.getPages();
+
+    const validRects = rectangles.filter(r => this.validateRedactionSpan(r.text, r.category, r.reason));
+    const mergedRectsByPage = this.mergeSurgicalRectangles(validRects);
+
+    const overlayColor = options?.color ? rgb(options.color.r, options.color.g, options.color.b) : rgb(0, 0, 0);
+    const borderColor = options?.borderColor ? rgb(options.borderColor.r, options.borderColor.g, options.borderColor.b) : rgb(0, 0, 0);
+    const borderWidth = options?.borderWidth ?? 0.5;
+
+    mergedRectsByPage.forEach((pageRects, pageIndex) => {
+      if (pageIndex >= 0 && pageIndex < pages.length) {
+        const page = pages[pageIndex];
+        pageRects.forEach(rect => {
+          page.drawRectangle({
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            color: overlayColor,
+            borderColor: borderColor,
+            borderWidth: borderWidth
+          });
+        });
+      }
+    });
+
+    return await doc.save();
+  }
+
+  /**
+   * ANONIMIZAÇÃO SEGURA DEFINITIVA (LGPD & Sigilo Judicial)
+   * 
+   * Aplica retângulos cirúrgicos sólidos e executa a DESTRUIÇÃO FÍSICA INEGOCIÁVEL da camada
+   * de texto subjacente, formulários (/AcroForm), anotações (/Annots), assinaturas digitais (/SigFlags),
+   * camadas ocultas (/OCProperties), anexos embutidos (/Names, /EmbeddedFiles) e metadados XMP.
+   * 
+   * A destruição da camada original de texto NÃO PODE ser desativada neste método.
+   * Páginas grandes (plantas/A0) e orientações rotacionadas contam com escalonamento adaptativo de resolução
+   * para prevenir estouro de memória e otimizar o tamanho final do arquivo.
+   */
+  static async anonymizePdf(
+    pdfBuffer: ArrayBuffer | Uint8Array,
+    rectangles: RedactionRectangle[],
+    options?: AnonymizePdfOptions
+  ): Promise<Uint8Array> {
+    // Trava estrita de segurança: Proibir expressamente qualquer tentativa de desativar a destruição de dados
+    if ((options as any)?.sanitizeFlatten === false) {
+      throw new Error(
+        'Violação de Segurança: O método de anonimização segura não permite desativar a destruição do conteúdo original ' +
+        '(sanitizeFlatten: false é estritamente proibido). Se o objetivo for apenas marcação visual preliminar sem garantia de sigilo, ' +
+        'utilize expressamente o método applyVisualOverlay.'
+      );
+    }
+
+    const doc = await PDFDocument.load(pdfBuffer instanceof Uint8Array ? pdfBuffer : new Uint8Array(pdfBuffer));
+    const pages = doc.getPages();
+
+    // 0. Trava preventiva
+    const validRects = rectangles.filter(r => this.validateRedactionSpan(r.text, r.category, r.reason));
+    const mergedRectsByPage = this.mergeSurgicalRectangles(validRects);
+
+    // 1. Desenhar retângulos pretos sólidos rgb(0,0,0)
     mergedRectsByPage.forEach((pageRects, pageIndex) => {
       if (pageIndex >= 0 && pageIndex < pages.length) {
         const page = pages[pageIndex];
@@ -681,72 +780,109 @@ export class LocalPdfEngine {
       }
     });
 
-    // 4. Expurgo completo de Metadados XMP, Formularios, Estrutura e Anotacoes para Garantir o Sigilo LGPD
+    // 2. Expurgo profundo de Metadados XMP, Formulários, Assinaturas, Anexos e Camadas Ocultas
     try {
-      doc.setTitle('Documento Tarjado e Protegido (LGPD)');
-      doc.setAuthor('KovaxFiles Anonimizador');
-      doc.setSubject('Segredo de Justica / Protecao LGPD');
+      doc.setTitle('Documento Anonimizado e Sanitizado (LGPD)');
+      doc.setAuthor('KovaxFiles Document Engine');
+      doc.setSubject('Anonimizacao Irreversivel LGPD');
       doc.catalog.delete(PDFName.of('Metadata'));
       doc.catalog.delete(PDFName.of('PieceInfo'));
       
-      // Expurga Formularios Interativos (AcroForm)
+      // Expurga Formulários Interativos (AcroForm)
       if (doc.catalog.has(PDFName.of('AcroForm'))) {
         doc.catalog.delete(PDFName.of('AcroForm'));
       }
-      // Expurga Arvore de Acessibilidade / Tagged PDF (StructTreeRoot)
+      // Expurga Árvore de Acessibilidade / Tagged PDF (StructTreeRoot)
       if (doc.catalog.has(PDFName.of('StructTreeRoot'))) {
         doc.catalog.delete(PDFName.of('StructTreeRoot'));
       }
-      // Expurga Arquivos Embutidos e Nomes (/Names)
+      // Expurga Arquivos Embutidos e Nomes (/Names, /EmbeddedFiles)
       if (doc.catalog.has(PDFName.of('Names'))) {
         doc.catalog.delete(PDFName.of('Names'));
       }
-      // Expurga Marcadores / Indice (/Outlines)
+      if (doc.catalog.has(PDFName.of('EmbeddedFiles'))) {
+        doc.catalog.delete(PDFName.of('EmbeddedFiles'));
+      }
+      // Expurga Camadas Ocultas (Optional Content Groups / OCProperties)
+      if (doc.catalog.has(PDFName.of('OCProperties'))) {
+        doc.catalog.delete(PDFName.of('OCProperties'));
+      }
+      // Expurga Flags e Permissões de Assinatura Digital
+      if (doc.catalog.has(PDFName.of('SigFlags'))) {
+        doc.catalog.delete(PDFName.of('SigFlags'));
+      }
+      if (doc.catalog.has(PDFName.of('Perms'))) {
+        doc.catalog.delete(PDFName.of('Perms'));
+      }
+      // Expurga Marcadores / Índice (/Outlines)
       if (doc.catalog.has(PDFName.of('Outlines'))) {
         doc.catalog.delete(PDFName.of('Outlines'));
       }
+      // Expurga Ações Automáticas (/AA, /OpenAction)
+      if (doc.catalog.has(PDFName.of('OpenAction'))) {
+        doc.catalog.delete(PDFName.of('OpenAction'));
+      }
+      if (doc.catalog.has(PDFName.of('AA'))) {
+        doc.catalog.delete(PDFName.of('AA'));
+      }
     } catch {}
 
-    // Expurga Anotacoes (/Annots) de todas as paginas
+    // Expurga Anotações (/Annots) de todas as páginas (incluindo widgets de formulário e assinaturas)
     pages.forEach(p => {
       try {
         if (p.node.has(PDFName.of('Annots'))) {
           p.node.delete(PDFName.of('Annots'));
+        }
+        if (p.node.has(PDFName.of('AA'))) {
+          p.node.delete(PDFName.of('AA'));
         }
       } catch {}
     });
 
     const redactedVectorBuffer = await doc.save();
 
-    // 5. Verificação de Modo de Sanitização:
-    // O Achatamento Rasterizado (Flattening 300 DPI) é a etapa essencial que
-    // destrói fisicamente a camada oculta de texto dos caracteres anonimizados.
-    const shouldFlatten = options?.sanitizeFlatten !== false;
-    if (!shouldFlatten) {
-      console.warn('[LocalPdfEngine] AVISO DE SEGURANÇA: Tarjamento explicitamente solicitado em Modo Vetorial puro (sem achatamento). A camada de texto original permanece sob as tarjas.');
-      return redactedVectorBuffer;
-    }
-
+    // 3. Sanitização por Achatamento Adaptativo (Destruição Física de Texto Incondicional)
     try {
-      return await this.sanitizeFlattenPdf(redactedVectorBuffer);
+      return await this.sanitizeFlattenPdf(redactedVectorBuffer, {
+        dpi: options?.dpi || 300,
+        quality: options?.quality || 0.88,
+        maxPixelsPerPage: options?.maxPixelsPerPage || 25_000_000
+      });
     } catch (err: any) {
       console.error('[LocalPdfEngine] Falha crítica de sanitização por achatamento:', err);
-      // NUNCA retornar redactedVectorBuffer em caso de falha: a exportação DEVE ser interrompida
-      // para evitar entrega de arquivo com texto confidencial recuperável.
       throw new Error(`Falha crítica de segurança na anonimização: Não foi possível comprovar a destruição da camada de texto subjacente (${err?.message || 'Erro na etapa de rasterização'}). A exportação foi interrompida para impedir vazamento de dados confidenciais.`);
     }
   }
 
   /**
+   * Alias compatível de `anonymizePdf`.
+   * Mantém suporte para chamadas legadas de `redactPdf`, garantindo que desativar a sanitização seja rejeitado.
+   */
+  static async redactPdf(
+    pdfBuffer: ArrayBuffer | Uint8Array,
+    rectangles: RedactionRectangle[],
+    options?: AnonymizePdfOptions
+  ): Promise<Uint8Array> {
+    return this.anonymizePdf(pdfBuffer, rectangles, options);
+  }
+
+  /**
    * Sanitização Absoluta por Achatamento Rasterizado (Flattening):
-   * Transforma as páginas em imagens de alta definição a 300 DPI nominais (fator de escala 300 / 72 ≈ 4.1667),
+   * Transforma as páginas em imagens de alta definição a 300 DPI nominais (com escalonamento adaptativo para plantas/páginas grandes),
    * destruindo fisicamente qualquer fluxo de texto subjacente.
    * Suporta renderização via Canvas HTML5 (Browser / Electron) e fallback headless com PyMuPDF (Node.js).
    * 
    * IMPORTANTE: Se o processo de rasterização falhar ou não estiver disponível,
    * este método DISPARA UMA EXCEÇÃO e NUNCA entrega silenciosamente um PDF vetorial com texto recuperável.
    */
-  private static async sanitizeFlattenPdf(redactedPdfBuffer: Uint8Array): Promise<Uint8Array> {
+  private static async sanitizeFlattenPdf(
+    redactedPdfBuffer: Uint8Array,
+    options?: { dpi?: number; quality?: number; maxPixelsPerPage?: number }
+  ): Promise<Uint8Array> {
+    const targetDpi = options?.dpi || 300;
+    const targetQuality = options?.quality || 0.88;
+    const maxPixels = options?.maxPixelsPerPage || 25_000_000;
+
     // 1. Fallback Headless para ambientes Node.js / CLI sem DOM
     if (typeof document === 'undefined') {
       if (typeof process !== 'undefined' && (process as any).versions?.node) {
@@ -770,7 +906,8 @@ export class LocalPdfEngine {
             throw new Error(`Script headless_flattener.py não encontrado em: ${flattenerScript}`);
           }
 
-          const res = spawnSync(pythonExe, [flattenerScript, tmpIn, tmpOut, '300'], { stdio: 'pipe' });
+          const qualityParam = String(Math.round(targetQuality * 100));
+          const res = spawnSync(pythonExe, [flattenerScript, tmpIn, tmpOut, String(targetDpi), qualityParam], { stdio: 'pipe' });
           if (res.status === 0 && fs.existsSync(tmpOut)) {
             const outBytes = fs.readFileSync(tmpOut);
             try {
@@ -795,7 +932,7 @@ export class LocalPdfEngine {
       throw new Error('Falha crítica de segurança: Ambiente sem suporte a DOM/Canvas e sem interpretador Node.js disponível para achatamento. A exportação foi interrompida para impedir vazamento de dados confidenciais.');
     }
 
-    // 2. Pipeline Nativo de Navegador / Electron Renderer (Canvas HTML5 a 300 DPI)
+    // 2. Pipeline Nativo de Navegador / Electron Renderer (Canvas HTML5 a 300 DPI nominais com proteção de memória)
     const loadingTask = pdfjsLib.getDocument({
       data: redactedPdfBuffer,
       useSystemFonts: true,
@@ -808,16 +945,23 @@ export class LocalPdfEngine {
     }
 
     const sanitizedDoc = await PDFDocument.create();
-
-    // Resolução nominal de 300 DPI: fator de escala baseado na razão padrão de 72 pontos por polegada (300 / 72 ≈ 4.166666666666667)
-    const TARGET_DPI = 300;
     const PDF_BASE_POINTS_PER_INCH = 72;
-    const scale = TARGET_DPI / PDF_BASE_POINTS_PER_INCH;
 
     for (let i = 1; i <= pdfDoc.numPages; i++) {
       const page = await pdfDoc.getPage(i);
-      const viewport = page.getViewport({ scale });
       const baseViewport = page.getViewport({ scale: 1.0 });
+
+      // Cálculo adaptativo de resolução para páginas grandes (plantas de engenharia / A0 / A1)
+      const nominalScale = targetDpi / PDF_BASE_POINTS_PER_INCH;
+      const rawPixels = (baseViewport.width * nominalScale) * (baseViewport.height * nominalScale);
+
+      let effectiveScale = nominalScale;
+      if (rawPixels > maxPixels) {
+        effectiveScale = Math.sqrt(maxPixels / (baseViewport.width * baseViewport.height));
+        console.warn(`[LocalPdfEngine] Página grande detectada (${baseViewport.width.toFixed(0)}x${baseViewport.height.toFixed(0)}pt). Escala adaptada para ${(effectiveScale * 72).toFixed(0)} DPI para controle de memória e tamanho de arquivo.`);
+      }
+
+      const viewport = page.getViewport({ scale: effectiveScale });
 
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(viewport.width);
@@ -829,12 +973,12 @@ export class LocalPdfEngine {
       }
 
       await page.render({ canvasContext: ctx, viewport }).promise;
-      const imgDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const imgDataUrl = canvas.toDataURL('image/jpeg', targetQuality);
 
       const imgBytes = dataURLtoUint8Array(imgDataUrl);
       const embeddedImg = await sanitizedDoc.embedJpg(imgBytes);
 
-      // Preserva as dimensões físicas originais da página (em pontos a 72 DPI), garantindo que a renderização visual possua densidade real de 300 DPI
+      // Preserva as dimensões físicas originais da página (em pontos a 72 DPI), garantindo alta fidelidade visual
       const pdfPage = sanitizedDoc.addPage([baseViewport.width, baseViewport.height]);
       pdfPage.drawImage(embeddedImg, {
         x: 0,
