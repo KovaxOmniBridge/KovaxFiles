@@ -135,3 +135,46 @@ Para habilitar a compilação oficial assinada no GitHub Actions:
 ### No macOS:
 1. Exporte a identidade Developer ID Application em formato `.p12` no Keychain Access.
 2. Converta em Base64 e adicione as secrets `MAC_CSC_LINK` e `MAC_CSC_KEY_PASSWORD`.
+
+---
+
+## 6. Matriz Multiplataforma de CI (Linux, Windows, macOS) vs. Ensaio Independente
+
+Uma suíte automatizada executada apenas em ambiente Linux **não comprova o comportamento do aplicativo desktop em outros sistemas operacionais**. Por essa razão, a arquitetura de validação do KovaxFiles distingue rigorosamente dois níveis de conformidade:
+
+### 6.1 Matriz de CI Multiplataforma Automatizada (`forensic-audit-ci.yml`)
+
+O workflow oficial executa uma matriz paralela em runners limpos fornecidos pelo GitHub Actions:
+
+```yaml
+strategy:
+  fail-fast: false
+  matrix:
+    os: [ubuntu-latest, windows-latest, macos-latest]
+```
+
+Cada sistema operacional testa especificidades da sua plataforma:
+* **No Windows (`windows-latest`):**
+  - Validação de caminhos Win32 (letras de unidade `C:\`, contrabarras `\`, rejeição de caminhos UNC remotos `\\servidor`).
+  - Inspeção do subsistema Microsoft Authenticode (`Get-AuthenticodeSignature`).
+  - Execução dinâmica do Chromium Sandbox sob o subsistema de processos do Windows.
+* **No macOS (`macos-latest`):**
+  - Validação de integridade do arquivo de entitlements (`electron/entitlements.mac.plist`).
+  - Verificação de caminhos sob o sistema de arquivos APFS.
+  - Execução dinâmica da sandbox do Electron sob o Darwin.
+* **No Linux (`ubuntu-latest`):**
+  - Execução de display virtual via `Xvfb`.
+  - Isolamento de processos sob o kernel Linux.
+
+Os relatórios forenses e artefatos de cada sistema operacional são arquivados separadamente com **retenção de 90 dias** (`forensic-audit-evidence-windows-latest`, `forensic-audit-evidence-macos-latest`, `forensic-audit-evidence-ubuntu-latest`).
+
+### 6.2 O Ensaio Independente em Máquina Limpa (Critério Definitivo)
+
+Mesmo uma matriz de CI multiplataforma aprovada testa os códigos-fonte e binários dentro de imagens de runner padronizadas de nuvem. Ela **não substitui o ensaio independente** realizado em máquinas físicas ou virtuais do mundo real.
+
+**O ensaio independente exige:**
+1. Baixar o instalador final compilado (`.exe` NSIS assinado ou `.dmg` notarizado).
+2. Transferir para um computador limpo (sem Node.js, sem Python, sem VSCode, sem Git).
+3. Verificar a ausência de alertas de fornecedor desconhecido (*SmartScreen* / *Gatekeeper*).
+4. Executar operações reais de anonimização e juntada processual, coletando o hash SHA-256 e o relatório forense emitido pelo aplicativo.
+

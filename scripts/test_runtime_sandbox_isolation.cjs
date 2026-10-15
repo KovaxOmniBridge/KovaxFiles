@@ -11,8 +11,14 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
-// Desativa aceleração por hardware para execução estável em CI headless
+// Desativa aceleração por hardware e configura switches para CI headless / Linux
 app.disableHardwareAcceleration();
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-software-rasterizer');
+  app.commandLine.appendSwitch('disable-dev-shm-usage');
+}
 
 let testsPassed = 0;
 let testsFailed = 0;

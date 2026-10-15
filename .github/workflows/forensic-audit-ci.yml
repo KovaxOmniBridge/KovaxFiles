@@ -14,8 +14,12 @@ permissions:
 
 jobs:
   forensic-audit:
-    name: Forensic Security Battery & Evidence Preservation (Clean Environment)
-    runs-on: ubuntu-latest
+    name: Forensic Audit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
       - name: Checkout Repository
@@ -46,8 +50,15 @@ jobs:
       - name: Run Distribution Prerequisites Verification
         run: npm run test:distribution-prerequisites
 
-      - name: Run Dynamic Runtime Sandbox Isolation Test
+      # No Linux, xvfb gerencia o display virtual para Electron/Chromium headless
+      - name: Run Dynamic Runtime Sandbox Isolation Test (Linux)
+        if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum -- npm run test:sandbox-isolation
+
+      # No Windows e macOS, a execução dinâmica utiliza a sessão de usuário nativa
+      - name: Run Dynamic Runtime Sandbox Isolation Test (Windows & macOS)
+        if: runner.os != 'Linux'
+        run: npm run test:sandbox-isolation
 
       - name: Run Distribution Security Architecture Tests
         run: npm run test:dist-security
@@ -69,6 +80,7 @@ jobs:
 
       - name: Publish Forensic Report to GitHub Step Summary
         if: always()
+        shell: bash
         run: |
           if [ -f test_output/battery/relatorio_forense_resumo.md ]; then
             cat test_output/battery/relatorio_forense_resumo.md >> $GITHUB_STEP_SUMMARY
@@ -78,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: forensic-redaction-audit-evidence
+          name: forensic-audit-evidence-${{ matrix.os }}
           path: |
             test_output/battery/relatorio_forense_anonimizacao.json
             test_output/battery/relatorio_forense_resumo.md

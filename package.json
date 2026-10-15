@@ -18,7 +18,7 @@
     "test:raster-quality": "npx tsx scripts/test_raster_quality_criteria.ts",
     "test:ai-diagnostics": "npx tsx scripts/test_ai_diagnostic_tiers.ts",
     "test:distribution-prerequisites": "npx tsx scripts/verify_distribution_prerequisites.ts",
-    "test:sandbox-isolation": "electron scripts/test_runtime_sandbox_isolation.cjs",
+    "test:sandbox-isolation": "electron --no-sandbox scripts/test_runtime_sandbox_isolation.cjs",
     "test:release-operational": "npx tsx scripts/verify_distribution_prerequisites.ts",
     "package:dev:win": "npm run build && electron-builder --win",
     "package:win": "npm run build && electron-builder --win",
