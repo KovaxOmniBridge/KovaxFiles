@@ -13,5 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showItemInFolder: (filePath: string): Promise<boolean> => {
     return ipcRenderer.invoke('system:showItemInFolder', filePath);
   },
+  getAiStatus: (): Promise<{ running: boolean; port: number; cpuCores: number; modelName: string; isGpuAccelerated: boolean }> => {
+    return ipcRenderer.invoke('ai:getStatus');
+  },
   isElectron: true
 });

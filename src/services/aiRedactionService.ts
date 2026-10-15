@@ -537,10 +537,11 @@ ${text.substring(0, 3800)}`;
         }
       }
 
-      // Aguarda até 90s para o modelo carregar na RAM e o servidor responder 200 OK em /health
-      const isServerReady = await this.waitForHealth(90000);
+      // Aguarda o servidor responder. Se não houver launcher nativo IPC, faz probe rápido de 2.5s.
+      const timeoutToUse = (typeof window !== 'undefined' && (window as any).electronAPI?.startAiServer) ? 45000 : 2500;
+      const isServerReady = await this.waitForHealth(timeoutToUse);
       if (!isServerReady) {
-        console.warn(`[chatDirectWithAi] Servidor local não respondeu 200 OK em 90s para ${engine}.`);
+        console.warn(`[chatDirectWithAi] Servidor local não respondeu 200 OK no tempo limite para ${engine}.`);
         continue;
       }
 

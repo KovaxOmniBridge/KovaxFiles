@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import os from 'os';
+import http from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -95,5 +97,81 @@ ipcMain.handle('system:openPath', async (_, filePath: string) => {
 ipcMain.handle('system:showItemInFolder', async (_, filePath: string) => {
   shell.showItemInFolder(filePath);
   return true;
+});
+
+// IPC Handler para diagnóstico e health-check real da IA local (porta 18888)
+ipcMain.handle('ai:getStatus', async () => {
+  const cpuCores = os.cpus().length;
+  const port = 18888;
+
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 1500 }, (res) => {
+      if (res.statusCode === 200) {
+        // Probe de modelo carregado via /v1/models
+        http.get(`http://127.0.0.1:${port}/v1/models`, { timeout: 1500 }, (modelsRes) => {
+          let data = '';
+          modelsRes.on('data', chunk => { data += chunk; });
+          modelsRes.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              const modelId = json.data?.[0]?.id || 'Modelo Local C++ Ativo';
+              resolve({
+                running: true,
+                port,
+                cpuCores,
+                modelName: modelId,
+                isGpuAccelerated: false
+              });
+            } catch {
+              resolve({
+                running: true,
+                port,
+                cpuCores,
+                modelName: 'Servidor Local C++ Ativo (Porta 18888)',
+                isGpuAccelerated: false
+              });
+            }
+          });
+        }).on('error', () => {
+          resolve({
+            running: true,
+            port,
+            cpuCores,
+            modelName: 'Servidor Local C++ Ativo (Porta 18888)',
+            isGpuAccelerated: false
+          });
+        });
+      } else {
+        resolve({
+          running: false,
+          port,
+          cpuCores,
+          modelName: `Servidor Offline (HTTP ${res.statusCode})`,
+          isGpuAccelerated: false
+        });
+      }
+    });
+
+    req.on('error', () => {
+      resolve({
+        running: false,
+        port,
+        cpuCores,
+        modelName: 'Servidor Offline (Porta 18888 não responde)',
+        isGpuAccelerated: false
+      });
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({
+        running: false,
+        port,
+        cpuCores,
+        modelName: 'Servidor Offline (Timeout na porta 18888)',
+        isGpuAccelerated: false
+      });
+    });
+  });
 });
 

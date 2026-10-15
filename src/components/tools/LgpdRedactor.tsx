@@ -47,30 +47,92 @@ export const LgpdRedactor: React.FC = () => {
   const [rigorLevel, setRigorLevel] = useState<AiRigorLevel>('broad');
   const [geminiApiKey, setGeminiApiKey] = useState<string>('');
 
-  // Status do Servidor de IA Local Embutido (CPU)
+  // Status do Servidor de IA Local (Inicializado como Indisponível até verificação de saúde)
   const [embeddedAiStatus, setEmbeddedAiStatus] = useState<{
     running: boolean;
+    checking: boolean;
     cpuCores: number;
     modelName: string;
   }>({
-    running: true,
-    cpuCores: 8,
-    modelName: 'KovaxLegal AI 8B (Nativo C++ - Porta 18888)'
+    running: false,
+    checking: true,
+    cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
+    modelName: 'Verificando conectividade com motor local...'
   });
 
   useEffect(() => {
-    // Consulta o status real da IA Local Embutida via IPC no Electron
-    if (window.electronAPI?.getAiStatus) {
-      window.electronAPI.getAiStatus().then(status => {
-        if (status) {
-          setEmbeddedAiStatus({
-            running: status.running,
-            cpuCores: status.cpuCores || 8,
-            modelName: status.modelName || 'KovaxLegal AI 8B (Nativo C++ - Porta 18888)'
-          });
+    let isMounted = true;
+
+    async function probeAiHealth() {
+      // 1. Tenta consulta via IPC no Electron se disponível
+      if (typeof window !== 'undefined' && window.electronAPI?.getAiStatus) {
+        try {
+          const status = await window.electronAPI.getAiStatus();
+          if (isMounted && status) {
+            setEmbeddedAiStatus({
+              running: status.running,
+              checking: false,
+              cpuCores: status.cpuCores || (typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 4) || 4,
+              modelName: status.running 
+                ? (status.modelName || 'Motor Local C++ Ativo') 
+                : 'Servidor Local Offline (Porta 18888)'
+            });
+            return;
+          }
+        } catch (err) {
+          console.warn('[LgpdRedactor] Erro ao consultar status via IPC:', err);
         }
-      }).catch(() => {});
+      }
+
+      // 2. Fallback: Probe HTTP direto em http://127.0.0.1:18888/health
+      try {
+        const res = await fetch('http://127.0.0.1:18888/health', {
+          signal: AbortSignal.timeout(1500)
+        });
+
+        if (res.ok) {
+          let detectedModel = 'Motor Local C++ Ativo (Porta 18888)';
+          try {
+            const modelsRes = await fetch('http://127.0.0.1:18888/v1/models', {
+              signal: AbortSignal.timeout(1200)
+            });
+            if (modelsRes.ok) {
+              const data = await modelsRes.json();
+              if (data.data?.[0]?.id) {
+                detectedModel = data.data[0].id;
+              }
+            }
+          } catch {}
+
+          if (isMounted) {
+            setEmbeddedAiStatus({
+              running: true,
+              checking: false,
+              cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
+              modelName: detectedModel
+            });
+            return;
+          }
+        }
+      } catch {
+        // Servidor offline ou não iniciado
+      }
+
+      if (isMounted) {
+        setEmbeddedAiStatus({
+          running: false,
+          checking: false,
+          cpuCores: typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4,
+          modelName: 'Servidor Local Offline (Porta 18888)'
+        });
+      }
     }
+
+    probeAiHealth();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Configuração das Categorias LGPD
@@ -447,20 +509,34 @@ export const LgpdRedactor: React.FC = () => {
             <span>Motor de Análise e Detecção:</span>
           </label>
 
-          {/* Badge de Status da IA Local Embutida */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          {/* Badge de Status da IA Local com Diagnóstico Real */}
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all ${
+            embeddedAiStatus.checking
+              ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+              : embeddedAiStatus.running
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-slate-800/80 border-slate-700 text-slate-400'
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${
+              embeddedAiStatus.checking
+                ? 'bg-amber-400 animate-pulse'
+                : embeddedAiStatus.running
+                  ? 'bg-emerald-400 animate-pulse'
+                  : 'bg-slate-500'
+            }`} />
             <Cpu className="w-3.5 h-3.5" />
             <span>
-              {embeddedAiStatus.running 
-                ? `IA Local Embutida Pronta (${embeddedAiStatus.cpuCores} núcleos CPU)` 
-                : `IA Local NER (100% Offline / ${embeddedAiStatus.cpuCores} núcleos CPU)`}
+              {embeddedAiStatus.checking
+                ? 'Diagnosticando Motor Local (Porta 18888)...'
+                : embeddedAiStatus.running
+                  ? `Motor C++ Conectado: ${embeddedAiStatus.modelName} (${embeddedAiStatus.cpuCores} núcleos)`
+                  : `Motor C++ Offline — Fallback Neural Local (WASM/BERT) Ativo`}
             </span>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          {/* Card: IA Local Embutida Llama (100% Nativa do App) - Padrão */}
+          {/* Card: IA Local Embutida WASM/BERT - Padrão */}
           <div
             onClick={() => setAiMode('embedded')}
             className={`p-4 rounded-xl border cursor-pointer transition-all ${
@@ -472,12 +548,12 @@ export const LgpdRedactor: React.FC = () => {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
                 <Brain className="w-4 h-4" />
-                <span>IA Embutida Qwen 2.5 (Nativa no App)</span>
+                <span>IA Neural Local (BERT / WASM)</span>
               </div>
               {aiMode === 'embedded' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              <strong>Recomendado (100% Local / Zero Setup).</strong> Utiliza a IA Qwen 2.5 1.5B nativamente no seu PC com alta velocidade e suporte perfeito à LGPD.
+              <strong>Padrão Autônomo (100% Offline).</strong> Reconhecimento de entidades nomeadas (NER) e classificação Zero-Shot em memória.
             </p>
           </div>
 
@@ -502,7 +578,7 @@ export const LgpdRedactor: React.FC = () => {
             </p>
           </div>
 
-          {/* Card: IA Local Integrada (Porta 18888) */}
+          {/* Card: Servidor Local C++ (Porta 18888) */}
           <div
             onClick={() => setAiMode('embedded')}
             className={`p-4 rounded-xl border cursor-pointer transition-all ${
@@ -514,12 +590,20 @@ export const LgpdRedactor: React.FC = () => {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 text-purple-400 font-bold text-xs">
                 <Server className="w-4 h-4" />
-                <span>IA Local Nativa (Qwen 2.5 / LLaMA 3.2 C++)</span>
+                <span>Servidor Local C++ (Porta 18888)</span>
               </div>
-              {aiMode === 'embedded' && <CheckCircle2 className="w-4 h-4 text-purple-400" />}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                embeddedAiStatus.running
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+              }`}>
+                {embeddedAiStatus.running ? 'Online' : 'Offline'}
+              </span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Motor C++ nativo integrado. Execução 100% offline com zero transferência de dados externos.
+              {embeddedAiStatus.running
+                ? `Modelo ativo: ${embeddedAiStatus.modelName}. Processo verificado na porta 18888.`
+                : 'Servidor C++ não detectado na porta 18888. O aplicativo opera via motor neural local WASM.'}
             </p>
           </div>
         </div>
