@@ -345,7 +345,8 @@ export class CustomLegalKnowledgeService {
     // Auditoria automatizada de publicação e autenticidade
     const auditReport = LegalCorpusAuditorService.verifyArticle(newArt);
     newArt.officialId = auditReport.officialId;
-    newArt.officialContentSha256 = auditReport.canonicalSha256;
+    newArt.officialContentSha256 = auditReport.externalSourceHash;
+    newArt.externalSourceHash = auditReport.externalSourceHash;
     newArt.officialPublisher = auditReport.officialPublisher;
     newArt.authenticityStatus = auditReport.authenticityStatus;
     newArt.auditNotes = auditReport.auditNotes;
@@ -401,7 +402,8 @@ export class CustomLegalKnowledgeService {
     // Auditoria automatizada de publicação e autenticidade
     const auditReport = LegalCorpusAuditorService.verifyArticle(newArt);
     newArt.officialId = auditReport.officialId;
-    newArt.officialContentSha256 = auditReport.canonicalSha256;
+    newArt.officialContentSha256 = auditReport.externalSourceHash;
+    newArt.externalSourceHash = auditReport.externalSourceHash;
     newArt.officialPublisher = auditReport.officialPublisher;
     newArt.authenticityStatus = auditReport.authenticityStatus;
     newArt.auditNotes = auditReport.auditNotes;

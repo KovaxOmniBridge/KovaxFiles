@@ -2,7 +2,7 @@ import assert from 'assert';
 import { JURISPRUDENCE_STATUTES } from '../src/data/jurisprudenceData.js';
 import { LegalCorpusAuditorService } from '../src/services/legalCorpusAuditorService.js';
 import { LegalKnowledgeBaseService, LegalArticle } from '../src/services/legalKnowledgeBaseService.js';
-import { CustomLegalKnowledgeService } from '../src/services/customLegalKnowledgeService.js';
+import { OfficialSourceIngestionService } from '../src/services/officialSourceIngestionService.js';
 
 async function runAuditableLegalCorpusSuite() {
   console.log('===========================================================================');
@@ -26,26 +26,30 @@ async function runAuditableLegalCorpusSuite() {
   }
   console.log(`      ✓ 10 dispositivos amostrais auditados com URN LexML, Fonte Oficial, Data, Versão e SHA-256`);
 
-  // --- [TESTE 2] Comparação Automatizada de Enunciados com Publicação Oficial ---
-  console.log('\n[TESTE 2] Executando comparação automatizada de enunciados com a publicação oficial via SHA-256...');
+  // --- [TESTE 2] Classificação Fidedigna do Acervo Padrão (Sem Falsa Evidência) ---
+  console.log('\n[TESTE 2] Validando classificação fidedigna: registros sem captura física são NAO_VERIFICADO_EXTERNAMENTE...');
   
   const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
   const sv1Report = LegalCorpusAuditorService.verifyArticle(sv1);
-  assert.ok(
-    sv1Report.authenticityStatus === 'COMPROVADO_COM_EVIDENCIA' || sv1Report.authenticityStatus === 'AUTENTICO_COMPROVADO',
-    `ERRO: SV 1 deve ser homologada como autêntica (obtido: ${sv1Report.authenticityStatus})`
+  assert.strictEqual(
+    sv1Report.authenticityStatus,
+    'NAO_VERIFICADO_EXTERNAMENTE',
+    `ERRO: SV 1 sem captura física documentada deve ser NAO_VERIFICADO_EXTERNAMENTE (obtido: ${sv1Report.authenticityStatus})`
   );
-  assert.strictEqual(sv1Report.isSuspended, false, 'ERRO: SV 1 não pode estar suspensa');
+  assert.strictEqual(sv1Report.isSuspended, false, 'ERRO: SV 1 não está suspensa');
+  assert.strictEqual(sv1Report.isDefensible, false, 'ERRO: SV 1 sem captura externa não é defensável com chancela oficial');
+  assert.strictEqual(sv1Report.provenance?.sourceCapture.capturedAt, undefined, 'ERRO: SV 1 não pode ter capturedAt presumido');
   assert.ok(sv1Report.canonicalSha256.length === 64, 'ERRO: Hash SHA-256 deve possuir 64 caracteres hexadecimais');
-  console.log(`      ✓ SV 1 auditada: Hash SHA-256 canônico gerado (${sv1Report.canonicalSha256.substring(0, 16)}...) e autenticidade comprovada perante o STF`);
+  console.log(`      ✓ SV 1 auditada com honestidade forense: Classificada como NAO_VERIFICADO_EXTERNAMENTE (sem data presumida)`);
 
   const sv6 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-6')!;
   const sv6Report = LegalCorpusAuditorService.verifyArticle(sv6);
-  assert.ok(
-    sv6Report.authenticityStatus === 'COMPROVADO_COM_EVIDENCIA' || sv6Report.authenticityStatus === 'AUTENTICO_COMPROVADO',
-    `ERRO: SV 6 deve ser homologada como autêntica (obtido: ${sv6Report.authenticityStatus})`
+  assert.strictEqual(
+    sv6Report.authenticityStatus,
+    'NAO_VERIFICADO_EXTERNAMENTE',
+    `ERRO: SV 6 sem captura física deve ser NAO_VERIFICADO_EXTERNAMENTE (obtido: ${sv6Report.authenticityStatus})`
   );
-  console.log(`      ✓ SV 6 auditada: Autenticidade literal comprovada com a publicação do Plenário do STF`);
+  console.log(`      ✓ SV 6 auditada: Mantida transparentemente como acervo local pendente de snapshot externo`);
 
   // --- [TESTE 3] Suspensão Obrigatória de Registros Não Comprovados (Caso SV 30) ---
   console.log('\n[TESTE 3] Auditando suspensão obrigatória de enunciados cuja autenticidade não pode ser comprovada (SV 30)...');
@@ -55,8 +59,9 @@ async function runAuditableLegalCorpusSuite() {
   
   const sv30Report = LegalCorpusAuditorService.verifyArticle(sv30);
   assert.strictEqual(sv30Report.isSuspended, true, 'ERRO: SV 30 DEVE ser suspensa por não ter sido publicada no DJe');
-  assert.ok(
-    sv30Report.authenticityStatus === 'SUSPENSO_PREVENTIVAMENTE' || sv30Report.authenticityStatus === 'SUSPENSO_NAO_COMPROVADO',
+  assert.strictEqual(
+    sv30Report.authenticityStatus,
+    'SUSPENSO_PREVENTIVAMENTE',
     `ERRO: Status de autenticidade deve ser SUSPENSO_PREVENTIVAMENTE (obtido: ${sv30Report.authenticityStatus})`
   );
   assert.strictEqual(sv30Report.statusVigencia, 'SUSPENSA_NAO_COMPROVADA', 'ERRO: Vigência deve ser SUSPENSA_NAO_COMPROVADA');
@@ -72,8 +77,17 @@ async function runAuditableLegalCorpusSuite() {
     ...sv1,
     id: 'stf-sv-tampered-test',
     content: 'Texto adulterado com exclusão indevida da Lei Complementar nº 110/2001 e distorção do sentido.',
-    officialContentSha256: originalSv1Sha, // Espera o hash original
-    externalSourceHash: originalSv1Sha
+    provenance: {
+      ...sv1.provenance!,
+      sourceCapture: {
+        ...sv1.provenance!.sourceCapture,
+        hasDocumentedSnapshot: true,
+        capturedAt: '2026-10-16T08:00:00Z',
+        captureMethod: 'OFFICIAL_DJE_SNAPSHOT',
+        externalSourceHash: originalSv1Sha,
+        extractedContentHash: originalSv1Sha
+      }
+    }
   };
 
   const tamperedReport = LegalCorpusAuditorService.verifyArticle(tamperedSv);
@@ -82,7 +96,7 @@ async function runAuditableLegalCorpusSuite() {
   assert.strictEqual(tamperedReport.statusVigencia, 'SUSPENSA_NAO_COMPROVADA', 'ERRO: Registro com divergência deve receber status SUSPENSA_NAO_COMPROVADA');
   console.log(`      ✓ Divergência detectada com sucesso! Registro suspenso preventivamente para proteger o operador.`);
 
-  // --- [TESTE 5] Suspensão Preventiva de Dispositivos sem Fonte Oficial (Acervo Customizado) ---
+  // --- [TESTE 5] Suspensão Preventiva de Dispositivos sem Fonte Oficial & Ingestão com Snapshot Real ---
   console.log('\n[TESTE 5] Validando regra de suspensão preventiva para dispositivos sem comprovação de fonte oficial...');
   
   const unverifiedArticle: LegalArticle = {
@@ -104,22 +118,39 @@ async function runAuditableLegalCorpusSuite() {
   assert.strictEqual(unverifiedReport.statusVigencia, 'SUSPENSA_NAO_COMPROVADA', 'ERRO: Vigência deve ser marcada como SUSPENSA_NAO_COMPROVADA');
   console.log(`      ✓ Registro sem fonte oficial foi preventivamente suspenso (ORIGEM_NAO_COMPROVADA)`);
 
-  // Agora testando com fonte governamental oficial (.gov.br) e hash de captura externa
-  const contentHashPlanalto = LegalCorpusAuditorService.computeCanonicalSha256(unverifiedArticle.content);
-  const verifiedArticle: LegalArticle = {
-    ...unverifiedArticle,
-    sourceUrl: 'https://www.planalto.gov.br/ccivil_03/leis/l8078.htm',
-    officialRef: 'Diário Oficial da União de 12/09/1990',
-    externalSourceHash: contentHashPlanalto,
-    officialContentSha256: contentHashPlanalto
+  // Testando ingestão com snapshot documental real (OfficialSourceIngestionService)
+  const realCaptureTime = new Date().toISOString();
+  const rawOfficialHtml = '<html><body><h1>Lei nº 8.078/1990</h1><p>Art. 1º O presente código estabelece normas de proteção e defesa do consumidor.</p></body></html>';
+  const sampleConsumerText = 'O presente código estabelece normas de proteção e defesa do consumidor.';
+  
+  const sampleArticle: LegalArticle = {
+    id: 'cdc-art1-ingested',
+    lawName: 'Código de Defesa do Consumidor (Lei 8.078/1990)',
+    article: 'Artigo 1º',
+    title: 'Normas de Proteção',
+    content: sampleConsumerText,
+    keywords: ['cdc', 'consumidor'],
+    sourceUrl: 'https://www.planalto.gov.br/ccivil_03/leis/l8078.htm'
   };
-  const verifiedReport = LegalCorpusAuditorService.verifyArticle(verifiedArticle);
-  assert.ok(
-    verifiedReport.authenticityStatus === 'COMPROVADO_COM_EVIDENCIA' || verifiedReport.authenticityStatus === 'AUTENTICO_COMPROVADO',
-    `ERRO: Deve homologar fonte governamental oficial com hash externo (obtido: ${verifiedReport.authenticityStatus})`
-  );
-  assert.strictEqual(verifiedReport.isSuspended, false, 'ERRO: Registro com fonte oficial comprovada não pode ser suspenso');
-  console.log(`      ✓ Registro com fonte governamental (.gov.br / Planalto) aprovado como COMPROVADO_COM_EVIDENCIA`);
+
+  const ingestedArticle = OfficialSourceIngestionService.ingestOfficialArtifact({
+    article: sampleArticle,
+    rawPayload: rawOfficialHtml,
+    extractedText: sampleConsumerText,
+    exactUrl: 'https://www.planalto.gov.br/ccivil_03/leis/l8078.htm',
+    authority: 'Presidência da República',
+    officialJournal: 'DOU de 12/09/1990',
+    publicationDate: '1990-09-12',
+    capturedAt: realCaptureTime,
+    captureMethod: 'OFFICIAL_PORTAL_INGESTION',
+    sourceFormat: 'HTML'
+  });
+
+  const verifiedReport = LegalCorpusAuditorService.verifyArticle(ingestedArticle);
+  assert.strictEqual(verifiedReport.authenticityStatus, 'COMPROVADO_COM_EVIDENCIA', 'ERRO: Ingestão com snapshot real DEVE ser COMPROVADO_COM_EVIDENCIA');
+  assert.strictEqual(verifiedReport.isSuspended, false);
+  assert.strictEqual(verifiedReport.isDefensible, true);
+  console.log(`      ✓ Ingestão oficial legítima (.gov.br / Planalto) homologada como COMPROVADO_COM_EVIDENCIA`);
 
   // --- [TESTE 6] Proteção em Minutas de Citação (formatCitation) ---
   console.log('\n[TESTE 6] Validando aposição de alerta explícito em citações de registros suspensos...');
@@ -127,7 +158,8 @@ async function runAuditableLegalCorpusSuite() {
   const citationValid = LegalKnowledgeBaseService.formatCitation(sv1, 'PETICAO_ABNT');
   assert.ok(!citationValid.includes('REGISTRO SUSPENSO'), 'ERRO: Citação válida não deve conter alerta de suspensão');
   assert.ok(citationValid.includes('urn:lex:br:'), 'ERRO: Citação deve incluir identificador oficial LexML');
-  console.log(`      ✓ Citação de registro válido formatada com URN LexML oficial`);
+  assert.ok(citationValid.includes('NOTA DE AUDITORIA: Registro documental de acervo local'), 'ERRO: Acervo local não capturado deve conter aviso de auditoria');
+  console.log(`      ✓ Citação de registro não verificado formatada com aviso transparente de acervo local`);
 
   const citationSuspended = LegalKnowledgeBaseService.formatCitation(sv30, 'PETICAO_ABNT');
   assert.ok(citationSuspended.includes('ATENÇÃO: REGISTRO SUSPENSO'), 'ERRO: Citação de dispositivo suspenso DEVE conter alerta explícito');
@@ -139,10 +171,9 @@ async function runAuditableLegalCorpusSuite() {
   
   const auditSummary = LegalCorpusAuditorService.auditCorpus(JURISPRUDENCE_STATUTES, true);
   assert.ok(auditSummary.totalAudited >= 60, 'ERRO: Total auditado incorreto');
-  assert.ok(auditSummary.totalSuspended >= 1, 'ERRO: Deve constar ao menos 1 registro suspenso (SV 30)');
-  assert.ok(auditSummary.complianceRatePercent >= 95, `ERRO: Taxa de conformidade esperada >= 95%, obtido: ${auditSummary.complianceRatePercent}%`);
-  console.log(`      ✓ Auditoria em lote concluída: ${auditSummary.totalAudited} analisados, ${auditSummary.totalAuthentic} autênticos, ${auditSummary.totalSuspended} suspenso(s)`);
-  console.log(`      ✓ Taxa de Conformidade Oficial: ${auditSummary.complianceRatePercent}%`);
+  assert.strictEqual(auditSummary.totalSuspended, 1, 'ERRO: Deve constar exatamente 1 registro suspenso (SV 30)');
+  assert.strictEqual(auditSummary.totalUnverified, 61, 'ERRO: 61 registros devem ser classificados como NAO_VERIFICADO_EXTERNAMENTE');
+  console.log(`      ✓ Auditoria em lote concluída: ${auditSummary.totalAudited} analisados, ${auditSummary.totalUnverified} acervo local (captura externa pendente), ${auditSummary.totalSuspended} suspenso formalmente (SV 30)`);
 
   const usableArticles = LegalCorpusAuditorService.filterUsableArticles(JURISPRUDENCE_STATUTES, false);
   const foundSuspendedInUsable = usableArticles.some(a => a.id === 'stf-sv-30' || a.statusVigencia === 'SUSPENSA_NAO_COMPROVADA');

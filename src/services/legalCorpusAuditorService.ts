@@ -352,7 +352,8 @@ export class LegalCorpusAuditorService {
   }
 
   /**
-   * Constrói a Cadeia Estrutural de Proveniência para um registro jurídico
+   * Constrói a Cadeia Estrutural de Proveniência para um registro jurídico com validação
+   * estrita contra autovalidação circular e eliminação de datas de captura presumidas.
    */
   public static buildProvenanceChain(article: LegalArticle): ProvenanceChain {
     const storedContentHash = this.computeCanonicalSha256(article.content);
@@ -366,11 +367,52 @@ export class LegalCorpusAuditorService {
     const sourceUrl = article.provenance?.sourceCapture?.exactUrl || article.sourceUrl || '';
     const domainResult = this.validateOfficialDomain(sourceUrl);
 
-    const externalSourceHash = article.externalSourceHash || article.officialContentSha256 || article.provenance?.sourceCapture?.externalSourceHash;
-    const hasValidExternalHash = Boolean(externalSourceHash && typeof externalSourceHash === 'string' && externalSourceHash.length === 64);
-    const contentMatch = hasValidExternalHash ? (externalSourceHash === storedContentHash) : false;
+    // Validação estrita de captura física independente:
+    const prevCapture = article.provenance?.sourceCapture;
+    const hasDocumentedSnapshot = Boolean(prevCapture?.hasDocumentedSnapshot || prevCapture?.sourceRawArtifactPath);
+    const captureMethod = prevCapture?.captureMethod || 'MANUAL_UNVERIFIED';
 
-    // Avaliação de status
+    // REMOÇÃO OBRIGATÓRIA DE DATAS DE CAPTURA PRESUMIDAS:
+    // A data de publicação de uma súmula não é a data em que o aplicativo capturou sua fonte.
+    // Qualquer timestamp que corresponda à data histórica de publicação ou contenha o fallback fictício é descartado.
+    let realCapturedAt: string | undefined = prevCapture?.capturedAt;
+    if (realCapturedAt && (realCapturedAt.startsWith(pubDate) || realCapturedAt.includes('12:00:00Z'))) {
+      realCapturedAt = undefined;
+    }
+
+    const externalSourceHash = article.externalSourceHash || prevCapture?.externalSourceHash;
+    const rawArtifactSha256 = prevCapture?.rawArtifactSha256;
+    const extractedContentHash = prevCapture?.extractedContentHash;
+
+    const hasValidExternalHash = Boolean(
+      externalSourceHash &&
+      typeof externalSourceHash === 'string' &&
+      externalSourceHash.length === 64
+    );
+
+    // DETECÇÃO E BLOQUEIO DE AUTOVALIDAÇÃO CIRCULAR:
+    // Se o externalSourceHash for exatamente igual ao storedContentHash do texto local,
+    // mas não existir snapshot físico documentado ou o método for MANUAL_UNVERIFIED ou não houver capturedAt real,
+    // trata-se de falsa evidência externa forjada por clonagem do texto local.
+    const isCircularAutovalidation = Boolean(
+      hasValidExternalHash &&
+      externalSourceHash === storedContentHash &&
+      (!hasDocumentedSnapshot || captureMethod === 'MANUAL_UNVERIFIED' || !realCapturedAt)
+    );
+
+    // Comparação do texto:
+    // Só há contentMatch legítimo se houver captura documentada e o texto extraído da fonte
+    // coincidir com o texto canônico local.
+    let contentMatch = false;
+    if (hasValidExternalHash && !isCircularAutovalidation && hasDocumentedSnapshot) {
+      if (extractedContentHash) {
+        contentMatch = (extractedContentHash === storedContentHash);
+      } else {
+        contentMatch = (externalSourceHash === storedContentHash);
+      }
+    }
+
+    // Avaliação de status com rigor forense
     let status: AuthenticityStatus = 'NAO_VERIFICADO_EXTERNAMENTE';
     let isSuspended = false;
     let isDefensible = false;
@@ -392,22 +434,26 @@ export class LegalCorpusAuditorService {
       isSuspended = true;
       isDefensible = false;
       auditNotes = domainResult.errorReason || 'Origem não comprovada por repositório governamental oficial.';
-    } else if (!hasValidExternalHash) {
-      // Regra Crítica: O hash do conteúdo local NÃO pode ser reutilizado como se fosse o hash de uma fonte externa.
+    } else if (isCircularAutovalidation) {
       status = 'NAO_VERIFICADO_EXTERNAMENTE';
       isSuspended = false;
       isDefensible = false;
-      auditNotes = 'Registro sem captura externa independente homologada. O hash do conteúdo local não pode ser reutilizado como se fosse o hash de uma fonte externa. Não apresentado como fundamentação oficialmente comprovada.';
+      auditNotes = 'Autovalidação circular rejeitada pela auditoria: o hash do texto local foi replicado no campo externo sem captura física documentada. Registro mantido como acervo local pendente de homologação externa.';
+    } else if (!hasValidExternalHash || !hasDocumentedSnapshot || !realCapturedAt) {
+      status = 'NAO_VERIFICADO_EXTERNAMENTE';
+      isSuspended = false;
+      isDefensible = false;
+      auditNotes = 'Registro do acervo local sem captura física independente documentada da publicação oficial. O hash do texto local não é aceito como comprovação de fonte externa. Não admitido como fundamentação oficialmente comprovada.';
     } else if (!contentMatch) {
       status = 'DIVERGENCIA_DETECTADA';
       isSuspended = true;
       isDefensible = false;
-      auditNotes = `Divergência detectada entre o texto armazenado (${storedContentHash.substring(0, 8)}...) e a fonte externa capturada (${externalSourceHash?.substring(0, 8)}...).`;
+      auditNotes = `Divergência detectada entre o texto armazenado (${storedContentHash.substring(0, 8)}...) e o documento oficial capturado (${(extractedContentHash || externalSourceHash)?.substring(0, 8)}...).`;
     } else {
       status = 'COMPROVADO_COM_EVIDENCIA';
       isSuspended = false;
       isDefensible = true;
-      auditNotes = 'Autenticidade e cadeia de proveniência integralmente comprovadas perante repositório oficial.';
+      auditNotes = `Autenticidade e cadeia de proveniência comprovadas perante repositório oficial independente. Captura física documentada em ${realCapturedAt} com coincidência literal de 100%.`;
     }
 
     const publication: OfficialPublicationInfo = {
@@ -423,11 +469,15 @@ export class LegalCorpusAuditorService {
       exactUrl: sourceUrl,
       verifiedHostname: domainResult.hostname,
       isDomainVerified: domainResult.isValid,
-      capturedAt: article.provenance?.sourceCapture?.capturedAt || `${pubDate}T12:00:00Z`,
-      captureMethod: article.provenance?.sourceCapture?.captureMethod || (domainResult.isValid ? 'OFFICIAL_DJE_SNAPSHOT' : 'MANUAL_UNVERIFIED'),
-      externalSourceHash: externalSourceHash || '',
-      sourceFormat: article.provenance?.sourceCapture?.sourceFormat || 'HTML',
-      contentLengthBytes: article.content.length
+      capturedAt: realCapturedAt,
+      captureMethod: (hasDocumentedSnapshot && realCapturedAt) ? captureMethod : 'MANUAL_UNVERIFIED',
+      externalSourceHash: isCircularAutovalidation ? undefined : (externalSourceHash || undefined),
+      rawArtifactSha256,
+      sourceRawArtifactPath: prevCapture?.sourceRawArtifactPath,
+      sourceFormat: prevCapture?.sourceFormat || 'HTML',
+      contentLengthBytes: prevCapture?.contentLengthBytes || article.content.length,
+      hasDocumentedSnapshot,
+      extractedContentHash
     };
 
     const versionHistory: LegalVersionRecord[] = article.provenance?.versionControl?.versionHistory || (
@@ -447,8 +497,9 @@ export class LegalCorpusAuditorService {
       versionReference: article.version || 'v1.0-CONSOLIDADA',
       canonicalText: article.content,
       storedContentHash,
+      extractedContentHash,
       contentMatch,
-      textComparisonDetails: contentMatch ? 'Texto armazenado coincide 100% com a extração da fonte oficial.' : 'Discrepância detectada entre texto local e fonte oficial.',
+      textComparisonDetails: contentMatch ? 'Texto armazenado coincide 100% com a extração da fonte oficial capturada.' : 'Captura independente pendente ou discrepância detectada.',
       versionHistory
     };
 
@@ -456,11 +507,13 @@ export class LegalCorpusAuditorService {
       status,
       isDefensible,
       hasIdentifiedPublication: Boolean(authority && pubDate),
-      hasVerifiableCapture: domainResult.isValid && hasValidExternalHash,
-      hasValidExternalHash,
+      hasVerifiableCapture: Boolean(domainResult.isValid && hasValidExternalHash && hasDocumentedSnapshot && realCapturedAt && !isCircularAutovalidation),
+      hasValidExternalHash: hasValidExternalHash && !isCircularAutovalidation,
       hasContentMatch: contentMatch,
       isDomainVerified: domainResult.isValid,
       isOfficialUrnVerified,
+      hasDocumentedSnapshot,
+      isAutovalidationRejected: isCircularAutovalidation,
       auditNotes
     };
 
@@ -478,7 +531,13 @@ export class LegalCorpusAuditorService {
   public static verifyArticle(article: LegalArticle): ArticleAuditReport {
     const currentStoredHash = this.computeCanonicalSha256(article.content);
     let provenance = article.provenance;
-    if (!provenance || provenance.versionControl.storedContentHash !== currentStoredHash) {
+    // Sempre revalida se não há proveniência, se o hash divergir, se for suspeita de autovalidação ou data presumida
+    const isSuspiciousProvenance = Boolean(
+      provenance &&
+      provenance.evidence.status === 'COMPROVADO_COM_EVIDENCIA' &&
+      (!provenance.sourceCapture.hasDocumentedSnapshot || !provenance.sourceCapture.capturedAt || provenance.sourceCapture.capturedAt.includes('12:00:00Z'))
+    );
+    if (!provenance || provenance.versionControl.storedContentHash !== currentStoredHash || isSuspiciousProvenance) {
       provenance = this.buildProvenanceChain(article);
     }
     const canonicalSha256 = provenance.versionControl.storedContentHash;

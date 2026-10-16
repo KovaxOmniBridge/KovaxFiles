@@ -1,7 +1,7 @@
 /**
  * Bateria de Testes Automatizados da Cadeia de Proveniência e Autenticidade do Acervo Jurídico
  *
- * Valida os Requisitos Estruturais:
+ * Valida os Requisitos Estruturais de Honestidade Forense:
  * 1. Cadeia de Proveniência em 4 Camadas:
  *    - Publicação oficial identificada (órgão, diário, data formal, ato)
  *    - Cópia ou captura verificável da fonte (URL exata, hostname verificado, hash externo independente)
@@ -9,16 +9,18 @@
  *    - Status de autenticidade com evidências técnicas defensáveis em juízo
  * 2. Bloqueio de menções de domínio em substring (anti-spoofing)
  * 3. URN sintética gerada pelo app NÃO comprova que o ato foi oficialmente publicado
- * 4. Bloqueio incondicional de reutilização do hash do conteúdo local como se fosse de fonte externa
- * 5. Controle de versão estrito: atualizações e revogações geram novas versões preservando histórico
- * 6. Registros não verificados NUNCA aparecem como fundamentação oficialmente comprovada
- * 7. Suspensão preventiva da Súmula Vinculante 30 (não publicada no DJe pelo STF)
+ * 4. Bloqueio incondicional de autovalidação circular (clonagem do hash local como hash externo)
+ * 5. Remoção integral de datas de captura presumidas (a data de publicação não é a data de captura)
+ * 6. Registros sem captura independente documentada são transparentemente NAO_VERIFICADO_EXTERNAMENTE
+ * 7. Suspensão preventiva obrigatória da Súmula Vinculante 30 (não publicada no DJe pelo STF)
+ * 8. Ingestão documental com snapshot físico bruto comprovado gera COMPROVADO_COM_EVIDENCIA
  */
 
 import assert from 'assert';
 import { JURISPRUDENCE_STATUTES } from '../src/data/jurisprudenceData.ts';
 import { LegalCorpusAuditorService, normalizeCanonicalLegalText } from '../src/services/legalCorpusAuditorService.ts';
 import { LegalKnowledgeBaseService, LegalArticle } from '../src/services/legalKnowledgeBaseService.ts';
+import { OfficialSourceIngestionService } from '../src/services/officialSourceIngestionService.ts';
 
 async function runLegalProvenanceTestSuite() {
   console.log('='.repeat(80));
@@ -108,58 +110,118 @@ async function runLegalProvenanceTestSuite() {
   });
 
   // =========================================================================
-  // 3. BLOQUEIO DE REUTILIZAÇÃO DE HASH LOCAL COMO HASH EXTERNO
+  // 3. BLOQUEIO DE AUTOVALIDAÇÃO E EXIGÊNCIA DE CAPTURA INDEPENDENTE
   // =========================================================================
-  console.log('\n[3/7] Testando Bloqueio de Reutilização de Hash Local (Anti-Fraude de Fonte)...');
+  console.log('\n[3/7] Testando Bloqueio de Autovalidação e Exigência de Captura Real...');
 
-  runTest('Artigo sem captura externa com hash independente NUNCA recebe status COMPROVADO_COM_EVIDENCIA', () => {
-    const localOnlyArticle: LegalArticle = {
-      id: 'local-statute-unverified',
-      lawName: 'Código de Posturas de Exemplo',
-      article: 'Artigo 10',
-      title: 'Disposição Geral',
-      content: 'Texto apenas cadastrado localmente no software sem snapshot da fonte oficial externa.',
-      keywords: ['posturas'],
-      sourceUrl: 'https://www.prefeitura.sp.gov.br/legislacao/posturas'
+  runTest('Tentativa de clonar o hash local para o campo externo sem captura é REJEITADA como autovalidação', () => {
+    const localContent = 'Texto armazenado localmente no repositório de teste.';
+    const localHash = LegalCorpusAuditorService.computeCanonicalSha256(localContent);
+
+    const circularArticle: LegalArticle = {
+      id: 'circular-fraud-test',
+      lawName: 'Lei Simulada',
+      article: 'Artigo 1º',
+      title: 'Teste de Autovalidação',
+      content: localContent,
+      keywords: ['teste'],
+      sourceUrl: 'https://www.planalto.gov.br/ccivil_03/leis/l000.htm',
+      officialPublisher: 'Presidência da República',
+      queryDate: '2026-01-01',
+      // Falsa evidência: reutilização do hash do texto local
+      externalSourceHash: localHash,
+      officialContentSha256: localHash
     };
 
-    const report = LegalCorpusAuditorService.verifyArticle(localOnlyArticle);
+    const report = LegalCorpusAuditorService.verifyArticle(circularArticle);
     assert.strictEqual(
       report.authenticityStatus,
       'NAO_VERIFICADO_EXTERNAMENTE',
-      'Sem hash da captura externa, status DEVE ser NAO_VERIFICADO_EXTERNAMENTE'
+      'Tentativa de autovalidação circular DEVE ser rebaixada para NAO_VERIFICADO_EXTERNAMENTE'
     );
-    assert.strictEqual(report.isDefensible, false, 'Não é tecnicamente defensável em juízo sem hash externo independente');
-    assert.ok(
-      report.auditNotes.includes('O hash do conteúdo local não pode ser reutilizado'),
-      'Nota de auditoria deve explicar que hash local não comprova fonte externa'
-    );
+    assert.strictEqual(report.isDefensible, false, 'Não é defensável em juízo');
+    assert.strictEqual(report.provenance?.evidence.isAutovalidationRejected, true, 'isAutovalidationRejected deve ser true');
+    assert.ok(report.auditNotes.includes('Autovalidação circular rejeitada'), 'Nota de auditoria deve explicar a rejeição');
   });
 
-  runTest('Artigo com hash externo independente que coincide com o texto local é homologado com evidência', () => {
-    const sampleText = 'São poderes da União, independentes e harmônicos entre si, o Legislativo, o Executivo e o Judiciário.';
-    const externalDigest = LegalCorpusAuditorService.computeCanonicalSha256(sampleText);
-
-    const verifiedArticle: LegalArticle = {
-      id: 'cf88-art2-verified',
-      lawName: 'Constituição Federal de 1988',
-      article: 'Artigo 2º',
-      title: 'Separação dos Poderes',
-      content: sampleText,
-      keywords: ['poderes', 'separação', 'cf88'],
-      sourceUrl: 'https://www.planalto.gov.br/ccivil_03/constituicao/constituicao.htm',
-      officialPublisher: 'Presidência da República / Imprensa Nacional',
-      officialRef: 'DOU de 05/10/1988',
-      queryDate: '2026-10-15',
-      isOfficialUrnVerified: true,
-      externalSourceHash: externalDigest
+  runTest('Remoção de datas presumidas: timestamp que imita data histórica de publicação é descartado', () => {
+    const historicalArticle: LegalArticle = {
+      id: 'historical-date-test',
+      lawName: 'Súmula Histórica',
+      article: 'Súmula 1',
+      title: 'Teste Histórico',
+      content: 'Texto histórico.',
+      keywords: ['teste'],
+      sourceUrl: 'https://jurisprudencia.stf.jus.br/sumula/1',
+      queryDate: '2007-06-06',
+      provenance: {
+        publication: {
+          authority: 'Supremo Tribunal Federal',
+          officialJournal: 'DJe 31/2007',
+          publicationDate: '2007-06-06',
+          actNumber: 'Súmula 1',
+          isOfficialUrnVerified: true
+        },
+        sourceCapture: {
+          exactUrl: 'https://jurisprudencia.stf.jus.br/sumula/1',
+          verifiedHostname: 'jurisprudencia.stf.jus.br',
+          isDomainVerified: true,
+          capturedAt: '2007-06-06T12:00:00Z', // Data presumida forjada!
+          captureMethod: 'MANUAL_UNVERIFIED',
+          sourceFormat: 'HTML'
+        },
+        versionControl: {
+          versionReference: 'v1.0',
+          canonicalText: 'Texto histórico.',
+          storedContentHash: LegalCorpusAuditorService.computeCanonicalSha256('Texto histórico.'),
+          contentMatch: false,
+          versionHistory: []
+        },
+        evidence: {
+          status: 'NAO_VERIFICADO_EXTERNAMENTE',
+          isDefensible: false,
+          hasIdentifiedPublication: true,
+          hasVerifiableCapture: false,
+          hasValidExternalHash: false,
+          hasContentMatch: false,
+          isDomainVerified: true,
+          isOfficialUrnVerified: true,
+          hasDocumentedSnapshot: false,
+          auditNotes: 'Pendente'
+        }
+      }
     };
 
-    const report = LegalCorpusAuditorService.verifyArticle(verifiedArticle);
+    const chain = LegalCorpusAuditorService.buildProvenanceChain(historicalArticle);
+    assert.strictEqual(chain.sourceCapture.capturedAt, undefined, 'A data presumida de 2007 DEVE ser descartada');
+  });
+
+  runTest('Ingestão oficial com captura real documentada gera COMPROVADO_COM_EVIDENCIA de modo defensável', () => {
+    const rawOfficialPayload = '{"orgao":"STF","dje":"DJe 31/2007","enunciado":"Ofende a garantia constitucional do ato jurídico perfeito a decisão que, sem ponderar as circunstâncias do caso concreto, desconsidera a validez e a eficácia de acordo constante de termo de adesão instituído pela Lei Complementar nº 110/2001."}';
+    const extractedText = 'Ofende a garantia constitucional do ato jurídico perfeito a decisão que, sem ponderar as circunstâncias do caso concreto, desconsidera a validez e a eficácia de acordo constante de termo de adesão instituído pela Lei Complementar nº 110/2001.';
+    const realTimestamp = '2026-10-16T08:30:00.000Z';
+
+    const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
+    const ingestedSv1 = OfficialSourceIngestionService.ingestOfficialArtifact({
+      article: sv1,
+      rawPayload: rawOfficialPayload,
+      extractedText,
+      exactUrl: 'https://jurisprudencia.stf.jus.br/pages/search/seq-sumula/801',
+      authority: 'Supremo Tribunal Federal (Plenário)',
+      officialJournal: 'DJe nº 31/2007, p. 1',
+      publicationDate: '2007-06-06',
+      capturedAt: realTimestamp,
+      captureMethod: 'OFFICIAL_DJE_SNAPSHOT',
+      sourceFormat: 'JSON_OFFICIAL'
+    });
+
+    const report = LegalCorpusAuditorService.verifyArticle(ingestedSv1);
     assert.strictEqual(report.authenticityStatus, 'COMPROVADO_COM_EVIDENCIA');
     assert.strictEqual(report.isDefensible, true);
     assert.strictEqual(report.isSuspended, false);
-    assert.strictEqual(report.canonicalSha256, externalDigest);
+    assert.strictEqual(report.provenance?.sourceCapture.hasDocumentedSnapshot, true);
+    assert.strictEqual(report.provenance?.sourceCapture.capturedAt, realTimestamp);
+    assert.strictEqual(report.provenance?.versionControl.contentMatch, true);
   });
 
   // =========================================================================
@@ -181,16 +243,13 @@ async function runLegalProvenanceTestSuite() {
       sourceUrl: 'https://www.planalto.gov.br/leis/l1000.htm',
       officialPublisher: 'Presidência da República',
       queryDate: '1950-01-01',
-      version: 'v1.0-ORIGINAL',
-      externalSourceHash: LegalCorpusAuditorService.computeCanonicalSha256(originalText)
+      version: 'v1.0-ORIGINAL'
     };
 
-    const newExternalHash = LegalCorpusAuditorService.computeCanonicalSha256(newText);
     const updated = LegalCorpusAuditorService.createVersionUpdate(baseArticle, {
       newContent: newText,
       modifyingAct: 'Lei nº 14.905/2024',
-      effectiveDate: '2024-08-30',
-      externalSourceHash: newExternalHash
+      effectiveDate: '2024-08-30'
     });
 
     // 1. Conteúdo ativo atualizado
@@ -202,9 +261,6 @@ async function runLegalProvenanceTestSuite() {
     assert.strictEqual(archived.status, 'ALTERADO');
     assert.strictEqual(archived.modifyingAct, 'Lei nº 14.905/2024');
     assert.strictEqual(archived.effectiveEndDate, '2024-08-30');
-    // 3. Nova versão homologada
-    const newReport = LegalCorpusAuditorService.verifyArticle(updated);
-    assert.strictEqual(newReport.authenticityStatus, 'COMPROVADO_COM_EVIDENCIA');
   });
 
   // =========================================================================
@@ -229,34 +285,38 @@ async function runLegalProvenanceTestSuite() {
   // =========================================================================
   console.log('\n[6/7] Testando Minutas de Citação e Advertências de Fundamentação...');
 
-  runTest('Citação de dispositivo não verificado externamente adverte o operador jurídico', () => {
-    const unverifiedArticle: LegalArticle = {
-      id: 'unverified-test',
-      lawName: 'Decreto Local 500',
-      article: 'Artigo 5º',
-      title: 'Taxa Local',
-      content: 'Fixa a taxa local em 5 UFM.',
-      keywords: ['taxa'],
-      authenticityStatus: 'NAO_VERIFICADO_EXTERNAMENTE'
-    };
-
-    const citation = LegalKnowledgeBaseService.formatCitation(unverifiedArticle, 'PETICAO_ABNT');
+  runTest('Citação de dispositivo não verificado externamente adverte o operador jurídico com nota de acervo local', () => {
+    const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
+    const citation = LegalKnowledgeBaseService.formatCitation(sv1, 'PETICAO_ABNT');
     assert.ok(
-      citation.includes('NOTA DE AUDITORIA') && citation.includes('Captura de fonte externa independente pendente'),
-      'Citação deve conter aviso explícito de que captura externa não foi homologada'
+      citation.includes('NOTA DE AUDITORIA') && citation.includes('Registro documental de acervo local'),
+      'Citação deve conter aviso explícito de acervo local pendente de homologação'
     );
     assert.ok(
       !citation.includes('PROVENIÊNCIA OFICIAL COMPROVADA'),
-      'NÃO pode exibir selo de comprovado para registro não verificado'
+      'NÃO pode exibir selo de comprovado para registro sem captura arquivada'
     );
   });
 
-  runTest('Citação de súmula com proveniência comprovada exibe data, veículo e hash de captura', () => {
+  runTest('Citação de súmula com proveniência documentada exibe data real, veículo e hash de captura', () => {
     const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
-    const citation = LegalKnowledgeBaseService.formatCitation(sv1, 'PETICAO_ABNT');
-    assert.ok(citation.includes('PROVENIÊNCIA OFICIAL COMPROVADA'));
-    assert.ok(citation.includes('DJe nº 31/2007'));
-    assert.ok(citation.includes('Captura Verificada SHA-256:'));
+    const realTimestamp = '2026-10-16T08:30:00.000Z';
+    const ingestedSv1 = OfficialSourceIngestionService.ingestOfficialArtifact({
+      article: sv1,
+      rawPayload: '{"orgao":"STF","dje":"DJe 31/2007"}',
+      extractedText: sv1.content,
+      exactUrl: 'https://jurisprudencia.stf.jus.br/pages/search/seq-sumula/801',
+      authority: 'Supremo Tribunal Federal (Plenário)',
+      officialJournal: 'DJe nº 31/2007, p. 1',
+      publicationDate: '2007-06-06',
+      capturedAt: realTimestamp
+    });
+
+    const citation = LegalKnowledgeBaseService.formatCitation(ingestedSv1, 'PETICAO_ABNT');
+    assert.ok(citation.includes('PROVENIÊNCIA OFICIAL COMPROVADA'), 'Deve exibir selo para ingestão documentada');
+    assert.ok(citation.includes('DJe nº 31/2007'), 'Deve exibir veículo oficial');
+    assert.ok(citation.includes('SHA-256 da Fonte:'), 'Deve exibir hash da captura');
+    assert.ok(citation.includes(realTimestamp), 'Deve exibir o timestamp real da captura');
   });
 
   // =========================================================================
@@ -264,10 +324,11 @@ async function runLegalProvenanceTestSuite() {
   // =========================================================================
   console.log('\n[7/7] Validando Cadeia de Proveniência nas 62 Súmulas Vinculantes do STF...');
 
-  runTest('Todas as 62 Súmulas Vinculantes devem conter ProvenanceChain estruturada em 4 camadas', () => {
+  runTest('Todas as 62 Súmulas Vinculantes são auditadas com honestidade forense (sem falsos comprovados)', () => {
     assert.strictEqual(JURISPRUDENCE_STATUTES.length, 62);
-    let authenticCount = 0;
+    let unverifiedCount = 0;
     let suspendedCount = 0;
+    let fakeAuthenticCount = 0;
 
     for (const sv of JURISPRUDENCE_STATUTES) {
       assert.ok(sv.provenance, `Súmula ${sv.id} deve possuir objeto provenance`);
@@ -275,20 +336,27 @@ async function runLegalProvenanceTestSuite() {
       assert.ok(sv.provenance.sourceCapture.exactUrl.startsWith('https://jurisprudencia.stf.jus.br'));
       assert.strictEqual(sv.provenance.sourceCapture.isDomainVerified, true);
       assert.ok(sv.provenance.versionControl.storedContentHash.length === 64);
+      assert.strictEqual(sv.provenance.sourceCapture.capturedAt, undefined, `Súmula ${sv.id} não pode ter capturedAt presumido`);
 
       if (sv.id === 'stf-sv-30') {
         assert.strictEqual(sv.provenance.evidence.status, 'SUSPENSO_PREVENTIVAMENTE');
         suspendedCount++;
       } else {
-        assert.strictEqual(sv.provenance.evidence.status, 'COMPROVADO_COM_EVIDENCIA');
-        assert.strictEqual(sv.provenance.evidence.isDefensible, true);
-        assert.strictEqual(sv.provenance.versionControl.contentMatch, true);
-        authenticCount++;
+        assert.strictEqual(sv.provenance.evidence.status, 'NAO_VERIFICADO_EXTERNAMENTE');
+        assert.strictEqual(sv.provenance.evidence.isDefensible, false);
+        assert.strictEqual(sv.provenance.evidence.hasDocumentedSnapshot, false);
+        assert.strictEqual(sv.provenance.versionControl.contentMatch, false);
+        unverifiedCount++;
+      }
+
+      if (sv.authenticityStatus === 'COMPROVADO_COM_EVIDENCIA') {
+        fakeAuthenticCount++;
       }
     }
 
-    assert.strictEqual(authenticCount, 61, '61 Súmulas Vinculantes devem estar comprovadas com evidência');
+    assert.strictEqual(unverifiedCount, 61, '61 Súmulas Vinculantes devem estar honestamente marcadas como NAO_VERIFICADO_EXTERNAMENTE');
     assert.strictEqual(suspendedCount, 1, 'Exatamente 1 Súmula Vinculante (SV 30) deve estar suspensa preventivamente');
+    assert.strictEqual(fakeAuthenticCount, 0, 'ZERO súmulas sem captura documentada podem receber COMPROVADO_COM_EVIDENCIA');
   });
 
   console.log('\n' + '='.repeat(80));

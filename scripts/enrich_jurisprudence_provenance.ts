@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { JURISPRUDENCE_STATUTES } from '../src/data/jurisprudenceData.ts';
-import { LegalCorpusAuditorService, normalizeCanonicalLegalText } from '../src/services/legalCorpusAuditorService.ts';
+import { LegalCorpusAuditorService } from '../src/services/legalCorpusAuditorService.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,7 +80,6 @@ const enrichedArticles = JURISPRUDENCE_STATUTES.map(art => {
   const pubInfo = DJE_PUBLICATIONS[num] || { dje: 'DJe do STF', date: '2026-10-15', psv: num };
 
   const isSV30 = (num === 30);
-  const canonicalHash = LegalCorpusAuditorService.computeCanonicalSha256(art.content);
 
   const base: any = {
     ...art,
@@ -96,18 +95,30 @@ const enrichedArticles = JURISPRUDENCE_STATUTES.map(art => {
     base.statusVigencia = 'SUSPENSA_NAO_COMPROVADA';
     base.authenticityStatus = 'SUSPENSO_PREVENTIVAMENTE';
     base.auditNotes = 'Processo de edição formalmente suspenso pelo STF (PSV 30 - DJe 235/2010). O enunciado não foi publicado no DJe, razão pela qual sua autenticidade perante publicação oficial não pôde ser comprovada. Suspenso preventivamente para evitar citação como súmula válida.';
-    // Para SV 30, não há externalSourceHash comprovado pois não foi publicado no DJe
     base.externalSourceHash = undefined;
     base.officialContentSha256 = undefined;
   } else {
+    // CORREÇÃO CRÍTICA FORENSE:
+    // Não reutilizar o hash do conteúdo local como se fosse o hash de uma fonte externa.
+    // Sem captura física independente documentada com arquivo bruto arquivado,
+    // o registro DEVE ser rotulado como NAO_VERIFICADO_EXTERNAMENTE.
     base.statusVigencia = 'COMUM';
-    base.authenticityStatus = 'COMPROVADO_COM_EVIDENCIA';
-    base.externalSourceHash = canonicalHash; // Hash independente do artefato oficial capturado no STF
-    base.officialContentSha256 = canonicalHash;
-    base.auditNotes = 'Autenticidade e integridade literal comprovadas perante o repositório oficial do Supremo Tribunal Federal (DJe).';
+    base.authenticityStatus = 'NAO_VERIFICADO_EXTERNAMENTE';
+    base.externalSourceHash = undefined;
+    base.officialContentSha256 = undefined;
+    base.auditNotes = 'Texto canônico cadastrado no acervo local do KovaxFiles. Captura independente da publicação oficial no DJe do STF pendente de realização e arquivamento de artefato bruto.';
   }
 
-  // Constrói a cadeia de proveniência completa
+  // Remove qualquer data de captura presumida:
+  // A data de publicação da súmula (ex: 2007) NUNCA é a data de captura do aplicativo.
+  if (base.provenance?.sourceCapture) {
+    base.provenance.sourceCapture.capturedAt = undefined;
+    base.provenance.sourceCapture.hasDocumentedSnapshot = false;
+    base.provenance.sourceCapture.captureMethod = 'MANUAL_UNVERIFIED';
+    base.provenance.sourceCapture.externalSourceHash = undefined;
+  }
+
+  // Constrói a cadeia de proveniência com o auditor estrito
   base.provenance = LegalCorpusAuditorService.buildProvenanceChain(base);
 
   return base;
@@ -116,16 +127,19 @@ const enrichedArticles = JURISPRUDENCE_STATUTES.map(art => {
 const fileHeader = `import { LegalArticle } from '../services/legalKnowledgeBaseService';
 
 /**
- * Acervo Integral e Auditado de Súmulas Vinculantes do Supremo Tribunal Federal (1 a 62)
+ * Acervo Integral de Súmulas Vinculantes do Supremo Tribunal Federal (1 a 62)
  *
- * Cada registro mantém a Cadeia Estrutural de Proveniência:
- * 1. Publicação oficial identificada (Plenário do STF, data de publicação formal no DJe, processo PSV)
- * 2. Cópia ou captura verificável da fonte (URL exata em jurisprudencia.stf.jus.br, hostname verificado .jus.br, hash externo independente)
- * 3. Comparação de texto e controle de versão (texto canônico, conferência literal, histórico)
- * 4. Status de autenticidade com evidências técnicas defensáveis
+ * Princípios de Custódia e Auditoria Factual:
+ * 1. Publicação oficial identificada (Plenário do STF, DJe, processo PSV)
+ * 2. Cópia ou captura verificável da fonte:
+ *    - Registros sem captura física documentada e arquivada são rotulados como 'NAO_VERIFICADO_EXTERNAMENTE'.
+ *    - O hash do conteúdo local NUNCA é copiado para o campo de fonte externa.
+ *    - Datas de captura presumidas foram integralmente removidas (a data de publicação não é a data de captura).
+ * 3. Súmula Vinculante 30: mantida sob 'SUSPENSO_PREVENTIVAMENTE' por suspensão formal no STF (PSV 30).
+ * 4. Apenas processos de ingestão com snapshot oficial bruto comprovam autenticidade ('COMPROVADO_COM_EVIDENCIA').
  */
 export const JURISPRUDENCE_STATUTES: LegalArticle[] = ${JSON.stringify(enrichedArticles, null, 2)};
 `;
 
 fs.writeFileSync(targetFile, fileHeader, 'utf-8');
-console.log(`Sucesso: ${enrichedArticles.length} Súmulas Vinculantes enriquecidas com Cadeia de Proveniência em ${targetFile}`);
+console.log(`Sucesso: ${enrichedArticles.length} Súmulas Vinculantes atualizadas com honestidade forense em ${targetFile}`);

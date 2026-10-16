@@ -361,11 +361,15 @@ export interface SourceCaptureInfo {
   exactUrl: string;              // URL oficial exata (sem generalizações)
   verifiedHostname: string;      // Hostname estritamente validado (.jus.br, .gov.br, .leg.br)
   isDomainVerified: boolean;     // Validação estrita de domínio governamental/institucional
-  capturedAt: string;            // Data e hora ISO da captura/snapshot
+  capturedAt?: string;           // Data e hora ISO da captura real efetuada pelo sistema (NUNCA data de publicação histórica presumida)
   captureMethod: 'OFFICIAL_DJE_SNAPSHOT' | 'API_OFFICIAL_GATEWAY' | 'OFFICIAL_PORTAL_INGESTION' | 'MANUAL_UNVERIFIED';
-  externalSourceHash: string;    // Hash SHA-256 do artefato original da fonte externa (NUNCA derivado do texto local)
-  sourceFormat: 'HTML' | 'PDF' | 'JSON_OFFICIAL' | 'XML_DJE';
-  contentLengthBytes?: number;   // Tamanho em bytes da resposta da fonte
+  externalSourceHash?: string;   // Hash SHA-256 do artefato da fonte externa (NUNCA derivado do texto local)
+  rawArtifactSha256?: string;    // Hash SHA-256 dos bytes brutos recebidos da autoridade governamental
+  sourceRawArtifactPath?: string;// Caminho ou identificador do artefato de captura arquivado no repositório de custódia
+  sourceFormat: 'HTML' | 'PDF' | 'JSON_OFFICIAL' | 'XML_DJE' | 'TEXT_EXTRACT';
+  contentLengthBytes?: number;   // Tamanho em bytes da resposta física da fonte
+  hasDocumentedSnapshot?: boolean;// TRUE somente se houver snapshot arquivado e comprovável de captura independente
+  extractedContentHash?: string; // Hash canônico do texto extraído diretamente do artefato bruto capturado
 }
 
 /**
@@ -389,7 +393,8 @@ export interface VersionControlInfo {
   versionReference: string;      // Identificador da versão ativa atual (ex: "v1.0-CONSOLIDADA")
   canonicalText: string;         // Texto canônico padronizado
   storedContentHash: string;     // Hash SHA-256 determinístico do texto armazenado localmente
-  contentMatch: boolean;         // TRUE se o texto armazenado for idêntico à extração da captura externa
+  extractedContentHash?: string; // Hash do texto extraído do artefato oficial capturado
+  contentMatch: boolean;         // TRUE se e somente se o texto extraído da captura independente coincidir 100% com o texto local
   textComparisonDetails?: string;// Detalhes da verificação/normalização
   versionHistory: LegalVersionRecord[]; // Histórico imutável de versões preservando atualizações e revogações
 }
@@ -401,11 +406,13 @@ export interface AuthenticityEvidence {
   status: AuthenticityStatus;
   isDefensible: boolean;         // TRUE se a fundamentação jurídica for tecnicamente defensável em juízo
   hasIdentifiedPublication: boolean;
-  hasVerifiableCapture: boolean;
+  hasVerifiableCapture: boolean; // TRUE se houver captura externa com snapshot documentado em domínio oficial
   hasValidExternalHash: boolean; // TRUE se houver hash externo independente e diferente do hash local reutilizado
   hasContentMatch: boolean;
   isDomainVerified: boolean;
   isOfficialUrnVerified: boolean;
+  hasDocumentedSnapshot: boolean;// Comprova a existência física do snapshot capturado
+  isAutovalidationRejected?: boolean; // Sinaliza reprovação automática de tentativa de autovalidação circular
   auditNotes: string;
 }
 
@@ -1767,7 +1774,9 @@ export class LegalKnowledgeBaseService {
     } else if (isProvenWithEvidence && article.provenance) {
       const pub = article.provenance.publication;
       const capt = article.provenance.sourceCapture;
-      authenticityDisclaimer = `\n\n🛡️ [PROVENIÊNCIA OFICIAL COMPROVADA: Publicado em ${pub.publicationDate} no ${pub.officialJournal} (${pub.authority}) | Captura Verificada SHA-256: ${capt.externalSourceHash.substring(0, 16)}...]`;
+      const hashSnippet = capt.externalSourceHash ? capt.externalSourceHash.substring(0, 16) : 'Independente';
+      const captDateSnippet = capt.capturedAt ? ` | Captura: ${capt.capturedAt}` : '';
+      authenticityDisclaimer = `\n\n🛡️ [PROVENIÊNCIA OFICIAL COMPROVADA: Publicado em ${pub.publicationDate} no ${pub.officialJournal} (${pub.authority}) | SHA-256 da Fonte: ${hashSnippet}...${captDateSnippet}]`;
     } else if (isUnverified) {
       authenticityDisclaimer = `\n\nℹ️ [NOTA DE AUDITORIA: Registro documental de acervo local. Captura de fonte externa independente pendente de homologação. Não utilizar como fundamentação de autenticidade comprovada.]`;
     }

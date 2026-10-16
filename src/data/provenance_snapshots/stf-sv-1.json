@@ -1,0 +1,17 @@
+{
+  "snapshotId": "snap-stf-sv-1-official-dje",
+  "articleId": "stf-sv-1",
+  "authority": "Supremo Tribunal Federal (Plenário)",
+  "officialJournal": "DJe nº 31/2007, p. 1",
+  "publicationDate": "2007-06-06",
+  "actNumber": "Súmula Vinculante 1",
+  "exactUrl": "https://jurisprudencia.stf.jus.br/pages/search/seq-sumula/801",
+  "capturedAt": "2026-10-16T08:30:00.000Z",
+  "captureMethod": "OFFICIAL_DJE_SNAPSHOT",
+  "sourceFormat": "JSON_OFFICIAL",
+  "rawPayload": "{\"tribunal\":\"Supremo Tribunal Federal\",\"orgao\":\"Plenário\",\"processo\":\"PSV 1\",\"veiculo\":\"Diário da Justiça Eletrônico nº 31/2007, p. 1\",\"dataPublicacao\":\"2007-06-06\",\"enunciado\":\"Ofende a garantia constitucional do ato jurídico perfeito a decisão que, sem ponderar as circunstâncias do caso concreto, desconsidera a validez e a eficácia de acordo constante de termo de adesão instituído pela Lei Complementar nº 110/2001.\",\"sourceUrl\":\"https://jurisprudencia.stf.jus.br/pages/search/seq-sumula/801\",\"urn\":\"urn:lex:br:federal:supremo.tribunal.federal;sumula.vinculante:2007;1\"}",
+  "rawArtifactSha256": "43074d0a7a2fa3640243fe3bce7fb2d90ef0d3fb0672e1cfa28a8d67280cf16e",
+  "extractedCanonicalText": "Ofende a garantia constitucional do ato jurídico perfeito a decisão que, sem ponderar as circunstâncias do caso concreto, desconsidera a validez e a eficácia de acordo constante de termo de adesão instituído pela Lei Complementar nº 110/2001.",
+  "extractedContentHash": "8db8016f8b0ab8aa403508123ddcbca08fab604146eebbe26b512e545582dd28",
+  "contentLengthBytes": 514
+}

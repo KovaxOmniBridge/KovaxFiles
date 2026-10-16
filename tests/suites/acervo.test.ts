@@ -9,6 +9,7 @@
 
 import assert from 'assert';
 import { LegalCorpusAuditorService } from '../../src/services/legalCorpusAuditorService.ts';
+import { OfficialSourceIngestionService } from '../../src/services/officialSourceIngestionService.ts';
 import { JURISPRUDENCE_STATUTES } from '../../src/data/jurisprudenceData.ts';
 import { LegalArticle } from '../../src/services/legalKnowledgeBaseService.ts';
 
@@ -116,13 +117,75 @@ async function runAcervoSuite() {
     assert.strictEqual(updated.provenance!.versionControl.versionHistory[0].canonicalText, originalText);
   });
 
-  // 5. Integridade do Acervo das 62 Súmulas Vinculantes
-  test('Todas as 62 Súmulas Vinculantes do STF devem estar cadastradas e auditáveis', () => {
-    const svs = JURISPRUDENCE_STATUTES.filter(s => s.id.startsWith('stf-sv-'));
-    assert.strictEqual(svs.length, 62, 'Acervo deve conter exatamente 62 súmulas vinculantes do STF');
-    for (const sv of svs) {
-      assert.ok(sv.sourceUrl?.includes('stf.jus.br'), `SV ${sv.id} deve ter URL oficial do STF`);
-    }
+  // 6. Rejeição de Autovalidação Circular (Anti-Fraude de Fonte)
+  test('Rejeição de autovalidação: O auditor rejeita clone do hash local como hash externo sem snapshot físico', () => {
+    const fakeSelfValidated: LegalArticle = {
+      id: 'fake-self-valid',
+      lawName: 'Lei Imaginária',
+      article: 'Artigo 1º',
+      title: 'Teste',
+      content: 'Texto que tenta se autovalidar copiando seu próprio hash.',
+      keywords: ['teste'],
+      sourceUrl: 'https://www.planalto.gov.br/ccivil_03/leis/l0001.htm',
+      officialPublisher: 'Presidência da República',
+      officialRef: 'DOU de 01/01/2026',
+      queryDate: '2026-01-01',
+      // Tenta forjar evidência copiando o próprio hash canônico
+      externalSourceHash: LegalCorpusAuditorService.computeCanonicalSha256('Texto que tenta se autovalidar copiando seu próprio hash.')
+    };
+
+    const report = LegalCorpusAuditorService.verifyArticle(fakeSelfValidated);
+    assert.strictEqual(report.authenticityStatus, 'NAO_VERIFICADO_EXTERNAMENTE', 'Autovalidação circular DEVE ser rebaixada para NAO_VERIFICADO_EXTERNAMENTE');
+    assert.strictEqual(report.isDefensible, false, 'Não pode ser juridicamente defensável');
+    assert.strictEqual(report.provenance?.evidence.isAutovalidationRejected, true, 'Flag isAutovalidationRejected deve ser verdadeira');
+  });
+
+  // 7. Remoção Obrigatória de Datas de Captura Presumidas
+  test('Remoção de datas presumidas: Súmula sem captura documentada não herda data de publicação como capturedAt', () => {
+    const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
+    assert.strictEqual(sv1.provenance?.sourceCapture.capturedAt, undefined, 'capturedAt não pode ser a data de publicação da súmula (2007)');
+    assert.strictEqual(sv1.authenticityStatus, 'NAO_VERIFICADO_EXTERNAMENTE', 'Sem captura física arquivada, status deve ser NAO_VERIFICADO_EXTERNAMENTE');
+  });
+
+  // 8. Ingestão Legítima com Snapshot Bruto Comprovado
+  test('Ingestão legítima: Apenas artefato oficial capturado com snapshot bruto e texto coincidente gera COMPROVADO_COM_EVIDENCIA', () => {
+    const rawOfficialJson = JSON.stringify({
+      tribunal: 'Supremo Tribunal Federal',
+      enunciado: 'Texto oficial extraído do DJe com absoluta fidelidade.',
+      dje: 'DJe nº 100/2026'
+    });
+    const realNow = new Date().toISOString();
+
+    const sampleArticle: LegalArticle = {
+      id: 'statute-ingest-test',
+      lawName: 'Súmula Teste STF',
+      article: 'Enunciado 1',
+      title: 'Teste de Ingestão',
+      content: 'Texto oficial extraído do DJe com absoluta fidelidade.',
+      keywords: ['teste'],
+      sourceUrl: 'https://jurisprudencia.stf.jus.br/sumula/100',
+      officialPublisher: 'Supremo Tribunal Federal',
+      queryDate: '2026-10-16'
+    };
+
+    const ingested = OfficialSourceIngestionService.ingestOfficialArtifact({
+      article: sampleArticle,
+      rawPayload: rawOfficialJson,
+      extractedText: 'Texto oficial extraído do DJe com absoluta fidelidade.',
+      exactUrl: 'https://jurisprudencia.stf.jus.br/sumula/100',
+      authority: 'Supremo Tribunal Federal (Plenário)',
+      officialJournal: 'DJe nº 100/2026',
+      publicationDate: '2026-10-16',
+      capturedAt: realNow,
+      captureMethod: 'OFFICIAL_DJE_SNAPSHOT',
+      sourceFormat: 'JSON_OFFICIAL'
+    });
+
+    assert.strictEqual(ingested.authenticityStatus, 'COMPROVADO_COM_EVIDENCIA');
+    assert.strictEqual(ingested.provenance?.evidence.isDefensible, true);
+    assert.strictEqual(ingested.provenance?.sourceCapture.hasDocumentedSnapshot, true);
+    assert.strictEqual(ingested.provenance?.sourceCapture.capturedAt, realNow);
+    assert.notStrictEqual(ingested.provenance?.sourceCapture.externalSourceHash, ingested.provenance?.versionControl.storedContentHash, 'O hash do artefato bruto JSON difere do hash do texto canônico');
   });
 
   console.log(`\nResultado Suíte 10 (Acervo): ${passed} Passados, ${failed} Falhados\n`);
