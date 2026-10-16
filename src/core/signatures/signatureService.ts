@@ -35,7 +35,13 @@ export class CoreSignatureService {
   ): Promise<OperationResult<PadesSignatureValidationResult>> {
     const startTime = performance.now();
     try {
-      const report = await PadesSignatureService.verifyPdf(pdfBuffer);
+      const electronApi = typeof window !== 'undefined' ? (window as any).electronAPI : undefined;
+      let report: PadesSignatureValidationResult;
+      if (electronApi?.padesVerifyPdf) {
+        report = await electronApi.padesVerifyPdf({ pdfBuffer });
+      } else {
+        report = await PadesSignatureService.verifyPdf(pdfBuffer);
+      }
       const durationMs = Math.round(performance.now() - startTime);
 
       return {
@@ -63,12 +69,23 @@ export class CoreSignatureService {
   static async signPdf(options: SignPdfInput): Promise<OperationResult<Uint8Array>> {
     const startTime = performance.now();
     try {
-      const signedBytes = await PadesSignatureService.signPdf(
-        options.pdfBuffer,
-        options.p12Buffer,
-        options.password,
-        options.signOptions
-      );
+      const electronApi = typeof window !== 'undefined' ? (window as any).electronAPI : undefined;
+      let signedBytes: Uint8Array;
+      if (electronApi?.padesSignPdf) {
+        signedBytes = await electronApi.padesSignPdf({
+          pdfBuffer: options.pdfBuffer,
+          p12Buffer: options.p12Buffer,
+          password: options.password,
+          signOptions: options.signOptions
+        });
+      } else {
+        signedBytes = await PadesSignatureService.signPdf(
+          options.pdfBuffer,
+          options.p12Buffer,
+          options.password,
+          options.signOptions
+        );
+      }
       const durationMs = Math.round(performance.now() - startTime);
 
       return {
@@ -93,19 +110,27 @@ export class CoreSignatureService {
   /**
    * Analisa e inspeciona um certificado PKCS#12 (.pfx/.p12)
    */
-  static parseCertificate(
+  static async parseCertificate(
     p12Buffer: Uint8Array | ArrayBuffer,
     password: string
-  ): OperationResult<Pkcs12CertificateInfo> {
+  ): Promise<OperationResult<Pkcs12CertificateInfo>> {
     const startTime = performance.now();
     try {
-      const parsed = PadesSignatureService.parseCertificate(p12Buffer, password);
+      const electronApi = typeof window !== 'undefined' ? (window as any).electronAPI : undefined;
+      let certInfo: Pkcs12CertificateInfo;
+      if (electronApi?.padesParseCertificate) {
+        const res = await electronApi.padesParseCertificate({ p12Buffer, password });
+        certInfo = res.certInfo;
+      } else {
+        const parsed = PadesSignatureService.parseCertificate(p12Buffer, password);
+        certInfo = parsed.certInfo;
+      }
       const durationMs = Math.round(performance.now() - startTime);
 
       return {
         status: 'completed',
         isSuccess: true,
-        data: parsed.certInfo,
+        data: certInfo,
         durationMs
       };
     } catch (err) {

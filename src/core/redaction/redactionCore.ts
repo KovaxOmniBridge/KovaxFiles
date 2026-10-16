@@ -27,32 +27,68 @@ export interface RedactionMatch {
 }
 
 export class CoreRedactionEngine {
+  /**
+   * Validação matemática determinística de CPF pelo algoritmo oficial Módulo 11
+   */
+  static validateCpf(str: string): boolean {
+    const clean = str.replace(/\D/g, '');
+    if (clean.length !== 11 || /^(\d)\1{10}$/.test(clean)) return false;
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += parseInt(clean[i], 10) * (10 - i);
+    let rev = 11 - (sum % 11);
+    if (rev === 10 || rev === 11) rev = 0;
+    if (rev !== parseInt(clean[9], 10)) return false;
+    sum = 0;
+    for (let i = 0; i < 10; i++) sum += parseInt(clean[i], 10) * (11 - i);
+    rev = 11 - (sum % 11);
+    if (rev === 10 || rev === 11) rev = 0;
+    return rev === parseInt(clean[10], 10);
+  }
+
+  /**
+   * Validação matemática determinística de CNPJ pelo algoritmo oficial Módulo 11
+   */
+  static validateCnpj(str: string): boolean {
+    const clean = str.replace(/\D/g, '');
+    if (clean.length !== 14 || /^(\d)\1{13}$/.test(clean)) return false;
+    let size = clean.length - 2;
+    let numbers = clean.substring(0, size);
+    const digits = clean.substring(size);
+    let sum = 0;
+    let pos = size - 7;
+    for (let i = size; i >= 1; i--) {
+      sum += parseInt(numbers.charAt(size - i), 10) * pos--;
+      if (pos < 2) pos = 9;
+    }
+    let result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
+    if (result !== parseInt(digits.charAt(0), 10)) return false;
+
+    size = size + 1;
+    numbers = clean.substring(0, size);
+    sum = 0;
+    pos = size - 7;
+    for (let i = size; i >= 1; i--) {
+      sum += parseInt(numbers.charAt(size - i), 10) * pos--;
+      if (pos < 2) pos = 9;
+    }
+    result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
+    return result === parseInt(digits.charAt(1), 10);
+  }
+
   private static readonly BRAZILIAN_RULES: RedactionRule[] = [
     {
       id: 'rule_cpf',
       category: 'CPF',
       pattern: /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g,
       description: 'Cadastro de Pessoas Físicas (CPF)',
-      validate: (str) => {
-        const clean = str.replace(/\D/g, '');
-        if (clean.length !== 11 || /^(\d)\1{10}$/.test(clean)) return false;
-        let sum = 0;
-        for (let i = 0; i < 9; i++) sum += parseInt(clean[i], 10) * (10 - i);
-        let rev = 11 - (sum % 11);
-        if (rev === 10 || rev === 11) rev = 0;
-        if (rev !== parseInt(clean[9], 10)) return false;
-        sum = 0;
-        for (let i = 0; i < 10; i++) sum += parseInt(clean[i], 10) * (11 - i);
-        rev = 11 - (sum % 11);
-        if (rev === 10 || rev === 11) rev = 0;
-        return rev === parseInt(clean[10], 10);
-      }
+      validate: (str) => CoreRedactionEngine.validateCpf(str)
     },
     {
       id: 'rule_cnpj',
       category: 'CNPJ',
       pattern: /\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/g,
-      description: 'Cadastro Nacional de Pessoa Jurídica (CNPJ)'
+      description: 'Cadastro Nacional de Pessoa Jurídica (CNPJ)',
+      validate: (str) => CoreRedactionEngine.validateCnpj(str)
     },
     {
       id: 'rule_email',
@@ -75,8 +111,18 @@ export class CoreRedactionEngine {
   ];
 
   /**
-   * Executa varredura de texto identificando padrões LGPD com suporte a cancelamento
+   * Retorna as regras determinísticas homologadas da legislação brasileira
    */
+  static getRules(): ReadonlyArray<RedactionRule> {
+    return this.BRAZILIAN_RULES;
+  }
+
+  /**
+   * Obtém uma regra específica pelo seu identificador
+   */
+  static getRule(id: string): RedactionRule | undefined {
+    return this.BRAZILIAN_RULES.find(r => r.id === id);
+  }
   static scanText(
     text: string,
     enabledCategories?: Array<RedactionRule['category']>,

@@ -55,8 +55,8 @@ export function useDigitalSignatureController() {
     }
   }, []);
 
-  const loadCertificate = useCallback((p12Buffer: Uint8Array | ArrayBuffer, password: string) => {
-    const result = CoreSignatureService.parseCertificate(p12Buffer, password);
+  const loadCertificate = useCallback(async (p12Buffer: Uint8Array | ArrayBuffer, password: string) => {
+    const result = await CoreSignatureService.parseCertificate(p12Buffer, password);
     if (result.isSuccess && result.data) {
       setState(prev => ({ ...prev, certificateInfo: result.data!, errorMessage: null }));
       return result.data;

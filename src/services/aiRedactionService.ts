@@ -1,5 +1,6 @@
 import { PageTextData, PdfTextExtractor } from './pdfTextExtractor';
 import { DocumentEntityClassifier, DetectionRigorLevel, AiRigorLevel } from './universalAiClassifier';
+import { CoreRedactionEngine } from '../core/redaction/redactionCore';
 
 export type DetectionMode = 'pattern' | 'comprehensive';
 export type RedactionScanMode = DetectionMode;
@@ -170,13 +171,22 @@ export class RedactionDetectionService {
     categories: RedactionCategoryOptions
   ): DetectedRedactionItem[] {
     const items: DetectedRedactionItem[] = [];
-    const patterns: { category: DetectedRedactionItem['category']; regex: RegExp; reason: string }[] = [];
+    const patterns: {
+      category: DetectedRedactionItem['category'];
+      regex: RegExp;
+      reason: string;
+      validate?: (str: string) => boolean;
+    }[] = [];
 
     if (categories.cpf) {
       patterns.push({
         category: 'CPF',
         regex: /(?:CPF(?:\/MF)?\s*:?\s*n?º?\s*)?(\d{3}\.\d{3}\.\d{3}-\d{2}|\b\d{11}\b)/gi,
-        reason: 'Dado Pessoal Identificável (CPF - LGPD Art. 5º)'
+        reason: 'Dado Pessoal Identificável (CPF - LGPD Art. 5º)',
+        validate: (str) => {
+          if (/CPF/i.test(str)) return true;
+          return CoreRedactionEngine.validateCpf(str);
+        }
       });
     }
 
@@ -184,7 +194,11 @@ export class RedactionDetectionService {
       patterns.push({
         category: 'CNPJ',
         regex: /(?:CNPJ(?:\/MF)?\s*:?\s*n?º?\s*)?(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\b\d{14}\b)/gi,
-        reason: 'Identificador de Pessoa Jurídica (CNPJ - LGPD)'
+        reason: 'Identificador de Pessoa Jurídica (CNPJ - LGPD)',
+        validate: (str) => {
+          if (/CNPJ/i.test(str)) return true;
+          return CoreRedactionEngine.validateCnpj(str);
+        }
       });
     }
 
@@ -250,6 +264,11 @@ export class RedactionDetectionService {
       for (const match of matches) {
         const foundText = match[0];
         if (!foundText || foundText.length < 3) continue;
+
+        // Validação determinística unificada via CoreRedactionEngine
+        if (pat.validate && !pat.validate(foundText)) {
+          continue;
+        }
 
         const rects = PdfTextExtractor.findTextRectangles(page, foundText);
         for (const rect of rects) {

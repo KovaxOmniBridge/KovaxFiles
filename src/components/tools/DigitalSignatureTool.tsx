@@ -28,6 +28,7 @@ import {
   PadesSignatureValidationResult,
   PadesSignOptions
 } from '../../services/padesSignatureService';
+import { CoreSignatureService } from '../../core/signatures/signatureService';
 
 export const DigitalSignatureTool: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'sign' | 'verify'>('sign');
@@ -106,13 +107,11 @@ export const DigitalSignatureTool: React.FC = () => {
 
     try {
       const buffer = await certFile.arrayBuffer();
-      const electronApi = (window as any).electronAPI;
-      if (electronApi?.padesParseCertificate) {
-        const { certInfo: info } = await electronApi.padesParseCertificate({ p12Buffer: buffer, password: certPassword });
-        setCertInfo(info);
+      const res = await CoreSignatureService.parseCertificate(buffer, certPassword);
+      if (res.isSuccess && res.data) {
+        setCertInfo(res.data);
       } else {
-        const { certInfo: info } = PadesSignatureService.parseCertificate(buffer, certPassword);
-        setCertInfo(info);
+        throw res.error || new Error('Falha ao autenticar certificado. Verifique a senha informada.');
       }
     } catch (err: any) {
       setCertInfo(null);
@@ -152,18 +151,18 @@ export const DigitalSignatureTool: React.FC = () => {
         }
       };
 
-      const electronApi = (window as any).electronAPI;
-      let signedBytes: Uint8Array;
-      if (electronApi?.padesSignPdf) {
-        signedBytes = await electronApi.padesSignPdf({
-          pdfBuffer,
-          p12Buffer: certBuffer,
-          password: certPassword,
-          signOptions: options
-        });
-      } else {
-        signedBytes = await PadesSignatureService.signPdf(pdfBuffer, certBuffer, certPassword, options);
+      const res = await CoreSignatureService.signPdf({
+        pdfBuffer,
+        p12Buffer: certBuffer,
+        password: certPassword,
+        signOptions: options
+      });
+
+      if (!res.isSuccess || !res.data) {
+        throw res.error || new Error('Falha ao assinar documento');
       }
+
+      const signedBytes = res.data;
 
       // Calcular hash SHA-256 do documento gerado
       const hashBuffer = await crypto.subtle.digest('SHA-256', signedBytes.buffer as ArrayBuffer);
@@ -223,14 +222,12 @@ export const DigitalSignatureTool: React.FC = () => {
 
     try {
       const buffer = await verifyFile.arrayBuffer();
-      const electronApi = (window as any).electronAPI;
-      let result: PadesSignatureValidationResult;
-      if (electronApi?.padesVerifyPdf) {
-        result = await electronApi.padesVerifyPdf(buffer);
+      const res = await CoreSignatureService.verifyPdfSignatures(buffer);
+      if (res.isSuccess && res.data) {
+        setValidationResult(res.data);
       } else {
-        result = PadesSignatureService.verifyPdf(buffer);
+        throw res.error || new Error('Erro na validação do documento');
       }
-      setValidationResult(result);
     } catch (err: any) {
       setVerifyError(`Erro na validação do documento: ${err.message || String(err)}`);
     } finally {
