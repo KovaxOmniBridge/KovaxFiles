@@ -218,31 +218,50 @@ assert(
 // FASE 4: Configurações Declarativas de Sandboxing e Segurança de IPC
 // ============================================================================
 console.log('\n[4/4] Validando Configurações Declarativas de Sandboxing e Isolamento de Processos...');
-const electronMainSrc = fs.readFileSync(path.join(rootDir, 'electron/main.ts'), 'utf8');
+
+// Com a refatoração modular, as configurações residem em módulos especializados em electron/main/
+const windowManagerPath = path.join(rootDir, 'electron/main/windowManager.ts');
+const sessionSecurityPath = path.join(rootDir, 'electron/main/sessionSecurity.ts');
+const electronMainPath = path.join(rootDir, 'electron/main.ts');
+
+const windowManagerSrc = fs.existsSync(windowManagerPath)
+  ? fs.readFileSync(windowManagerPath, 'utf8')
+  : fs.readFileSync(electronMainPath, 'utf8');
+
+const sessionSecuritySrc = fs.existsSync(sessionSecurityPath)
+  ? fs.readFileSync(sessionSecurityPath, 'utf8')
+  : fs.readFileSync(electronMainPath, 'utf8');
+
+const electronMainSrc = fs.readFileSync(electronMainPath, 'utf8');
 
 assert(
-  electronMainSrc.includes('contextIsolation: true'),
-  'Context Isolation declarado como ativado incondicionalmente no processo de renderização'
+  windowManagerSrc.includes('contextIsolation: true'),
+  'Context Isolation declarado como ativado incondicionalmente no processo de renderização (windowManager.ts)'
 );
 
 assert(
-  electronMainSrc.includes('nodeIntegration: false'),
-  'Node Integration declarado como desativado para bloquear acesso indevido à API do Node pelo frontend'
+  windowManagerSrc.includes('nodeIntegration: false'),
+  'Node Integration declarado como desativado para bloquear acesso indevido à API do Node pelo frontend (windowManager.ts)'
 );
 
 assert(
-  electronMainSrc.includes('sandbox: true'),
-  'Chromium OS Sandbox declarado como ativado para isolamento de memória'
+  windowManagerSrc.includes('sandbox: true'),
+  'Chromium OS Sandbox declarado como ativado para isolamento de memória (windowManager.ts)'
 );
 
 assert(
-  electronMainSrc.includes('mainWindow.loadFile(path.join(__dirname, \'../dist/index.html\'))'),
-  'Em produção, aplicação carrega arquivos estáticos locais seguros via protocolo seguro sem requisições a servidores dev'
+  windowManagerSrc.includes('loadFile') && windowManagerSrc.includes('dist/index.html'),
+  'Em produção, aplicação carrega arquivos estáticos locais seguros via protocolo seguro sem requisições a servidores dev (windowManager.ts)'
 );
 
 assert(
-  electronMainSrc.includes('session.defaultSession.setPermissionRequestHandler'),
-  'Handler de permissões do Electron configurado para rejeitar acessos não autorizados a periféricos'
+  sessionSecuritySrc.includes('session.defaultSession.setPermissionRequestHandler'),
+  'Handler de permissões do Electron configurado para rejeitar acessos não autorizados a periféricos (sessionSecurity.ts)'
+);
+
+assert(
+  electronMainSrc.includes('configureSessionSecurity()') && electronMainSrc.includes('WindowManager'),
+  'Ponto de entrada electron/main.ts orquestra ativamente a segurança de sessão e o WindowManager seguro'
 );
 
 // ============================================================================
