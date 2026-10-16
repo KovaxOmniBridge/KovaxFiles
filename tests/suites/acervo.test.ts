@@ -4,6 +4,12 @@
  * =============================================================================
  * Comprova: Fontes oficiais, versões, integridade, revogação e autenticidade.
  * Execução: Todo Pull Request.
+ *
+ * RIGOR METODOLÓGICO:
+ * Os testes desta suíte utilizam referências independentes e constantes
+ * pré-computadas externamente (tests/fixtures/officialLegalReferences.ts)
+ * para evitar qualquer autocertificação circular ou confirmação de consistência
+ * meramente interna.
  * =============================================================================
  */
 
@@ -12,10 +18,16 @@ import { LegalCorpusAuditorService } from '../../src/services/legalCorpusAuditor
 import { OfficialSourceIngestionService } from '../../src/services/officialSourceIngestionService.ts';
 import { JURISPRUDENCE_STATUTES } from '../../src/data/jurisprudenceData.ts';
 import { LegalArticle } from '../../src/services/legalKnowledgeBaseService.ts';
+import {
+  STF_SV1_REFERENCE,
+  STF_SV56_REFERENCE,
+  CC_ART406_VERSION_TRANSITION,
+  LGPD_ART1_REFERENCE
+} from '../fixtures/officialLegalReferences.ts';
 
 async function runAcervoSuite() {
   console.log('='.repeat(80));
-  console.log('  [SUÍTE 10: ACERVO JURÍDICO] FONTES, VERSÕES, INTEGRIDADE, REVOGAÇÃO E AUTENTICIDADE');
+  console.log('  [SUÍTE 10: ACERVO JURÍDICO] FONTES, VERSÕES, INTEGRIDADE E REFERÊNCIAS INDEPENDENTES');
   console.log('='.repeat(80));
 
   let passed = 0;
@@ -85,36 +97,66 @@ async function runAcervoSuite() {
     assert.strictEqual(rep.isDefensible, false, 'SV 30 NÃO pode ser admitida como juridicamente defensável');
   });
 
-  // 4. Controle de Versão e Preservação de Histórico de Revogação
-  test('Controle de versões: Atualização normativa gera nova versão e preserva a redação anterior no histórico', () => {
-    const originalText = 'A taxa de juros legais é de 6% ao ano.';
-    const newText = 'A taxa de juros legais passa a ser calculada conforme a taxa Selic.';
+  // 4. Conferência com Referências Independentes Externas FIPS 180-4 SHA-256
+  test('Conferência com referência independente: Hash canônico local de SV1 e SV56 coincide 100% com digest externo pré-calculado', () => {
+    const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
+    assert.ok(sv1, 'SV 1 deve existir no acervo');
+    const localSv1Hash = LegalCorpusAuditorService.computeCanonicalSha256(sv1.content);
+    assert.strictEqual(
+      localSv1Hash,
+      STF_SV1_REFERENCE.independentCanonicalSha256,
+      'Hash canônico local de SV1 deve coincidir exatamente com o digest externo pré-calculado do DJe'
+    );
+    assert.strictEqual(
+      sv1.provenance?.versionControl.storedContentHash,
+      STF_SV1_REFERENCE.independentCanonicalSha256,
+      'Hash armazenado no acervo deve corresponder à referência independente FIPS 180-4'
+    );
+
+    const sv56 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-56')!;
+    assert.ok(sv56, 'SV 56 deve existir no acervo');
+    const localSv56Hash = LegalCorpusAuditorService.computeCanonicalSha256(sv56.content);
+    assert.strictEqual(
+      localSv56Hash,
+      STF_SV56_REFERENCE.independentCanonicalSha256,
+      'Hash canônico local de SV56 deve coincidir exatamente com o digest externo pré-calculado do DJe'
+    );
+  });
+
+  // 5. Controle de Versão e Preservação de Histórico com Hashes Independentes
+  test('Controle de versões: Transição real (CC art. 406 pela Lei 14.905/2024) gera nova versão e preserva redação anterior', () => {
+    const orig = CC_ART406_VERSION_TRANSITION.original;
+    const upd = CC_ART406_VERSION_TRANSITION.updated;
 
     const baseArticle: LegalArticle = {
-      id: 'lei-teste-art1',
-      lawName: 'Lei dos Juros nº 1.000/1950',
-      article: 'Artigo 1º',
-      title: 'Taxa de Juros',
-      content: originalText,
-      keywords: ['juros'],
-      sourceUrl: 'https://www.planalto.gov.br/leis/l1000.htm',
+      id: 'cc-art-406',
+      lawName: 'Código Civil (Lei nº 10.406/2002)',
+      article: 'Artigo 406',
+      title: 'Taxa Legal de Juros',
+      content: orig.text,
+      keywords: ['juros', 'taxa legal', 'código civil'],
+      sourceUrl: orig.sourceUrl,
       officialPublisher: 'Presidência da República',
-      queryDate: '1950-01-01',
-      version: 'v1.0-ORIGINAL',
-      externalSourceHash: LegalCorpusAuditorService.computeCanonicalSha256(originalText)
+      queryDate: orig.publicationDate,
+      version: 'v1.0-ORIGINAL'
     };
 
-    const newExternalHash = LegalCorpusAuditorService.computeCanonicalSha256(newText);
     const updated = LegalCorpusAuditorService.createVersionUpdate(baseArticle, {
-      newContent: newText,
-      modifyingAct: 'Lei nº 14.905/2024',
-      effectiveDate: '2024-08-30',
-      externalSourceHash: newExternalHash
+      newContent: upd.text,
+      modifyingAct: upd.modifyingAct,
+      effectiveDate: upd.effectiveDate,
+      externalSourceHash: upd.independentSha256
     });
 
-    assert.strictEqual(updated.content, newText);
+    assert.strictEqual(updated.content, upd.text);
+    const updatedHash = LegalCorpusAuditorService.computeCanonicalSha256(updated.content);
+    assert.strictEqual(updatedHash, upd.independentSha256, 'Hash da versão atualizada deve coincidir com o hash externo da Lei 14.905/2024');
+
     assert.strictEqual(updated.provenance?.versionControl.versionHistory.length, 1, 'Histórico deve conter a versão anterior');
-    assert.strictEqual(updated.provenance!.versionControl.versionHistory[0].canonicalText, originalText);
+    const previousVersion = updated.provenance!.versionControl.versionHistory[0];
+    assert.strictEqual(previousVersion.canonicalText, orig.text);
+    assert.strictEqual(previousVersion.storedContentHash, orig.independentSha256);
+    assert.strictEqual(previousVersion.modifyingAct, upd.modifyingAct);
   });
 
   // 6. Rejeição de Autovalidação Circular (Anti-Fraude de Fonte)
@@ -147,35 +189,19 @@ async function runAcervoSuite() {
     assert.strictEqual(sv1.authenticityStatus, 'NAO_VERIFICADO_EXTERNAMENTE', 'Sem captura física arquivada, status deve ser NAO_VERIFICADO_EXTERNAMENTE');
   });
 
-  // 8. Ingestão Legítima com Snapshot Bruto Comprovado
-  test('Ingestão legítima: Apenas artefato oficial capturado com snapshot bruto e texto coincidente gera COMPROVADO_COM_EVIDENCIA', () => {
-    const rawOfficialJson = JSON.stringify({
-      tribunal: 'Supremo Tribunal Federal',
-      enunciado: 'Texto oficial extraído do DJe com absoluta fidelidade.',
-      dje: 'DJe nº 100/2026'
-    });
-    const realNow = new Date().toISOString();
-
-    const sampleArticle: LegalArticle = {
-      id: 'statute-ingest-test',
-      lawName: 'Súmula Teste STF',
-      article: 'Enunciado 1',
-      title: 'Teste de Ingestão',
-      content: 'Texto oficial extraído do DJe com absoluta fidelidade.',
-      keywords: ['teste'],
-      sourceUrl: 'https://jurisprudencia.stf.jus.br/sumula/100',
-      officialPublisher: 'Supremo Tribunal Federal',
-      queryDate: '2026-10-16'
-    };
+  // 8. Ingestão Legítima com Snapshot Bruto Comprovado e Hashes de Referência
+  test('Ingestão legítima: Snapshot oficial de DJe com payload bruto comprovado gera COMPROVADO_COM_EVIDENCIA', () => {
+    const realNow = '2026-10-16T12:00:00.000Z';
+    const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
 
     const ingested = OfficialSourceIngestionService.ingestOfficialArtifact({
-      article: sampleArticle,
-      rawPayload: rawOfficialJson,
-      extractedText: 'Texto oficial extraído do DJe com absoluta fidelidade.',
-      exactUrl: 'https://jurisprudencia.stf.jus.br/sumula/100',
-      authority: 'Supremo Tribunal Federal (Plenário)',
-      officialJournal: 'DJe nº 100/2026',
-      publicationDate: '2026-10-16',
+      article: sv1,
+      rawPayload: STF_SV1_REFERENCE.rawPayload,
+      extractedText: STF_SV1_REFERENCE.canonicalText,
+      exactUrl: STF_SV1_REFERENCE.exactUrl,
+      authority: STF_SV1_REFERENCE.authority,
+      officialJournal: STF_SV1_REFERENCE.officialJournal,
+      publicationDate: STF_SV1_REFERENCE.publicationDate,
       capturedAt: realNow,
       captureMethod: 'OFFICIAL_DJE_SNAPSHOT',
       sourceFormat: 'JSON_OFFICIAL'
@@ -185,7 +211,49 @@ async function runAcervoSuite() {
     assert.strictEqual(ingested.provenance?.evidence.isDefensible, true);
     assert.strictEqual(ingested.provenance?.sourceCapture.hasDocumentedSnapshot, true);
     assert.strictEqual(ingested.provenance?.sourceCapture.capturedAt, realNow);
-    assert.notStrictEqual(ingested.provenance?.sourceCapture.externalSourceHash, ingested.provenance?.versionControl.storedContentHash, 'O hash do artefato bruto JSON difere do hash do texto canônico');
+    assert.strictEqual(
+      ingested.provenance?.sourceCapture.rawArtifactSha256,
+      STF_SV1_REFERENCE.independentRawPayloadSha256,
+      'Hash do artefato bruto deve corresponder ao digest pré-calculado da fonte DJe'
+    );
+    assert.strictEqual(
+      ingested.provenance?.sourceCapture.extractedContentHash,
+      STF_SV1_REFERENCE.independentCanonicalSha256,
+      'Hash do texto extraído deve coincidir com a referência canônica independente'
+    );
+    assert.notStrictEqual(
+      ingested.provenance?.sourceCapture.rawArtifactSha256,
+      ingested.provenance?.versionControl.storedContentHash,
+      'O hash do artefato bruto JSON difere do hash do texto canônico'
+    );
+  });
+
+  // 9. Detecção e Bloqueio de Divergência Textual entre Acervo e Captura Oficial
+  test('Detecção de divergência: Se o texto extraído da fonte oficial diferir do texto local, auditoria acusa DIVERGENCIA_DETECTADA', () => {
+    const tamperedPayload = JSON.stringify({
+      fonte_oficial: 'STF',
+      enunciado: 'Texto adulterado contendo alterações não aprovadas pelo Plenário.'
+    });
+    const realNow = '2026-10-16T12:05:00.000Z';
+    const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
+
+    const divergentIngested = OfficialSourceIngestionService.ingestOfficialArtifact({
+      article: sv1,
+      rawPayload: tamperedPayload,
+      extractedText: 'Texto adulterado contendo alterações não aprovadas pelo Plenário.',
+      exactUrl: STF_SV1_REFERENCE.exactUrl,
+      authority: STF_SV1_REFERENCE.authority,
+      officialJournal: STF_SV1_REFERENCE.officialJournal,
+      publicationDate: STF_SV1_REFERENCE.publicationDate,
+      capturedAt: realNow,
+      captureMethod: 'OFFICIAL_DJE_SNAPSHOT',
+      sourceFormat: 'JSON_OFFICIAL'
+    });
+
+    const report = LegalCorpusAuditorService.verifyArticle(divergentIngested);
+    assert.strictEqual(report.authenticityStatus, 'DIVERGENCIA_DETECTADA', 'Divergência entre o texto armazenado e a captura oficial deve ser detectada');
+    assert.strictEqual(report.isSuspended, true, 'Dispositivo divergente deve ser automaticamente suspenso');
+    assert.strictEqual(report.isDefensible, false, 'Dispositivo com divergência não pode ser considerado defensável em juízo');
   });
 
   console.log(`\nResultado Suíte 10 (Acervo): ${passed} Passados, ${failed} Falhados\n`);

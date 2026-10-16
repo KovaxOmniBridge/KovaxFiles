@@ -77,12 +77,17 @@ async function main() {
     'Workflow não deve usar comando de build de desenvolvimento como fallback em release'
   );
 
-  // 3. Verificar manifesto SHA-256 no workflow
+  // 3. Verificar manifesto SHA-256 no workflow e no gerador de release
   console.log('\n[3/4] Verificando cabeçalho de esclarecimento de segurança do SHA256SUMS...');
+  const manifestGenPath = path.join(rootDir, 'scripts/generate_release_manifest.ts');
+  const manifestGenContent = fs.existsSync(manifestGenPath) ? fs.readFileSync(manifestGenPath, 'utf8') : '';
+  const hasSecurityClarification =
+    (workflowContent.includes('NÃO SUBSTITUEM ASSINATURA DIGITAL') && workflowContent.includes('Get-AuthenticodeSignature')) ||
+    (manifestGenContent.includes('NÃO SUBSTITUEM ASSINATURA DIGITAL') && manifestGenContent.includes('Get-AuthenticodeSignature'));
+
   assert(
-    workflowContent.includes('NÃO SUBSTITUEM ASSINATURA DIGITAL') &&
-    workflowContent.includes('Get-AuthenticodeSignature'),
-    'Manifesto SHA-256 gerado no workflow deve esclarecer que hashes não substituem assinatura digital'
+    hasSecurityClarification,
+    'Manifesto SHA-256 gerado no pipeline/script de release deve esclarecer que hashes não substituem assinatura digital'
   );
 
   // 4. Verificar documentação técnica de segurança

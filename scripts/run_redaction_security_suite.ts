@@ -42,8 +42,19 @@ if (failureModeTest.status !== 0) {
 
 // 3. Executa a bateria forense independente em Python (PyMuPDF, pypdf, pdfminer.six, Pillow)
 console.log('\n[3/4] Executando Auditoria Forense em 5 Vetores de Ataque (Sintéticos + Corpus Realista)...');
-const venvPy = path.resolve('.venv/Scripts/python.exe');
-const pythonCmd = fs.existsSync(venvPy) ? venvPy : 'python';
+function resolvePythonCmd(): string {
+  const isWin = process.platform === 'win32';
+  const venvWin = path.resolve('.venv/Scripts/python.exe');
+  const venvPosix = path.resolve('.venv/bin/python');
+  const venvPosix3 = path.resolve('.venv/bin/python3');
+
+  if (isWin && fs.existsSync(venvWin)) return venvWin;
+  if (!isWin && fs.existsSync(venvPosix)) return venvPosix;
+  if (!isWin && fs.existsSync(venvPosix3)) return venvPosix3;
+
+  return isWin ? 'python' : 'python3';
+}
+const pythonCmd = resolvePythonCmd();
 
 const auditTest = spawnSync(pythonCmd, ['scripts/audit_pdf_redaction_security.py'], {
   stdio: 'inherit',

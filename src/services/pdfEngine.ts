@@ -1504,7 +1504,22 @@ export class LocalPdfEngine {
           fs.writeFileSync(tmpIn, redactedPdfBuffer);
 
           const flattenerScript = path.resolve('scripts/headless_flattener.py');
-          const pythonExe = process.env.KOVAX_PYTHON_PATH || 'python';
+          let pythonExe = process.env.KOVAX_PYTHON_PATH;
+          if (!pythonExe) {
+            const isWin = process.platform === 'win32';
+            const venvWin = path.resolve('.venv/Scripts/python.exe');
+            const venvPosix = path.resolve('.venv/bin/python');
+            const venvPosix3 = path.resolve('.venv/bin/python3');
+            if (isWin && fs.existsSync(venvWin)) {
+              pythonExe = venvWin;
+            } else if (!isWin && fs.existsSync(venvPosix)) {
+              pythonExe = venvPosix;
+            } else if (!isWin && fs.existsSync(venvPosix3)) {
+              pythonExe = venvPosix3;
+            } else {
+              pythonExe = isWin ? 'python' : 'python3';
+            }
+          }
 
           if (!fs.existsSync(flattenerScript)) {
             throw new Error(`Script headless_flattener.py não encontrado para execução em modo Node CLI sem DOM.`);
