@@ -34,7 +34,8 @@ import {
 } from '../../services/aiRedactionService';
 import { DetectionRigorLevel } from '../../services/universalAiClassifier';
 import { PdfReportExporterService, LgpdAuditRecord } from '../../services/pdfReportExporterService';
-import { EncryptionEngine } from '../../services/encryptionEngine';
+import { CoreCryptoVaultService } from '../../core/crypto';
+import { CoreRedactionEngine } from '../../core/redaction';
 
 export type SecuritySuiteSubTab = 'redactor' | 'sanitizer' | 'pdf_protection' | 'vault_aes' | 'certificate' | 'encryption';
 
@@ -344,7 +345,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
           fileId: doc.fileId,
           fileName: doc.name
         }));
-        const redactedBuffer = await LocalPdfEngine.anonymizePdf(buffer, rectsToApply, {
+        const redactedBuffer = await CoreRedactionEngine.anonymizePdf(buffer, rectsToApply, {
           targetFileId: doc.fileId,
           targetFileName: doc.name
         });
@@ -478,7 +479,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
         let modeName = '';
 
         if (pdfProtectionMode === 'encrypt_pdf') {
-          processedData = await EncryptionEngine.encryptPdf(buffer, {
+          processedData = await CoreCryptoVaultService.encryptPdfDirect(buffer, {
             userPassword: pdfUserPassword,
             ownerPassword: pdfOwnerPassword || pdfUserPassword,
             allowPrinting,
@@ -488,11 +489,11 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
           });
           modeName = 'PDF Protegido por Senha (ISO 32000)';
         } else {
-          processedData = await EncryptionEngine.decryptPdf(buffer, pdfUnlockPassword);
+          processedData = await CoreCryptoVaultService.decryptPdfDirect(buffer, pdfUnlockPassword);
           modeName = 'PDF Descriptografado / Aberto';
         }
 
-        const sha256 = await EncryptionEngine.computeSha256(processedData);
+        const sha256 = await CoreCryptoVaultService.computeSha256(processedData);
 
         resultsList.push({
           fileName: file.name,
@@ -555,20 +556,20 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
         let targetFileName = file.name;
 
         if (vaultMode === 'lock_vault') {
-          processedData = await EncryptionEngine.encryptFileAesGcm(buffer, vaultPassword);
+          processedData = await CoreCryptoVaultService.encryptFileAesGcm(buffer, vaultPassword);
           modeName = 'Envelope Cofre Forte AES-GCM (KVX1)';
           if (!targetFileName.toLowerCase().endsWith('.kvx')) {
             targetFileName = `${targetFileName}.kvx`;
           }
         } else {
-          processedData = await EncryptionEngine.decryptFileAesGcm(buffer, vaultUnlockPassword);
+          processedData = await CoreCryptoVaultService.decryptFileAesGcm(buffer, vaultUnlockPassword);
           modeName = 'Arquivo Restaurado do Cofre';
           if (targetFileName.toLowerCase().endsWith('.kvx')) {
             targetFileName = targetFileName.slice(0, -4);
           }
         }
 
-        const sha256 = await EncryptionEngine.computeSha256(processedData);
+        const sha256 = await CoreCryptoVaultService.computeSha256(processedData);
 
         resultsList.push({
           fileName: targetFileName,

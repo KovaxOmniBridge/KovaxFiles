@@ -68,7 +68,7 @@ import {
 } from 'lucide-react';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { RichPdfExporterService } from '../../services/richPdfExporterService';
-import { DocxExporterService } from '../../services/docxExporterService';
+import { CoreConversionService } from '../../core/documents';
 import { PdfTextExtractor } from '../../services/pdfTextExtractor';
 import { HtmlSanitizer } from '../../services/htmlSanitizer';
 
@@ -867,7 +867,7 @@ export const DocEditor: React.FC = () => {
     try {
       setIsExportingDocx(true);
       const htmlContent = editorRef.current.innerHTML;
-      await DocxExporterService.exportHtmlToDocx(htmlContent, docTitle, {
+      await CoreConversionService.exportHtmlToDocx(htmlContent, docTitle, {
         headerText,
         footerText,
         enableHeaderFooter
@@ -1375,7 +1375,7 @@ export const DocEditor: React.FC = () => {
 
       if (lowerName.endsWith('.docx')) {
         const buffer = await file.arrayBuffer();
-        const importedHtml = await DocxExporterService.importDocxToHtml(buffer);
+        const importedHtml = await CoreConversionService.importDocxToHtml(buffer);
         if (editorRef.current) {
           editorRef.current.innerHTML = HtmlSanitizer.sanitize(importedHtml);
           setDocTitle(file.name);

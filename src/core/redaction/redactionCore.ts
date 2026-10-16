@@ -4,8 +4,38 @@
  * desacoplado da interface gráfica e com controle de ciclo de vida e cancelamento.
  */
 
-import { CancellationToken, OperationProgress, ProgressCallback, OperationStatus } from '../../shared/contracts/operation.types';
-import { ValidationError, DocumentProcessingError } from '../../shared/errors/kovaxErrors';
+import {
+  CancellationToken,
+  OperationProgress,
+  ProgressCallback,
+  OperationStatus,
+  OperationResult,
+  BatchOperationResult,
+  BatchItemResult,
+  determineBatchStatus
+} from '../../shared/contracts/operation.types';
+import { ValidationError, DocumentProcessingError, ensureKovaxError } from '../../shared/errors/kovaxErrors';
+import { LocalPdfEngine, RedactionRectangle, AnonymizePdfOptions } from '../../services/pdfEngine';
+import { cryptoAdapter } from '../../infrastructure/crypto/cryptoAdapter';
+
+export type { RedactionRectangle, AnonymizePdfOptions };
+
+export interface RedactDocumentInput {
+  id: string;
+  name: string;
+  pdfBytes: Uint8Array | ArrayBuffer;
+  rectangles?: RedactionRectangle[];
+  options?: AnonymizePdfOptions;
+}
+
+export interface RedactDocumentOutput {
+  id: string;
+  name: string;
+  sanitizedPdfBytes: Uint8Array;
+  originalSizeBytes: number;
+  sanitizedSizeBytes: number;
+  sha256Hex: string;
+}
 
 export interface RedactionRule {
   id: string;
@@ -185,4 +215,205 @@ export class CoreRedactionEngine {
     result += text.substring(lastIndex);
     return result;
   }
+
+  /**
+   * Executa a anonimização física de um documento PDF, preservando o buffer original intacto.
+   */
+  static async redactDocument(
+    input: RedactDocumentInput,
+    onProgress?: ProgressCallback,
+    cancellationToken?: CancellationToken
+  ): Promise<OperationResult<RedactDocumentOutput>> {
+    const startTime = performance.now();
+    try {
+      if (cancellationToken?.isCancelled) {
+        cancellationToken.throwIfCancelled();
+      }
+
+      if (!input.pdfBytes || input.pdfBytes.byteLength === 0) {
+        throw new ValidationError(`O documento "${input.name}" não contém bytes válidos para anonimização.`);
+      }
+
+      onProgress?.({
+        stage: 'Iniciando anonimização segura do documento',
+        current: 10,
+        total: 100,
+        percentage: 10,
+        itemDetail: input.name
+      });
+
+      // Cria cópia isolada de leitura para blindar o buffer original do chamador contra mutação
+      const inputBytes = input.pdfBytes instanceof Uint8Array
+        ? new Uint8Array(input.pdfBytes)
+        : new Uint8Array(input.pdfBytes.slice(0));
+
+      const sanitizedBytes = await LocalPdfEngine.anonymizePdf(
+        inputBytes,
+        input.rectangles || [],
+        input.options
+      );
+
+      if (cancellationToken?.isCancelled) {
+        cancellationToken.throwIfCancelled();
+      }
+
+      const sha256Hex = cryptoAdapter.computeSha256Sync(sanitizedBytes);
+      const durationMs = Math.round(performance.now() - startTime);
+
+      return {
+        status: 'completed',
+        isSuccess: true,
+        data: {
+          id: input.id,
+          name: input.name,
+          sanitizedPdfBytes: sanitizedBytes,
+          originalSizeBytes: input.pdfBytes.byteLength,
+          sanitizedSizeBytes: sanitizedBytes.byteLength,
+          sha256Hex
+        },
+        durationMs
+      };
+    } catch (err: any) {
+      const durationMs = Math.round(performance.now() - startTime);
+      const isCancelled = err.name === 'OperationCancelledException' || cancellationToken?.isCancelled;
+
+      return {
+        status: isCancelled ? 'canceled' : 'failed',
+        isSuccess: false,
+        error: ensureKovaxError(err, 'DOCUMENT_PROCESSING'),
+        durationMs
+      };
+    }
+  }
+
+  /**
+   * Executa anonimização em lote com integridade estrita de status:
+   * 100% sucesso -> 'completed', mistura -> 'partial', 100% falha -> 'failed'.
+   */
+  static async redactBatch(
+    items: RedactDocumentInput[],
+    onProgress?: ProgressCallback,
+    cancellationToken?: CancellationToken
+  ): Promise<BatchOperationResult<RedactDocumentInput, RedactDocumentOutput>> {
+    const startTime = performance.now();
+    const totalItems = items.length;
+    const itemResults: BatchItemResult<RedactDocumentInput, RedactDocumentOutput>[] = [];
+
+    let succeeded = 0;
+    let failed = 0;
+    let canceled = 0;
+
+    for (let i = 0; i < totalItems; i++) {
+      const item = items[i];
+
+      if (cancellationToken?.isCancelled) {
+        canceled++;
+        itemResults.push({
+          id: item.id,
+          input: item,
+          status: 'canceled',
+          error: new Error(cancellationToken.cancelReason || 'Anonimização cancelada.'),
+          durationMs: 0
+        });
+        continue;
+      }
+
+      const itemStart = performance.now();
+      try {
+        onProgress?.({
+          stage: `Anonimizando documento ${i + 1} de ${totalItems}`,
+          current: i + 1,
+          total: totalItems,
+          percentage: Math.round((i / totalItems) * 100),
+          message: `Anonimizando "${item.name}"...`,
+          itemDetail: item.name
+        });
+
+        const opResult = await this.redactDocument(item, undefined, cancellationToken);
+        const itemDuration = Math.round(performance.now() - itemStart);
+
+        if (opResult.status === 'completed' && opResult.data) {
+          succeeded++;
+          itemResults.push({
+            id: item.id,
+            input: item,
+            status: 'completed',
+            data: opResult.data,
+            durationMs: itemDuration
+          });
+        } else if (opResult.status === 'canceled') {
+          canceled++;
+          itemResults.push({
+            id: item.id,
+            input: item,
+            status: 'canceled',
+            error: opResult.error as any,
+            durationMs: itemDuration
+          });
+        } else {
+          failed++;
+          itemResults.push({
+            id: item.id,
+            input: item,
+            status: 'failed',
+            error: opResult.error as any,
+            durationMs: itemDuration
+          });
+        }
+      } catch (err: any) {
+        const itemDuration = Math.round(performance.now() - itemStart);
+        failed++;
+        itemResults.push({
+          id: item.id,
+          input: item,
+          status: 'failed',
+          error: err,
+          durationMs: itemDuration
+        });
+      }
+    }
+
+    const totalDuration = Math.round(performance.now() - startTime);
+    const finalStatus: OperationStatus = determineBatchStatus({
+      total: totalItems,
+      succeeded,
+      failed,
+      canceled
+    });
+
+    return {
+      status: finalStatus,
+      totalItems,
+      processedItems: succeeded + failed + canceled,
+      succeededItems: succeeded,
+      failedItems: failed,
+      canceledItems: canceled,
+      items: itemResults,
+      durationMs: totalDuration,
+      summary: `Lote de anonimização finalizado com status "${finalStatus}": ${succeeded}/${totalItems} sucessos, ${failed} falhas, ${canceled} cancelamentos.`
+    };
+  }
+
+  /**
+   * Anonimiza fisicamente um documento PDF com sobreposição de retângulos opacos
+   */
+  static async anonymizePdf(
+    pdfBytes: ArrayBuffer | Uint8Array,
+    rectangles: RedactionRectangle[],
+    options?: AnonymizePdfOptions
+  ): Promise<Uint8Array> {
+    return LocalPdfEngine.anonymizePdf(pdfBytes, rectangles, options);
+  }
+
+  /**
+   * Anonimiza fisicamente um documento PDF e emite relatório técnico com métricas
+   */
+  static async anonymizePdfWithReport(
+    pdfBytes: ArrayBuffer | Uint8Array,
+    rectangles: RedactionRectangle[],
+    options?: AnonymizePdfOptions
+  ): Promise<{ pdfBytes: Uint8Array; report: any }> {
+    return LocalPdfEngine.anonymizePdfWithReport(pdfBytes, rectangles, options);
+  }
 }
+

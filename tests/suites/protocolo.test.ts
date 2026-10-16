@@ -13,6 +13,7 @@ import {
   CourtFilingPreparationService,
   CourtFilingOptions
 } from '../../src/services/courtFilingPreparationService.ts';
+import { CoreCourtFilingService } from '../../src/core/court-filing/courtFilingService.ts';
 
 async function createSamplePdf(pageCount: number, labelPrefix: string): Promise<ArrayBuffer> {
   const doc = await PDFDocument.create();
@@ -124,6 +125,27 @@ async function runProtocoloSuite() {
       assert.strictEqual(manifestJson.volumesGerados[i].sha256Hex, result.volumes[i].sha256Hex, 'Hash do volume no manifesto deve bater exatamente');
       assert.ok(manifestJson.volumesGerados[i].sha256Hex.length === 64);
     }
+  });
+
+  // 5. Proibição de declarar sucesso quando o pacote excede os limites do tribunal
+  await test('Proibição absoluta de declarar sucesso ou pronto para protocolo quando um pacote excede os limites', async () => {
+    const strictOptions: CourtFilingOptions = {
+      ...options,
+      targetPreset: {
+        id: 'limite_ultra_estrito',
+        name: 'Tribunal Cota Mínima',
+        shortLabel: 'TRIB',
+        maxVolumeSizeBytes: 100, // Menor que qualquer volume PDF
+        description: 'Cota de 100 bytes'
+      }
+    };
+
+    const opResult = await CoreCourtFilingService.prepareFiling(pieces, strictOptions);
+    assert.strictEqual(opResult.isSuccess, false, 'Pacote com volume excedente JAMAIS pode ter isSuccess: true');
+    assert.notStrictEqual(opResult.status, 'completed', 'Pacote com volume excedente JAMAIS pode ter status "completed"');
+    assert.strictEqual(opResult.data?.summary.reproved, true, 'Deve indicar reprovado: true no resumo');
+    assert.strictEqual(opResult.data?.summary.status, 'REPROVADO_POR_EXCESSO_DE_TAMANHO');
+    assert.ok(opResult.error, 'Deve conter erro explícito de validação');
   });
 
   console.log(`\nResultado Suíte 9 (Protocolo): ${passed} Passados, ${failed} Falhados\n`);

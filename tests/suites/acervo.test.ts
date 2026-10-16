@@ -16,6 +16,7 @@
 import assert from 'assert';
 import { LegalCorpusAuditorService } from '../../src/services/legalCorpusAuditorService.ts';
 import { OfficialSourceIngestionService } from '../../src/services/officialSourceIngestionService.ts';
+import { OfficialArtifactRepositoryService } from '../../src/services/officialArtifactRepositoryService.ts';
 import { JURISPRUDENCE_STATUTES } from '../../src/data/jurisprudenceData.ts';
 import { LegalArticle } from '../../src/services/legalKnowledgeBaseService.ts';
 import {
@@ -254,6 +255,135 @@ async function runAcervoSuite() {
     assert.strictEqual(report.authenticityStatus, 'DIVERGENCIA_DETECTADA', 'Divergência entre o texto armazenado e a captura oficial deve ser detectada');
     assert.strictEqual(report.isSuspended, true, 'Dispositivo divergente deve ser automaticamente suspenso');
     assert.strictEqual(report.isDefensible, false, 'Dispositivo com divergência não pode ser considerado defensável em juízo');
+  });
+
+  // 10. Bloqueio Obrigatório de Payload Arbitrário (Anti-Injeção de Falsa Evidência)
+  test('Bloqueio de payload arbitrário: Payload arbitrário com URL e timestamp oficiais NÃO pode receber COMPROVADO_COM_EVIDENCIA', () => {
+    const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
+    const arbitraryPayload = JSON.stringify({
+      fakeInfo: 'qualquer texto irrelevante',
+      timestamp: '2026-10-16T12:00:00Z'
+    });
+
+    const ingested = OfficialSourceIngestionService.ingestOfficialArtifact({
+      article: sv1,
+      rawPayload: arbitraryPayload,
+      extractedText: sv1.content, // Chamador tenta fornecer o texto correto da súmula externamente
+      exactUrl: STF_SV1_REFERENCE.exactUrl,
+      authority: STF_SV1_REFERENCE.authority,
+      officialJournal: STF_SV1_REFERENCE.officialJournal,
+      publicationDate: STF_SV1_REFERENCE.publicationDate,
+      capturedAt: '2026-10-16T12:00:00.000Z',
+      sourceFormat: 'JSON_OFFICIAL'
+    });
+
+    assert.notStrictEqual(
+      ingested.authenticityStatus,
+      'COMPROVADO_COM_EVIDENCIA',
+      'Payload arbitrário NUNCA pode ser aprovado como COMPROVADO_COM_EVIDENCIA'
+    );
+    assert.strictEqual(ingested.authenticityStatus, 'DIVERGENCIA_DETECTADA');
+    assert.strictEqual(ingested.provenance?.evidence.isDefensible, false);
+
+    const auditReport = LegalCorpusAuditorService.verifyArticle(ingested);
+    assert.strictEqual(auditReport.authenticityStatus, 'DIVERGENCIA_DETECTADA');
+    assert.strictEqual(auditReport.isDefensible, false);
+  });
+
+  // 11. Distinção Criptográfica Essencial: rawArtifactSha256 sobre Bytes Brutos sem Normalização
+  test('Distinção criptográfica de rawArtifactSha256: Calculado estritamente sobre bytes brutos sem normalização textual', () => {
+    const rawWithSpaces = '{\n  "enunciado": "Texto com formatacao original"  \r\n}';
+    const rawCompact = '{"enunciado":"Texto com formatacao original"}';
+
+    const hashSpaces = LegalCorpusAuditorService.computeRawArtifactSha256(rawWithSpaces);
+    const hashCompact = LegalCorpusAuditorService.computeRawArtifactSha256(rawCompact);
+
+    // Bytes brutos são diferentes, logo seus digests de artefato DEVEM ser diferentes
+    assert.notStrictEqual(
+      hashSpaces,
+      hashCompact,
+      'Artefatos brutos com formatações físicas distintas devem produzir hashes raw distintos'
+    );
+
+    // Já o hash canônico com normalização textual colapsaria as quebras e espaços
+    const canonicalNormalized = LegalCorpusAuditorService.computeCanonicalSha256('Texto com formatacao original');
+    assert.notStrictEqual(
+      hashSpaces,
+      canonicalNormalized,
+      'rawArtifactSha256 do arquivo bruto JSON não pode ser igual ao canonicalSha256 do texto extraído'
+    );
+
+    // Validação com fixture imutável pré-calculada externamente
+    const computedSv1Raw = LegalCorpusAuditorService.computeRawArtifactSha256(STF_SV1_REFERENCE.rawPayload);
+    assert.strictEqual(
+      computedSv1Raw,
+      STF_SV1_REFERENCE.independentRawPayloadSha256,
+      'Hash do artefato bruto de SV1 deve coincidir exatamente com a referência independente'
+    );
+  });
+
+  // 12. Auditoria Forense Independente e Reproduzível a partir do Arquivo Original
+  test('Auditoria independente: Auditor externo reproduz verificação a partir do arquivo bruto sem confiar em metadados do app', () => {
+    const sv1 = JURISPRUDENCE_STATUTES.find(a => a.id === 'stf-sv-1')!;
+
+    // 1. Auditoria com o arquivo autêntico da publicação oficial
+    const genuineAudit = LegalCorpusAuditorService.auditPublicationIndependently({
+      article: sv1,
+      originalArtifact: STF_SV1_REFERENCE.rawPayload,
+      exactUrl: STF_SV1_REFERENCE.exactUrl,
+      authority: STF_SV1_REFERENCE.authority,
+      publicationDate: STF_SV1_REFERENCE.publicationDate,
+      sourceFormat: 'JSON_OFFICIAL',
+      expectedRawHash: STF_SV1_REFERENCE.independentRawPayloadSha256
+    });
+
+    assert.strictEqual(genuineAudit.isAuthentic, true);
+    assert.strictEqual(genuineAudit.auditStatus, 'COMPROVADO_COM_EVIDENCIA');
+    assert.strictEqual(genuineAudit.rawArtifactHashMatches, true);
+    assert.strictEqual(genuineAudit.textMatches, true);
+    assert.strictEqual(genuineAudit.isDefensible, true);
+
+    // 2. Auditoria com arquivo adulterado ou arbitrário
+    const tamperedAudit = LegalCorpusAuditorService.auditPublicationIndependently({
+      article: sv1,
+      originalArtifact: '{"enunciado": "Texto adulterado sem autorização"}',
+      exactUrl: STF_SV1_REFERENCE.exactUrl,
+      authority: STF_SV1_REFERENCE.authority,
+      publicationDate: STF_SV1_REFERENCE.publicationDate,
+      sourceFormat: 'JSON_OFFICIAL',
+      expectedRawHash: STF_SV1_REFERENCE.independentRawPayloadSha256
+    });
+
+    assert.strictEqual(tamperedAudit.isAuthentic, false);
+    assert.notStrictEqual(tamperedAudit.auditStatus, 'COMPROVADO_COM_EVIDENCIA');
+    assert.strictEqual(tamperedAudit.isDefensible, false);
+  });
+
+  // 13. Repositório de Custódia e Preservação com Controle de Versão
+  test('Repositório de custódia: Preservação de artefatos brutos com rastreabilidade pericial', () => {
+    OfficialArtifactRepositoryService.clear();
+
+    const sv1Artifact = {
+      snapshotId: 'snap-stf-sv-1',
+      articleId: STF_SV1_REFERENCE.id,
+      exactUrl: STF_SV1_REFERENCE.exactUrl,
+      authority: STF_SV1_REFERENCE.authority,
+      publicationDate: STF_SV1_REFERENCE.publicationDate,
+      capturedAt: '2026-10-16T12:00:00.000Z',
+      sourceFormat: 'JSON_OFFICIAL' as const,
+      rawArtifactSha256: STF_SV1_REFERENCE.independentRawPayloadSha256,
+      rawPayload: STF_SV1_REFERENCE.rawPayload,
+      extractedCanonicalText: STF_SV1_REFERENCE.canonicalText,
+      extractedContentHash: STF_SV1_REFERENCE.independentCanonicalSha256
+    };
+
+    OfficialArtifactRepositoryService.storePreservedArtifact(sv1Artifact);
+    const retrieved = OfficialArtifactRepositoryService.getPreservedArtifact(STF_SV1_REFERENCE.id);
+
+    assert.ok(retrieved);
+    assert.strictEqual(retrieved.rawArtifactSha256, STF_SV1_REFERENCE.independentRawPayloadSha256);
+    assert.strictEqual(retrieved.extractedContentHash, STF_SV1_REFERENCE.independentCanonicalSha256);
+    assert.strictEqual(OfficialArtifactRepositoryService.listPreservedArtifacts().length, 1);
   });
 
   console.log(`\nResultado Suíte 10 (Acervo): ${passed} Passados, ${failed} Falhados\n`);

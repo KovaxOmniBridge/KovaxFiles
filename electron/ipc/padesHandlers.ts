@@ -8,19 +8,12 @@
  * 3. Limites estritos de payload (tamanho de certificado e documento) previnem exaustão de memória/DoS.
  */
 
-import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import * as electron from 'electron';
+import type { BrowserWindow, IpcMainInvokeEvent, IpcMain } from 'electron';
 import { validateIpcSender } from './ipcValidator';
 import type { Pkcs12CertificateInfo } from '../../src/services/padesSignatureService';
 
-function getIpcMain(): any {
-  try {
-    // @ts-ignore
-    const electron = require('electron');
-    return electron?.ipcMain || null;
-  } catch {
-    return null;
-  }
-}
+const ipcMain: IpcMain = (electron as any)?.ipcMain || (electron as any)?.default?.ipcMain;
 
 export const MAX_PADES_CERTIFICATE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB para pacotes PKCS#12 (.pfx/.p12)
 export const MAX_PADES_PDF_SIZE_BYTES = 200 * 1024 * 1024;         // 200 MB para documentos PDF
@@ -66,66 +59,75 @@ export function sanitizeCertInfoForIpc(certInfo: Pkcs12CertificateInfo): Pkcs12C
 }
 
 export function registerPadesHandlers(getMainWindow: () => BrowserWindow | null): void {
-  const ipcMain = getIpcMain();
-  if (!ipcMain) return;
+  if (!ipcMain || typeof ipcMain.handle !== 'function') {
+    throw new Error('Falha crítica de inicialização do Electron: ipcMain não está disponível para registrar handlers PAdES.');
+  }
 
-  // 1. Inspecionar Certificado Digital PKCS#12
-  ipcMain.handle('pades:parseCertificate', async (event: IpcMainInvokeEvent, options: { p12Buffer: Uint8Array | number[] | ArrayBuffer; password: string }) => {
-    validateIpcSender(event, 'pades:parseCertificate', getMainWindow());
+  try {
+    // 1. Inspecionar Certificado Digital PKCS#12
+    ipcMain.handle('pades:parseCertificate', async (event: IpcMainInvokeEvent, options: { p12Buffer: Uint8Array | number[] | ArrayBuffer; password: string }) => {
+      validateIpcSender(event, 'pades:parseCertificate', getMainWindow());
 
-    if (!options || !options.p12Buffer || typeof options.password !== 'string') {
-      throw new Error('Parâmetros obrigatórios ausentes para inspeção de certificado PKCS#12.');
-    }
+      if (!options || !options.p12Buffer || typeof options.password !== 'string') {
+        throw new Error('Parâmetros obrigatórios ausentes para inspeção de certificado PKCS#12.');
+      }
 
-    const buf = options.p12Buffer instanceof Uint8Array ? options.p12Buffer : new Uint8Array(options.p12Buffer as any);
-    validatePadesPayloadSize(buf.length, MAX_PADES_CERTIFICATE_SIZE_BYTES, 'certificado PKCS#12');
+      const buf = options.p12Buffer instanceof Uint8Array ? options.p12Buffer : new Uint8Array(options.p12Buffer as any);
+      validatePadesPayloadSize(buf.length, MAX_PADES_CERTIFICATE_SIZE_BYTES, 'certificado PKCS#12');
 
-    const { PadesSignatureService } = await import('../../src/services/padesSignatureService');
-    const parsed = PadesSignatureService.parseCertificate(buf, options.password);
+      const { PadesSignatureService } = await import('../../src/services/padesSignatureService');
+      const parsed = PadesSignatureService.parseCertificate(buf, options.password);
 
-    // SEGURANÇA E ISOLAMENTO CRÍTICO:
-    // Retornar estritamente o objeto de metadados sanitizado certInfo.
-    // A chave privada e os certificados internos do node-forge são descartados do retorno IPC.
-    const safeCertInfo = sanitizeCertInfoForIpc(parsed.certInfo);
+      // SEGURANÇA E ISOLAMENTO CRÍTICO:
+      // Retornar estritamente o objeto de metadados sanitizado certInfo.
+      // A chave privada e os certificados internos do node-forge são descartados do retorno IPC.
+      const safeCertInfo = sanitizeCertInfoForIpc(parsed.certInfo);
 
-    // Descarte explícito das referências sensíveis da memória
-    (parsed as any).privateKey = null;
-    (parsed as any).certificate = null;
-    (parsed as any).caCertificates = null;
+      // Descarte explícito das referências sensíveis da memória
+      (parsed as any).privateKey = null;
+      (parsed as any).certificate = null;
+      (parsed as any).caCertificates = null;
 
-    return { certInfo: safeCertInfo };
-  });
+      return { certInfo: safeCertInfo };
+    });
 
-  // 2. Assinar Digitalmente PDF (PAdES)
-  ipcMain.handle('pades:signPdf', async (event: IpcMainInvokeEvent, options: { pdfBuffer: Uint8Array | number[] | ArrayBuffer; p12Buffer: Uint8Array | number[] | ArrayBuffer; password: string; signOptions?: any }) => {
-    validateIpcSender(event, 'pades:signPdf', getMainWindow());
+    // 2. Assinar Digitalmente PDF (PAdES)
+    ipcMain.handle('pades:signPdf', async (event: IpcMainInvokeEvent, options: { pdfBuffer: Uint8Array | number[] | ArrayBuffer; p12Buffer: Uint8Array | number[] | ArrayBuffer; password: string; signOptions?: any }) => {
+      validateIpcSender(event, 'pades:signPdf', getMainWindow());
 
-    if (!options || !options.pdfBuffer || !options.p12Buffer || typeof options.password !== 'string') {
-      throw new Error('Parâmetros obrigatórios ausentes para assinatura digital PAdES.');
-    }
+      if (!options || !options.pdfBuffer || !options.p12Buffer || typeof options.password !== 'string') {
+        throw new Error('Parâmetros obrigatórios ausentes para assinatura digital PAdES.');
+      }
 
-    const pdfBuf = options.pdfBuffer instanceof Uint8Array ? options.pdfBuffer : new Uint8Array(options.pdfBuffer as any);
-    validatePadesPayloadSize(pdfBuf.length, MAX_PADES_PDF_SIZE_BYTES, 'documento PDF');
+      const pdfBuf = options.pdfBuffer instanceof Uint8Array ? options.pdfBuffer : new Uint8Array(options.pdfBuffer as any);
+      validatePadesPayloadSize(pdfBuf.length, MAX_PADES_PDF_SIZE_BYTES, 'documento PDF');
 
-    const p12Buf = options.p12Buffer instanceof Uint8Array ? options.p12Buffer : new Uint8Array(options.p12Buffer as any);
-    validatePadesPayloadSize(p12Buf.length, MAX_PADES_CERTIFICATE_SIZE_BYTES, 'certificado PKCS#12');
+      const p12Buf = options.p12Buffer instanceof Uint8Array ? options.p12Buffer : new Uint8Array(options.p12Buffer as any);
+      validatePadesPayloadSize(p12Buf.length, MAX_PADES_CERTIFICATE_SIZE_BYTES, 'certificado PKCS#12');
 
-    const { PadesSignatureService } = await import('../../src/services/padesSignatureService');
-    return await PadesSignatureService.signPdf(pdfBuf, p12Buf, options.password, options.signOptions);
-  });
+      const { PadesSignatureService } = await import('../../src/services/padesSignatureService');
+      return await PadesSignatureService.signPdf(pdfBuf, p12Buf, options.password, options.signOptions);
+    });
 
-  // 3. Auditar e Verificar Assinaturas PAdES em PDF
-  ipcMain.handle('pades:verifyPdf', async (event: IpcMainInvokeEvent, pdfBuffer: Uint8Array | number[] | ArrayBuffer) => {
-    validateIpcSender(event, 'pades:verifyPdf', getMainWindow());
+    // 3. Auditar e Verificar Assinaturas PAdES em PDF
+    ipcMain.handle('pades:verifyPdf', async (event: IpcMainInvokeEvent, pdfBuffer: Uint8Array | number[] | ArrayBuffer | { pdfBuffer: Uint8Array | number[] | ArrayBuffer }) => {
+      validateIpcSender(event, 'pades:verifyPdf', getMainWindow());
 
-    if (!pdfBuffer) {
-      throw new Error('Buffer do documento PDF ausente para verificação PAdES.');
-    }
+      if (!pdfBuffer) {
+        throw new Error('Buffer do documento PDF ausente para verificação PAdES.');
+      }
 
-    const buf = pdfBuffer instanceof Uint8Array ? pdfBuffer : new Uint8Array(pdfBuffer as any);
-    validatePadesPayloadSize(buf.length, MAX_PADES_PDF_SIZE_BYTES, 'documento PDF');
+      const rawInput = (typeof pdfBuffer === 'object' && !(pdfBuffer instanceof Uint8Array) && !(pdfBuffer instanceof ArrayBuffer) && !Array.isArray(pdfBuffer) && (pdfBuffer as any).pdfBuffer)
+        ? (pdfBuffer as any).pdfBuffer
+        : pdfBuffer;
 
-    const { PadesSignatureService } = await import('../../src/services/padesSignatureService');
-    return PadesSignatureService.verifyPdf(buf);
-  });
+      const buf = rawInput instanceof Uint8Array ? rawInput : new Uint8Array(rawInput as any);
+      validatePadesPayloadSize(buf.length, MAX_PADES_PDF_SIZE_BYTES, 'documento PDF');
+
+      const { PadesSignatureService } = await import('../../src/services/padesSignatureService');
+      return PadesSignatureService.verifyPdf(buf);
+    });
+  } catch (err: any) {
+    throw new Error(`Falha ao registrar IPC handlers PAdES: ${err?.message || err}`);
+  }
 }

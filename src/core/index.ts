@@ -5,5 +5,6 @@ export * from './ocr';
 export * from './signatures';
 export * from './court-filing';
 export * from './legal-corpus';
+export * from './crypto';
 export * from './backup';
 export * from './recovery';

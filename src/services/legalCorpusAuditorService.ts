@@ -27,6 +27,10 @@ import type {
   AuthenticityEvidence,
   AuthenticityStatus
 } from './legalKnowledgeBaseService';
+import {
+  OfficialArtifactRepositoryService,
+  type IndependentAuditResult
+} from './officialArtifactRepositoryService';
 
 export interface ArticleAuditReport {
   articleId: string;
@@ -103,6 +107,41 @@ export class LegalCorpusAuditorService {
   public static computeCanonicalSha256(content: string): string {
     const normalized = normalizeCanonicalLegalText(content);
     return sha256Sync(normalized);
+  }
+
+  /**
+   * Calcula o hash SHA-256 (FIPS 180-4) estritamente sobre os bytes originais de qualquer artefato bruto,
+   * sem normalização textual. Preserva exata integridade física de PDFs, JSONs, HTMLs e XMLs.
+   */
+  public static computeRawArtifactSha256(rawPayload: string | Uint8Array | Buffer): string {
+    const md = forge.md.sha256.create();
+    if (typeof rawPayload === 'string') {
+      md.update(rawPayload, 'utf8');
+    } else {
+      const bytes = rawPayload instanceof Uint8Array ? rawPayload : new Uint8Array(rawPayload);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      md.update(binary);
+    }
+    return md.digest().toHex();
+  }
+
+  /**
+   * Executa a auditoria independente e reproduzível a partir do arquivo bruto original da publicação,
+   * sem confiar nos metadados ou estados internos do aplicativo.
+   */
+  public static auditPublicationIndependently(params: {
+    article: LegalArticle;
+    originalArtifact: string | Uint8Array | Buffer;
+    exactUrl: string;
+    authority: string;
+    publicationDate: string;
+    sourceFormat?: 'HTML' | 'PDF' | 'JSON_OFFICIAL' | 'XML_DJE' | 'TEXT_EXTRACT';
+    expectedRawHash?: string;
+  }): IndependentAuditResult {
+    return OfficialArtifactRepositoryService.auditPublicationIndependently(params);
   }
 
   /**

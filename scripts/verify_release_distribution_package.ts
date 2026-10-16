@@ -176,6 +176,21 @@ assert(
 );
 
 // ============================================================================
+// PILAR 6: Evidências Mandatórias de Desempenho e Carga Pré-Release
+// ============================================================================
+console.log('\n[6/6] Validando Exigência de Testes de Carga e Benchmarks Pré-Release...');
+
+assert(
+  workflowSrc.includes('npm run test:load') && workflowSrc.includes('npm run benchmark'),
+  'Workflow de release oficial exige execução de testes de carga e benchmarks antes da compilação'
+);
+
+assert(
+  typeof pkg.scripts['test:load'] === 'string' && typeof pkg.scripts['benchmark'] === 'string',
+  'Scripts de teste de carga (test:load) e benchmark de desempenho formalmente definidos no package.json'
+);
+
+// ============================================================================
 // SUMÁRIO EXECUTIVO
 // ============================================================================
 console.log('\n' + '='.repeat(80));

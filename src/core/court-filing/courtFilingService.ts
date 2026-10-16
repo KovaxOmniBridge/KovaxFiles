@@ -17,8 +17,8 @@ import {
   UNIFIED_COURT_PRESETS,
   getUnifiedCourtPreset
 } from '../../data/courtPresetsData';
-import { CancellationToken, OperationProgress, ProgressCallback, OperationResult } from '../../shared/contracts/operation.types';
-import { ensureKovaxError } from '../../shared/errors/kovaxErrors';
+import { CancellationToken, OperationProgress, ProgressCallback, OperationResult, OperationStatus } from '../../shared/contracts/operation.types';
+import { ensureKovaxError, ValidationError } from '../../shared/errors/kovaxErrors';
 
 export type CourtSystemConfig = UnifiedCourtPreset;
 export type FilingPreparationPlan = CourtFilingPackageResult;
@@ -39,7 +39,38 @@ export class CoreCourtFilingService {
   }
 
   /**
-   * Prepara e fraciona documentos para peticionamento eletrônico em conformidade com o tribunal
+   * Inspeciona um documento PDF para inclusão no fluxo de peticionamento
+   */
+  static async inspectPiece(
+    fileName: string,
+    buffer: ArrayBuffer,
+    pieceType?: any
+  ): Promise<CourtFilingPiece> {
+    return CourtFilingPreparationService.inspectPiece(fileName, buffer, pieceType);
+  }
+
+  /**
+   * Calcula o planejamento prévio de divisão de volumes antes da execução
+   */
+  static planVolumes(
+    pieces: CourtFilingPiece[],
+    maxVolumeSizeBytes: number,
+    startFolhaNumber: number = 1
+  ): any[] {
+    return CourtFilingPreparationService.planVolumes(pieces, maxVolumeSizeBytes, startFolhaNumber);
+  }
+
+  /**
+   * Calcula a contagem efetiva de páginas considerando exclusões de páginas
+   */
+  static getEffectivePages(piece: CourtFilingPiece): number[] {
+    return CourtFilingPreparationService.getEffectivePages(piece);
+  }
+
+  /**
+   * Prepara e fraciona documentos para peticionamento eletrônico em conformidade com o tribunal.
+   * REGRA CRÍTICA P0: Se qualquer volume exceder a cota máxima do tribunal (result.summary.reproved),
+   * o serviço JAMAIS pode retornar status 'completed' ou isSuccess: true.
    */
   static async prepareFiling(
     pieces: CourtFilingPiece[],
@@ -51,6 +82,14 @@ export class CoreCourtFilingService {
     try {
       if (cancellationToken?.isCancelled) {
         cancellationToken.throwIfCancelled();
+      }
+
+      if (!pieces || pieces.length === 0) {
+        throw new ValidationError('Nenhuma peça processual fornecida para preparação de protocolo judicial.');
+      }
+
+      if (!options || !options.targetPreset) {
+        throw new ValidationError('Configurações do tribunal ou preset de destino não fornecidos.');
       }
 
       onProgress?.({
@@ -78,7 +117,36 @@ export class CoreCourtFilingService {
         }
       );
 
+      if (cancellationToken?.isCancelled) {
+        cancellationToken.throwIfCancelled();
+      }
+
       const durationMs = Math.round(performance.now() - startTime);
+
+      // REGRA DE INTEGRIDADE: Se o pacote foi reprovado por excesso de tamanho, NUNCA declarar sucesso!
+      const isReproved = result.summary.reproved || result.volumes.some(v => v.exceedsEffectiveLimit);
+      if (isReproved) {
+        const volumesExceeding = result.volumes.filter(v => v.exceedsEffectiveLimit).length;
+        const totalVolumes = result.volumes.length;
+        const finalStatus: OperationStatus = (volumesExceeding === totalVolumes) ? 'failed' : 'partial';
+
+        return {
+          status: finalStatus,
+          isSuccess: false,
+          data: result,
+          error: new ValidationError(
+            result.summary.reprovedReason || 'O pacote de protocolo judicial excede o teto regulamentar de tamanho do tribunal.',
+            {
+              targetCourt: options.targetPreset.name,
+              maxSizeMB: options.targetPreset.maxSizeMB,
+              volumesExceeding,
+              totalVolumes
+            }
+          ),
+          durationMs
+        };
+      }
+
       return {
         status: 'completed',
         isSuccess: true,

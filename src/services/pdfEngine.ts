@@ -128,6 +128,7 @@ export interface RasterizationQualityReport {
   pages: PageRasterizationInfo[];
   securitySanitizationStatus: 'fully_destroyed_and_flattened';
   summaryMessage: string;
+  status?: 'optimal' | 'adapted_acceptable' | 'below_standard' | 'measurement_unavailable';
   measurementStatus?: 'measured' | 'measurement_unavailable';
 }
 
@@ -309,6 +310,7 @@ export class LocalPdfEngine {
       pages: pagesInfo,
       securitySanitizationStatus: 'fully_destroyed_and_flattened',
       summaryMessage: 'Sanitização por achatamento concluída, porém as medições técnicas de resolução não puderam ser aferidas pelo motor headless. Status identificado expressamente como measurement_unavailable.',
+      status: 'measurement_unavailable',
       measurementStatus: 'measurement_unavailable'
     };
   }

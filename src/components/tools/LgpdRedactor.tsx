@@ -39,11 +39,14 @@ import {
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import {
+  CoreRedactionEngine,
+  AnonymizePdfOptions
+} from '../../core/redaction';
+import {
   LocalPdfEngine,
   RasterizationQualityProfile,
   RasterizationQualityReport,
-  RASTER_QUALITY_PROFILES,
-  AnonymizePdfOptions
+  RASTER_QUALITY_PROFILES
 } from '../../services/pdfEngine';
 import { CompressionEngine } from '../../services/compressionEngine';
 import { PdfTextExtractor, PageTextData } from '../../services/pdfTextExtractor';
@@ -534,7 +537,7 @@ export const LgpdRedactor: React.FC = () => {
           targetFileName: doc.name
         };
 
-        const anonymizeRes = await LocalPdfEngine.anonymizePdfWithReport(buffer, rectsToApply, rasterOptions);
+        const anonymizeRes = await CoreRedactionEngine.anonymizePdfWithReport(buffer, rectsToApply, rasterOptions);
         const transformedFileName = doc.name.replace(/\.pdf$/i, '') + '_anonimizado_LGPD.pdf';
 
         processedResults.push({

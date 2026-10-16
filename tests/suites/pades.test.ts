@@ -10,7 +10,11 @@
 import forge from 'node-forge';
 import { PDFDocument } from 'pdf-lib';
 import assert from 'assert';
+import fs from 'fs';
+import path from 'path';
+import { execFileSync } from 'child_process';
 import { PadesSignatureService } from '../../src/services/padesSignatureService.ts';
+import { CoreSignatureService } from '../../src/core/signatures/signatureService.ts';
 
 function generateTestP12(commonName: string, pass: string): Buffer {
   const keys = forge.pki.rsa.generateKeyPair(2048);
@@ -167,7 +171,97 @@ async function runPadesSuite() {
     assert.ok(sig.chainValidationDescription.includes('VALIDAR do ITI'));
   });
 
-  console.log(`\nResultado Suíte 8 (PAdES): ${passed} Passados, ${failed} Falhados\n`);
+  // 6. Anti-Regressão CoreSignatureService: verifyPdfSignatures deve passar pdfBuffer diretamente
+  await test('Anti-Regressão: CoreSignatureService.verifyPdfSignatures passa pdfBuffer diretamente para electronApi.padesVerifyPdf', async () => {
+    const dummyPdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]); // %PDF-1.7
+    let receivedDirectBuffer = false;
+
+    const originalWindow = (globalThis as any).window;
+    try {
+      (globalThis as any).window = {
+        electronAPI: {
+          padesVerifyPdf: async (arg: any) => {
+            if (arg && !(arg instanceof Uint8Array) && !(arg instanceof ArrayBuffer) && arg.pdfBuffer) {
+              throw new TypeError('FALHA DE REGRESSÃO: padesVerifyPdf recebeu { pdfBuffer }, mas deve receber pdfBuffer diretamente!');
+            }
+            if (arg instanceof Uint8Array || arg instanceof ArrayBuffer) {
+              receivedDirectBuffer = true;
+              return {
+                hasSignatures: true,
+                allValid: true,
+                signatures: [{
+                  status: 'VALIDA',
+                  technicalIntegrity: 'INTEGRO',
+                  trustStatus: 'AUTOASSINADO',
+                  hasLegalPresumption: false,
+                  legalSignatureType: 'AVANCADA_NAO_ICP'
+                }]
+              };
+            }
+            throw new Error('Parâmetro inválido recebido em padesVerifyPdf');
+          }
+        }
+      };
+
+      const result = await CoreSignatureService.verifyPdfSignatures(dummyPdf);
+      assert.strictEqual(result.isSuccess, true, `verifyPdfSignatures falhou: ${result.error?.message}`);
+      assert.strictEqual(receivedDirectBuffer, true, 'electronApi.padesVerifyPdf deve ter recebido o buffer diretamente');
+    } finally {
+      (globalThis as any).window = originalWindow;
+    }
+  });
+
+  // 7. Auditoria Estática de electron/ipc/padesHandlers.ts (ESM & Tratamento de Erros)
+  await test('Auditoria Estática: electron/ipc/padesHandlers.ts deve usar import de ipcMain e tratar erros sem silenciamento', () => {
+    const handlersPath = path.resolve('electron/ipc/padesHandlers.ts');
+    const content = fs.readFileSync(handlersPath, 'utf-8');
+
+    assert.ok(
+      !content.includes("require('electron')"),
+      'padesHandlers.ts NÃO pode conter require(\'electron\') dentro de módulo ESM'
+    );
+    assert.ok(
+      /import\s+[^;]*from\s+['"]electron['"]/.test(content),
+      'padesHandlers.ts deve importar do módulo "electron" via import ESM'
+    );
+    assert.ok(
+      !content.includes('if (!ipcMain) return;'),
+      'registerPadesHandlers não pode silenciar falhas com if (!ipcMain) return;'
+    );
+  });
+
+  // 8. Homologação Ponta a Ponta no Runtime Real do Electron Empacotado (--test-pades-e2e)
+  await test('Homologação E2E Real no Electron: carregar certificado A1, assinar, salvar, validar e isolar chave privada', () => {
+    const mainJs = path.resolve('dist-electron/main.js');
+    if (!fs.existsSync(mainJs)) {
+      console.log('    [SKIP] dist-electron/main.js ainda não compilado para o teste E2E.');
+      return;
+    }
+
+    const output = execFileSync('npx', ['electron', 'dist-electron/main.js', '--test-pades-e2e'], {
+      encoding: 'utf-8',
+      shell: true,
+      timeout: 30000,
+      env: { ...process.env, NODE_ENV: 'production' }
+    });
+
+    assert.ok(
+      output.includes('HOMOLOGAÇÃO PAdES REAL ELECTRON:'),
+      'Executável real do Electron deve concluir a homologação E2E'
+    );
+    assert.ok(
+      output.includes('0 FALHADOS'),
+      'Todos os testes de homologação E2E no Electron devem passar com 0 falhas'
+    );
+    assert.ok(
+      output.includes('Chave privada (privateKey) NÃO vaza na raiz do retorno IPC'),
+      'Chave privada não pode retornar pelo IPC'
+    );
+    assert.ok(
+      output.includes('hasLegalPresumption === false para indícios sem âncora raiz'),
+      'Certificados não confiáveis não podem receber classificação qualificada'
+    );
+  });
   if (failed > 0) {
     process.exit(1);
   }

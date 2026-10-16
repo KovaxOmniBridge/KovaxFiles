@@ -6,7 +6,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 export function exposeElectronApi(): void {
-  contextBridge.exposeInMainWorld('electronAPI', {
+  const api = {
     openFileDialog: (options?: { multi?: boolean; extensions?: string[] }): Promise<string[] | null> => {
       return ipcRenderer.invoke('dialog:openFile', options);
     },
@@ -22,6 +22,9 @@ export function exposeElectronApi(): void {
     showItemInFolder: (filePath: string): Promise<boolean> => {
       return ipcRenderer.invoke('system:showItemInFolder', filePath);
     },
+    getAppVersion: (): Promise<string> => {
+      return ipcRenderer.invoke('system:getAppVersion');
+    },
     // Serviço criptográfico em contexto apropriado (IPC restrito e isolado)
     padesVerifyPdf: (pdfBuffer: Uint8Array | ArrayBuffer): Promise<any> => {
       return ipcRenderer.invoke('pades:verifyPdf', pdfBuffer);
@@ -33,5 +36,8 @@ export function exposeElectronApi(): void {
       return ipcRenderer.invoke('pades:parseCertificate', options);
     },
     isElectron: true
-  });
+  };
+
+  contextBridge.exposeInMainWorld('electronAPI', api);
+  contextBridge.exposeInMainWorld('electronApi', api);
 }

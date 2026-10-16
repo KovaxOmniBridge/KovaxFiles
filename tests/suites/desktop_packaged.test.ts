@@ -16,7 +16,7 @@
 import fs from 'fs';
 import path from 'path';
 import assert from 'assert';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { PDFDocument } from 'pdf-lib';
 import forge from 'node-forge';
 import { generateReleaseManifest } from '../../scripts/generate_release_manifest.js';
@@ -168,38 +168,69 @@ async function runDesktopPackagedSuite() {
     }
   });
 
-  // 7. Teste de Execução Real do Binário Empacotado em Ambiente Limpo (Clean-Environment Smoke Test)
+  // 7. Teste de Execução Real do Binário Empacotado em Ambiente Limpo (Zero-Dev Runtime)
   await test('Executável empacotado real deve iniciar com sucesso em ambiente isolado (Zero-Dev Runtime)', () => {
-    const unpackedExe = path.resolve('release/win-unpacked/KovaxFiles Desktop.exe');
+    let unpackedExe: string;
+    if (process.platform === 'win32') {
+      unpackedExe = path.resolve('release/win-unpacked/KovaxFiles Desktop.exe');
+    } else if (process.platform === 'darwin') {
+      unpackedExe = path.resolve('release/mac/KovaxFiles Desktop.app/Contents/MacOS/KovaxFiles Desktop');
+    } else {
+      unpackedExe = path.resolve('release/linux-unpacked/kovax-files-desktop');
+    }
+
+    assert.ok(
+      fs.existsSync(unpackedExe),
+      `Executável empacotado real DEVE existir em '${unpackedExe}'. Proibido fallback para 'npx electron' em testes de homologação de distribuição.`
+    );
+
+    // Sanitização estrita de PATH para simular máquina limpa sem ferramentas de desenvolvimento (Node.js, Python, .venv)
+    const rawPath = process.env.PATH || '';
+    const cleanPath = rawPath
+      .split(path.delimiter)
+      .filter(p => {
+        const lower = p.toLowerCase();
+        return !lower.includes('node') && !lower.includes('python') && !lower.includes('.venv') && !lower.includes('npm');
+      })
+      .join(path.delimiter);
 
     const cleanEnv: Record<string, string | undefined> = {
       SYSTEMROOT: process.env.SYSTEMROOT || 'C:\\Windows',
       WINDIR: process.env.WINDIR || 'C:\\Windows',
-      PATH: process.env.PATH,
-      TMP: process.env.TMP,
-      TEMP: process.env.TEMP
+      TMP: process.env.TMP || os.tmpdir(),
+      TEMP: process.env.TEMP || os.tmpdir(),
+      PATH: cleanPath || (process.platform === 'win32' ? 'C:\\Windows\\System32;C:\\Windows' : '/usr/bin:/bin')
     };
 
-    let targetCmd: string;
-    let targetArgs: string[];
-
-    if (fs.existsSync(unpackedExe)) {
-      targetCmd = unpackedExe;
-      targetArgs = ['--smoke-test'];
-    } else {
-      targetCmd = 'npx';
-      targetArgs = ['electron', 'dist-electron/main.js', '--smoke-test'];
-    }
-
-    const output = execFileSync(targetCmd, targetArgs, {
+    const output = execFileSync(unpackedExe, ['--smoke-test'], {
       env: cleanEnv,
       encoding: 'utf-8',
-      timeout: 20000
+      timeout: 30000
     });
 
     assert.ok(
-      output.includes('[SmokeTest]'),
-      'Executável empacotado deve concluir a rotina de inicialização em ambiente limpo'
+      output.includes('[CleanRuntime:Interface]'),
+      'Executável empacotado deve carregar a interface e DOM em ambiente limpo'
+    );
+    assert.ok(
+      output.includes('[CleanRuntime:Preload]'),
+      'Executável empacotado deve expor ContextBridge de forma segura'
+    );
+    assert.ok(
+      output.includes('[CleanRuntime:IPC]'),
+      'Executável empacotado deve responder chamadas IPC em ambiente limpo'
+    );
+    assert.ok(
+      output.includes('[CleanRuntime:OCR]'),
+      'Executável empacotado deve confirmar ativos de OCR offline no pacote'
+    );
+    assert.ok(
+      output.includes('[CleanRuntime:PDF-IO]'),
+      'Executável empacotado deve realizar operações de PDF e gravação de disco'
+    );
+    assert.ok(
+      output.includes('HOMOLOGAÇÃO DE DISTRIBUIÇÃO EM AMBIENTE LIMPO: 100% SUCESSO'),
+      'Executável empacotado deve atestar 100% de sucesso na homologação em ambiente limpo'
     );
   });
 
@@ -311,6 +342,74 @@ async function runDesktopPackagedSuite() {
         if (fs.existsSync(manifest)) fs.unlinkSync(manifest);
         if (fs.existsSync(probeDir)) fs.rmdirSync(probeDir);
       } catch {}
+    }
+  });
+
+  // 11. Validação de Assinatura Oficial dos Binários e Notarização Apple (Gatekeeper e Notarytool)
+  await test('Verificação de assinatura Authenticode dos binários e processo de notarização macOS', () => {
+    // 1. Configuração e Políticas de Code Signing Obrigatórias
+    assert.strictEqual(
+      pkg.build.win.signAndEditExecutable,
+      true,
+      'electron-builder win.signAndEditExecutable deve ser true'
+    );
+    assert.strictEqual(
+      pkg.build.win.verifyUpdateCodeSignature,
+      true,
+      'electron-builder win.verifyUpdateCodeSignature deve ser true'
+    );
+    assert.strictEqual(
+      pkg.build.mac.hardenedRuntime,
+      true,
+      'electron-builder mac.hardenedRuntime deve ser true para Hardened Runtime oficial'
+    );
+    assert.strictEqual(
+      pkg.build.mac.gatekeeperAssess,
+      true,
+      'electron-builder mac.gatekeeperAssess deve ser true para avaliação pelo Gatekeeper'
+    );
+
+    // 2. Entitlements do macOS
+    const entitlementsPath = path.resolve(pkg.build.mac.entitlements);
+    assert.ok(
+      fs.existsSync(entitlementsPath),
+      `Arquivo de entitlements ${pkg.build.mac.entitlements} deve existir fisicamente`
+    );
+    const entitlementsContent = fs.readFileSync(entitlementsPath, 'utf8');
+    assert.ok(
+      entitlementsContent.includes('com.apple.security.cs.allow-jit'),
+      'Entitlements deve configurar allow-jit para runtime V8'
+    );
+    assert.ok(
+      entitlementsContent.includes('<false/>'),
+      'Entitlements deve desativar debugger em produção'
+    );
+
+    // 3. Workflow de CI com Notarização e Gatekeeper
+    const workflowPath = path.resolve('.github/workflows/build-release.yml');
+    assert.ok(fs.existsSync(workflowPath), 'Workflow de release deve existir');
+    const workflowContent = fs.readFileSync(workflowPath, 'utf8');
+    assert.ok(
+      workflowContent.includes('APPLE_ID') &&
+      workflowContent.includes('APPLE_APP_SPECIFIC_PASSWORD') &&
+      workflowContent.includes('APPLE_TEAM_ID'),
+      'Workflow de release deve prever variáveis oficiais de notarização Apple (notarytool)'
+    );
+    assert.ok(
+      workflowContent.includes('WIN_CSC_LINK') && workflowContent.includes('MAC_CSC_LINK'),
+      'Workflow deve prever segredos de assinatura Authenticode e Apple Developer ID'
+    );
+
+    // 4. Verificação de Ferramentas de Assinatura da Plataforma Local
+    if (process.platform === 'win32') {
+      const psExe = path.join(process.env.WINDIR || 'C:\\Windows', 'System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+      if (fs.existsSync(psExe)) {
+        const probe = spawnSync(psExe, ['-NoProfile', '-Command', 'Get-Command Get-AuthenticodeSignature'], { encoding: 'utf8' });
+        assert.strictEqual(probe.status, 0, 'Cmdlet Get-AuthenticodeSignature deve estar operacional no Windows');
+      }
+    } else if (process.platform === 'darwin') {
+      const codesignProbe = spawnSync('which', ['codesign'], { encoding: 'utf8' });
+      assert.strictEqual(codesignProbe.status, 0, 'Utilitário codesign deve estar disponível no macOS');
     }
   });
 

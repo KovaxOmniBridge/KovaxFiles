@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 import {
-  CourtFilingPreparationService,
+  CoreCourtFilingService,
   CourtFilingPiece,
   CourtPieceType,
   PIECE_TYPE_LABELS,
@@ -38,7 +38,7 @@ import {
   CourtFilingOptions,
   CourtFilingPackageResult,
   CourtFilingVolumePlan
-} from '../../services/courtFilingPreparationService';
+} from '../../core/court-filing';
 
 type WizardStep = 1 | 2 | 3 | 4 | 5;
 
@@ -118,7 +118,7 @@ export const CourtFilingWizard: React.FC = () => {
   const previewVolumePlans: CourtFilingVolumePlan[] = useMemo(() => {
     if (pieces.length === 0) return [];
     try {
-      return CourtFilingPreparationService.planVolumes(
+      return CoreCourtFilingService.planVolumes(
         pieces,
         activePreset.maxVolumeSizeBytes,
         startFolhaNumber
@@ -151,7 +151,7 @@ export const CourtFilingWizard: React.FC = () => {
       for (const file of fileList) {
         if (!file.name.toLowerCase().endsWith('.pdf')) continue;
         const buffer = await file.arrayBuffer();
-        const piece = await CourtFilingPreparationService.inspectPiece(file.name, buffer);
+        const piece = await CoreCourtFilingService.inspectPiece(file.name, buffer);
         newPieces.push(piece);
       }
 
@@ -210,7 +210,7 @@ export const CourtFilingWizard: React.FC = () => {
           });
         }
         const bytes = await doc.save();
-        return CourtFilingPreparationService.inspectPiece(`${title.toLowerCase().replace(/\s+/g, '_')}.pdf`, bytes.buffer as ArrayBuffer, pType);
+        return CoreCourtFilingService.inspectPiece(`${title.toLowerCase().replace(/\s+/g, '_')}.pdf`, bytes.buffer as ArrayBuffer, pType);
       };
 
       const demo1 = await makeDemoDoc('01_Peticao_Inicial_Cobrança', 'peticao_inicial', 4, [0.08, 0.2, 0.4]);
@@ -278,7 +278,7 @@ export const CourtFilingWizard: React.FC = () => {
       }
 
       // Recalcular effectivePageCount
-      const effectivePages = CourtFilingPreparationService.getEffectivePages({ ...p, modifications: mods });
+      const effectivePages = CoreCourtFilingService.getEffectivePages({ ...p, modifications: mods });
       return {
         ...p,
         modifications: mods,
@@ -340,16 +340,21 @@ export const CourtFilingWizard: React.FC = () => {
     };
 
     try {
-      const result = await CourtFilingPreparationService.executeFilingPipeline(
+      const res = await CoreCourtFilingService.prepareFiling(
         pieces,
         options,
-        (msg, pct) => {
-          setProgressMsg(msg);
-          setProgressPercent(pct);
+        (progress) => {
+          setProgressMsg(progress.message || progress.stage);
+          setProgressPercent(progress.percentage || 0);
         }
       );
 
-      setFilingResult(result);
+      if (res.data) {
+        setFilingResult(res.data);
+      }
+      if (!res.isSuccess) {
+        setErrorMsg(res.error?.message || 'Falha durante a compilação do protocolo judicial.');
+      }
       setCurrentStep(5);
     } catch (err: any) {
       setErrorMsg(`Falha durante a compilação do protocolo: ${err.message || err}`);

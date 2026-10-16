@@ -12,10 +12,36 @@ import {
   CancellationToken,
   BatchOperationResult,
   BatchItemResult,
-  determineBatchStatus
+  determineBatchStatus,
+  OperationResult
 } from '../../shared/contracts/operation.types';
 import { pdfEngineAdapter } from '../../infrastructure/pdf/pdfEngineAdapter';
-import { DocumentProcessingError, ValidationError } from '../../shared/errors/kovaxErrors';
+import { DocumentProcessingError, ValidationError, ensureKovaxError } from '../../shared/errors/kovaxErrors';
+import {
+  CompressionEngine,
+  TARGET_PRESETS,
+  TargetPreset,
+  VolumeBundleOutput,
+  DirectCompressOutput,
+  GenericZipOutput,
+  AdvancedCompressOptions,
+  PdfWorkflowMode,
+  SignatureDetectionResult
+} from '../../services/compressionEngine';
+
+export {
+  CompressionEngine,
+  TARGET_PRESETS
+};
+export type {
+  TargetPreset,
+  VolumeBundleOutput,
+  DirectCompressOutput,
+  GenericZipOutput,
+  AdvancedCompressOptions,
+  PdfWorkflowMode,
+  SignatureDetectionResult
+};
 
 export type CompressionProfile = 'balanced' | 'aggressive' | 'extreme' | 'court_pje' | 'court_esaj';
 
@@ -87,7 +113,15 @@ export class CoreCompressionService {
     }
 
     const originalSize = input.bytes.length;
-    const finalSize = compressedBytes.length;
+    let finalSize = compressedBytes.length;
+    let finalBytes = compressedBytes;
+
+    // Se o arquivo resultante ficou maior que o original, preserva os bytes originais!
+    if (finalSize > originalSize) {
+      finalBytes = new Uint8Array(input.bytes);
+      finalSize = originalSize;
+    }
+
     const reduction = originalSize > 0 ? Math.max(0, ((originalSize - finalSize) / originalSize) * 100) : 0;
 
     onProgress?.({
@@ -104,8 +138,44 @@ export class CoreCompressionService {
       originalSizeBytes: originalSize,
       compressedSizeBytes: finalSize,
       reductionPercentage: parseFloat(reduction.toFixed(2)),
-      outputBytes: compressedBytes
+      outputBytes: finalBytes
     };
+  }
+
+  /**
+   * Executa a compressão individual de documento retornando o contrato uniforme OperationResult
+   */
+  static async executeCompression(
+    input: CompressDocumentInput,
+    onProgress?: ProgressCallback,
+    cancellationToken?: CancellationToken
+  ): Promise<OperationResult<CompressDocumentOutput>> {
+    const startTime = performance.now();
+    try {
+      if (cancellationToken?.isCancelled) {
+        cancellationToken.throwIfCancelled();
+      }
+
+      const output = await this.compressDocument(input, onProgress, cancellationToken);
+      const durationMs = Math.round(performance.now() - startTime);
+
+      return {
+        status: 'completed',
+        isSuccess: true,
+        data: output,
+        durationMs
+      };
+    } catch (err: any) {
+      const durationMs = Math.round(performance.now() - startTime);
+      const isCancelled = err.name === 'OperationCancelledException' || cancellationToken?.isCancelled;
+
+      return {
+        status: isCancelled ? 'canceled' : 'failed',
+        isSuccess: false,
+        error: ensureKovaxError(err, 'DOCUMENT_PROCESSING'),
+        durationMs
+      };
+    }
   }
 
   /**
@@ -220,4 +290,64 @@ export class CoreCompressionService {
       summary
     };
   }
+
+  /**
+   * Detecta assinaturas digitais ICP-Brasil / PKCS#7 em um buffer de PDF
+   */
+  static detectDigitalSignatures(buffer: ArrayBuffer): SignatureDetectionResult {
+    return CompressionEngine.detectDigitalSignatures(buffer);
+  }
+
+  /**
+   * Otimiza/comprime diretamente um arquivo PDF
+   */
+  static async compressDirectPdf(
+    pdfBytes: ArrayBuffer,
+    fileName: string,
+    options?: AdvancedCompressOptions,
+    onProgress?: any
+  ): Promise<DirectCompressOutput> {
+    return CompressionEngine.compressDirectPdf(pdfBytes, fileName, options, onProgress);
+  }
+
+  /**
+   * Otimiza diretamente uma imagem
+   */
+  static async compressDirectImage(
+    imgBytes: ArrayBuffer,
+    fileName: string,
+    options?: AdvancedCompressOptions
+  ): Promise<DirectCompressOutput> {
+    return CompressionEngine.compressDirectImage(imgBytes, fileName, options);
+  }
+
+  /**
+   * Empacota arquivos em volumes judiciais respeitando o tamanho máximo
+   */
+  static async packIntoVolumeBundle(
+    files: { name: string; buffer: ArrayBuffer }[],
+    preset: TargetPreset,
+    options?: { processNumber?: string; title?: string; advanced?: AdvancedCompressOptions },
+    onProgress?: any
+  ): Promise<VolumeBundleOutput> {
+    return CompressionEngine.packIntoVolumeBundle(files, preset, options, onProgress);
+  }
+
+  /**
+   * Cria pacote ZIP genérico
+   */
+  static async createGenericZipPackage(
+    files: { name: string; buffer: ArrayBuffer }[],
+    zipName: string
+  ): Promise<GenericZipOutput> {
+    return CompressionEngine.createGenericZipPackage(files, zipName);
+  }
+
+  /**
+   * Cria arquivo compactado ZIP bruto em memória
+   */
+  static createZipArchive(files: { name: string; data: Uint8Array }[]): Uint8Array {
+    return CompressionEngine.createZipArchive(files);
+  }
 }
+

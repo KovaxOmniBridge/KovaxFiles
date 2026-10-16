@@ -6,10 +6,10 @@ import {
   FileSignature, ShieldAlert, Award, Sliders, Trash2, AlertTriangle, Eye, X
 } from 'lucide-react';
 import { 
-  TARGET_PRESETS, TargetPreset, CompressionEngine, VolumeBundleOutput, 
+  TARGET_PRESETS, TargetPreset, CoreCompressionService, VolumeBundleOutput, 
   DirectCompressOutput, GenericZipOutput, AdvancedCompressOptions,
   PdfWorkflowMode 
-} from '../../services/compressionEngine';
+} from '../../core/compression';
 import * as pdfjsLib from 'pdfjs-dist';
 
 export type CompressorMode = 'direct_pdf' | 'volume_pdf' | 'generic_zip';
@@ -110,7 +110,7 @@ export const PdfCompressor: React.FC = () => {
         if (file.name.toLowerCase().endsWith('.pdf')) {
           try {
             const buf = await file.slice(0, 5000000).arrayBuffer();
-            const res = CompressionEngine.detectDigitalSignatures(buf);
+            const res = CoreCompressionService.detectDigitalSignatures(buf);
             if (res.hasSignatures) {
               signedList.push({ name: file.name, count: res.signatureCount });
             }
@@ -271,11 +271,11 @@ export const PdfCompressor: React.FC = () => {
           };
 
           if (ext === 'pdf') {
-            const res = await CompressionEngine.compressDirectPdf(f.buffer, f.name, effectiveOptions, handleProgress);
+            const res = await CoreCompressionService.compressDirectPdf(f.buffer, f.name, effectiveOptions, handleProgress);
             results.push(res);
           } else {
             handleProgress({ message: 'Otimizando imagem...', percent: 50 });
-            const res = await CompressionEngine.compressDirectImage(f.buffer, f.name, effectiveOptions);
+            const res = await CoreCompressionService.compressDirectImage(f.buffer, f.name, effectiveOptions);
             results.push(res);
           }
         }
@@ -291,7 +291,7 @@ export const PdfCompressor: React.FC = () => {
           ? { ...selectedPreset, maxSizeMB: customMaxSizeMB }
           : selectedPreset;
 
-        const res = await CompressionEngine.packIntoVolumeBundle(
+        const res = await CoreCompressionService.packIntoVolumeBundle(
           fileBuffers,
           effectivePreset,
           {
@@ -304,14 +304,14 @@ export const PdfCompressor: React.FC = () => {
               allowSignedPdfReencoding: confirmSignedReencode
             }
           },
-          prog => setProgressInfo(prog)
+          (prog: any) => setProgressInfo(prog)
         );
         setVolumeResult(res);
 
       } else if (activeMode === 'generic_zip') {
         setProgressInfo({ message: 'Compactando pacote ZIP...', percent: 50 });
         const zipName = packageTitle || 'Pacote_Arquivos_Compactado';
-        const res = await CompressionEngine.createGenericZipPackage(fileBuffers, zipName);
+        const res = await CoreCompressionService.createGenericZipPackage(fileBuffers, zipName);
         setProgressInfo({ message: 'Pacote ZIP concluído!', percent: 100 });
         setZipResult(res);
       }
@@ -1106,7 +1106,7 @@ export const PdfCompressor: React.FC = () => {
                         zipFiles.push({ name: `Relatorio_Tecnico_Integridade_${idx + 1}_${res.fileName.replace(/\.[^/.]+$/, '')}.pdf`, data: res.auditCertificatePdf });
                       }
                     });
-                    const zipBytes = CompressionEngine.createZipArchive(zipFiles);
+                    const zipBytes = CoreCompressionService.createZipArchive(zipFiles);
                     downloadFile(zipBytes, 'Arquivos_Otimizados_Lote.zip', 'application/zip');
                   }}
                   className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all"

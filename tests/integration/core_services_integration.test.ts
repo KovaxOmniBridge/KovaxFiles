@@ -68,11 +68,12 @@ async function runIntegrationTests() {
     const audit = CoreLegalCorpusService.auditArticle(sv1);
     assert(audit.isSuccess, 'SV 1 deve ser auditada com sucesso');
     assert(audit.data?.publication.authority.includes('STF') || audit.data?.publication.authority.includes('Supremo'), 'Órgão emissor deve ser STF');
-    assert(audit.data?.evidence.isDefensible === true, 'SV 1 deve ser tecnicamente defensável em juízo');
+    // Conforme AGENTS.md Regra 2.3: Dispositivos sem captura física bruta arquivada DEVEM permanecer como NAO_VERIFICADO_EXTERNAMENTE
+    assert(audit.data?.evidence.status === 'NAO_VERIFICADO_EXTERNAMENTE', 'Sem captura arquivada, status deve ser NAO_VERIFICADO_EXTERNAMENTE');
+    assert(audit.data?.evidence.isDefensible === false, 'Sem captura física, não pode declarar isDefensible: true');
 
     const citation = CoreLegalCorpusService.getDefensibleCitation(sv1);
-    assert(citation.includes('PROVENIÊNCIA OFICIAL COMPROVADA') && citation.includes('Captura Verificada SHA-256:'),
-      'Citação defensável deve conter cadeia de evidências');
+    assert(citation.includes('NOTA DE AUDITORIA') || citation.includes('acervo local'), 'Citação deve evidenciar honestamente que o registro é do acervo local pendente de verificação');
   }
 
   console.log('\n================================================================================');

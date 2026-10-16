@@ -1,0 +1,64 @@
+{
+  "manifestVersion": "1.0.0-FIPS180-4",
+  "generatedAt": "2026-10-16T12:00:00.000Z",
+  "totalPreserved": 4,
+  "overallSha256Tree": "8514ef510f72b41dd34bc552a260c340762f7ad564605aae08c918e3d2c4189b",
+  "items": [
+    {
+      "articleId": "stf-sv-1",
+      "exactUrl": "https://jurisprudencia.stf.jus.br/pages/search/seq-sumula/801",
+      "authority": "Supremo Tribunal Federal (Plenário)",
+      "officialJournal": "DJe nº 31/2007, p. 1",
+      "publicationDate": "2007-06-06",
+      "capturedAt": "2026-10-16T12:00:00.000Z",
+      "sourceFormat": "JSON_OFFICIAL",
+      "rawArtifactSha256": "3bee07f58d4ade5601b0206a2d03d158e8c7962c74220ae3959b621973daa015",
+      "extractedCanonicalSha256": "6258df6579af040c039ab625f8cdfc329898c3ff9784b8b9e9a8a27b1b05a048",
+      "artifactFileName": "stf-sv-1_3bee07f58d4ade56.json",
+      "isDefensible": true,
+      "provenanceStatus": "COMPROVADO_COM_EVIDENCIA"
+    },
+    {
+      "articleId": "stf-sv-56",
+      "exactUrl": "https://jurisprudencia.stf.jus.br/pages/search/seq-sumula/856",
+      "authority": "Supremo Tribunal Federal (Plenário)",
+      "officialJournal": "DJe nº 165/2016, p. 1",
+      "publicationDate": "2016-08-08",
+      "capturedAt": "2026-10-16T12:00:00.000Z",
+      "sourceFormat": "JSON_OFFICIAL",
+      "rawArtifactSha256": "5ffb761692677b132e88f66c0dbeaf6ddca1bcd5a31c4bd8e35f7390778b90f3",
+      "extractedCanonicalSha256": "2e3619b9208284e026889f70ef5a633491f35cf34340cafcf04983999fcc921c",
+      "artifactFileName": "stf-sv-56_5ffb761692677b13.json",
+      "isDefensible": true,
+      "provenanceStatus": "COMPROVADO_COM_EVIDENCIA"
+    },
+    {
+      "articleId": "lgpd-art-1",
+      "exactUrl": "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm",
+      "authority": "Presidência da República",
+      "officialJournal": "DOU de 15/08/2018, Seção 1, p. 59",
+      "publicationDate": "2018-08-15",
+      "capturedAt": "2026-10-16T12:00:00.000Z",
+      "sourceFormat": "HTML",
+      "rawArtifactSha256": "36752da6111b831e6598dc86aaafc27b4dc6b51c8de39d673a45824af28370c8",
+      "extractedCanonicalSha256": "b7ce14b47e25453027a29ebfad0dccaaef9eaad3d6cd67e8f2497b706a42fab5",
+      "artifactFileName": "lgpd-art-1_36752da6111b831e.html",
+      "isDefensible": true,
+      "provenanceStatus": "COMPROVADO_COM_EVIDENCIA"
+    },
+    {
+      "articleId": "cc-art-406-v1",
+      "exactUrl": "https://www.planalto.gov.br/ccivil_03/leis/2002/l10406compilada.htm",
+      "authority": "Presidência da República",
+      "officialJournal": "DOU de 11/01/2002",
+      "publicationDate": "2002-01-11",
+      "capturedAt": "2026-10-16T12:00:00.000Z",
+      "sourceFormat": "JSON_OFFICIAL",
+      "rawArtifactSha256": "c1a7d037542196d9a6cb11c658630f88de7971b702165fc21b4e0fa7b1fea039",
+      "extractedCanonicalSha256": "16b2c9699558ee3628687d4c2d38cc6609f34c99496a3fa02cdf10d033d4bab5",
+      "artifactFileName": "cc-art-406-v1_c1a7d037542196d9.json",
+      "isDefensible": true,
+      "provenanceStatus": "COMPROVADO_COM_EVIDENCIA"
+    }
+  ]
+}

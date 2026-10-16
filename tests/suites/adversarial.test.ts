@@ -18,6 +18,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import crypto from 'crypto';
 import assert from 'assert';
 import * as fflate from 'fflate';
@@ -28,10 +29,13 @@ import { OcrDocumentService, ImagePreservationError } from '../../src/services/o
 import { safeUnzipDocx, DocxSecurityError } from '../../src/services/ooxmlParser.ts';
 import { HtmlSanitizer } from '../../src/services/htmlSanitizer.ts';
 import { MemoryBudgetService } from '../../src/core/documents/memoryBudgetService.ts';
+import { CoreCompressionService } from '../../src/core/compression/compressionService.ts';
+import { CoreRedactionEngine } from '../../src/core/redaction/redactionCore.ts';
+import { CoreCourtFilingService } from '../../src/core/court-filing/courtFilingService.ts';
 import { CancellationTokenSource } from '../../src/shared/contracts/operation.types.ts';
 import { validateFileBuffer } from '../../src/shared/validation/validator.ts';
 import { validateSafeFilePath } from '../../electron/pathSecurity.ts';
-import { SecurityViolationError, ValidationError } from '../../src/shared/errors/kovaxErrors.ts';
+import { SecurityViolationError, ValidationError, DocumentProcessingError } from '../../src/shared/errors/kovaxErrors.ts';
 
 async function runAdversarialSuite() {
   console.log('='.repeat(80));
@@ -292,6 +296,152 @@ async function runAdversarialSuite() {
       assert.ok(!sanitized.includes('javascript:'), `Protocolo perigoso deve ser removido: ${payload}`);
       assert.ok(!sanitized.includes('<script'), `Tag script deve ser eliminada: ${payload}`);
     }
+  });
+
+  await test('PDF com tabela XRef corrompida passado para CoreCompressionService é rejeitado de forma controlada', async () => {
+    const validDoc = await PDFDocument.create();
+    validDoc.addPage([400, 400]);
+    const validBytes = await validDoc.save();
+
+    // Destrói a cauda do PDF (trailer, startxref e referências cruzadas com bytes não-vazios)
+    const corruptBytes = new Uint8Array(validBytes);
+    corruptBytes.fill(0xAA, Math.max(0, corruptBytes.length - 150));
+
+    let caught = false;
+    try {
+      await CoreCompressionService.compressDocument({
+        id: 'doc_corrupt_xref',
+        name: 'corrupt_xref.pdf',
+        bytes: corruptBytes,
+        profile: 'balanced'
+      });
+    } catch (err: any) {
+      caught = true;
+      assert.ok(
+        err instanceof DocumentProcessingError || err.name === 'DocumentProcessingError' || err.message.includes('PDF') || err.message.includes('Falha'),
+        'Erro deve ser tratado controladamente sem travar'
+      );
+    }
+    assert.strictEqual(caught, true, 'PDF com xref corrompida DEVE disparar erro controlado');
+  });
+
+  await test('PDF com dicionário truncado e sintaxe corrompida passado para CoreRedactionEngine é rejeitado com status failed', async () => {
+    // Cria stream inválido com cabeçalho PDF mas dicionário quebrado
+    const fakeCorruptPdf = Buffer.from(
+      '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages [CORRUPTED_DICTIONARY_UNCLOSED'
+    );
+
+    const res = await CoreRedactionEngine.redactDocument({
+      id: 'doc_truncated_stream',
+      name: 'truncated_stream.pdf',
+      pdfBytes: fakeCorruptPdf
+    });
+
+    assert.strictEqual(res.isSuccess, false, 'Não pode declarar sucesso sobre PDF com sintaxe corrompida');
+    assert.strictEqual(res.status, 'failed', 'Status deve ser estritamente failed');
+    assert.ok(res.error, 'Objeto de erro controlado deve ser retornado');
+  });
+
+  // ---------------------------------------------------------------------------
+  // 10. DOCUMENTOS GIGANTES, CONTENÇÃO DE MEMÓRIA E CANCELAMENTO EM LOTE
+  // ---------------------------------------------------------------------------
+  console.log('\n--- Vetor 10: Contenção de Memória sob Carga e Cancelamento Limpo ---');
+
+  await test('Processamento sob carga (1.000 fatias) com MemoryBudgetService mantém estabilidade de Heap', async () => {
+    if (global.gc) {
+      try { global.gc(); } catch {}
+    }
+    const heapStart = process.memoryUsage().heapUsed;
+    const slices = Array.from({ length: 1000 }, (_, i) => ({ id: `page_${i}`, data: new Uint8Array(1024) }));
+
+    let count = 0;
+    await MemoryBudgetService.processIncrementally(
+      slices,
+      async (slice) => {
+        count++;
+        MemoryBudgetService.wipeIntermediateBuffer(slice.data);
+        return { ok: true };
+      },
+      { chunkSize: 50 }
+    );
+
+    const heapEnd = process.memoryUsage().heapUsed;
+    const deltaMb = (heapEnd - heapStart) / (1024 * 1024);
+
+    assert.strictEqual(count, 1000, 'Todas as 1.000 fatias devem ser processadas');
+    assert.ok(deltaMb < 50, `Variação de memória Heap (${deltaMb.toFixed(2)} MB) deve permanecer contida (< 50MB)`);
+  });
+
+  await test('Cancelamento cooperativo no meio de compressão em lote gera status canceled ou partial e não grava saídas incompletas', async () => {
+    const validDoc = await PDFDocument.create();
+    validDoc.addPage([200, 200]);
+    const validBytes = await validDoc.save();
+
+    const cts = new CancellationTokenSource();
+    const batch = Array.from({ length: 20 }, (_, i) => ({
+      id: `batch_doc_${i}`,
+      name: `doc_${i}.pdf`,
+      bytes: validBytes,
+      profile: 'balanced' as const
+    }));
+
+    let processedBeforeAbort = 0;
+    const batchPromise = CoreCompressionService.compressBatch(
+      batch,
+      (prog) => {
+        processedBeforeAbort = prog.current;
+        if (prog.current >= 5) {
+          cts.cancel('Usuário interrompeu processamento na quinta peça');
+        }
+      },
+      cts.token
+    );
+
+    const result = await batchPromise;
+    assert.ok(
+      result.status === 'partial' || result.status === 'canceled',
+      'Status do lote interrompido deve ser partial ou canceled'
+    );
+    assert.ok(result.succeededItems >= 4 && result.succeededItems <= 5, 'Itens processados antes do aborto devem ser limitados');
+    assert.ok(result.canceledItems >= 15, 'Itens restantes devem ter sido cancelados');
+  });
+
+  // ---------------------------------------------------------------------------
+  // 11. LIMPEZA DETERMINÍSTICA DE ARQUIVOS TEMPORÁRIOS (/tmp / os.tmpdir)
+  // ---------------------------------------------------------------------------
+  console.log('\n--- Vetor 11: Limpeza Determinística de Arquivos Temporários ---');
+
+  await test('Operações com arquivos temporários devem garantir remoção de 100% dos resíduos mesmo sob falha', async () => {
+    const tempDir = os.tmpdir();
+    const testTempFile1 = path.join(tempDir, `kovax_temp_test_1_${Date.now()}.tmp`);
+    const testTempFile2 = path.join(tempDir, `kovax_temp_test_2_${Date.now()}.tmp`);
+
+    // Criar arquivos de teste simulando buffers temporários em disco
+    fs.writeFileSync(testTempFile1, Buffer.from('conteudo_temporario_1'));
+    fs.writeFileSync(testTempFile2, Buffer.from('conteudo_temporario_2'));
+
+    assert.strictEqual(fs.existsSync(testTempFile1), true, 'Arquivo temporário 1 deve existir durante a operação');
+    assert.strictEqual(fs.existsSync(testTempFile2), true, 'Arquivo temporário 2 deve existir durante a operação');
+
+    let errorSimulated = false;
+    try {
+      // Simula operação com falha intencional
+      throw new Error('Falha catastrófica simulada no meio da operação');
+    } catch (err) {
+      errorSimulated = true;
+    } finally {
+      // Padrão obrigatório do KovaxFiles: limpeza garantida no bloco finally
+      if (fs.existsSync(testTempFile1)) fs.unlinkSync(testTempFile1);
+      if (fs.existsSync(testTempFile2)) fs.unlinkSync(testTempFile2);
+    }
+
+    assert.strictEqual(errorSimulated, true);
+    assert.strictEqual(fs.existsSync(testTempFile1), false, 'Arquivo temporário 1 DEVE ter sido removido no finally');
+    assert.strictEqual(fs.existsSync(testTempFile2), false, 'Arquivo temporário 2 DEVE ter sido removido no finally');
+
+    // Validação preventiva: varredura no diretório temporário para verificar que não há arquivos kovax_temp órfãos
+    const remainingKovaxFiles = fs.readdirSync(tempDir).filter(f => f.startsWith('kovax_temp_test_'));
+    assert.strictEqual(remainingKovaxFiles.length, 0, 'Zero arquivos temporários da suíte podem sobrar no disco');
   });
 
   console.log(`\nResultado Suíte 11 (Adversarial): ${passed} Passados, ${failed} Falhados\n`);

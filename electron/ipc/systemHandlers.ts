@@ -2,11 +2,16 @@
  * KovaxFiles Desktop — Electron System IPC Handlers (Open path, show in folder)
  */
 
-import { ipcMain, shell, BrowserWindow } from 'electron';
+import { ipcMain, shell, BrowserWindow, app } from 'electron';
 import { validateIpcSender } from './ipcValidator';
 import { validateSafeFilePath } from '../pathSecurity';
 
 export function registerSystemHandlers(getMainWindow: () => BrowserWindow | null): void {
+  ipcMain.handle('system:getAppVersion', async (event) => {
+    validateIpcSender(event, 'system:getAppVersion', getMainWindow());
+    return app.getVersion();
+  });
+
   ipcMain.handle('system:openPath', async (event, filePath: string) => {
     validateIpcSender(event, 'system:openPath', getMainWindow());
 

@@ -303,7 +303,7 @@ async function runLegalProvenanceTestSuite() {
     const realTimestamp = '2026-10-16T08:30:00.000Z';
     const ingestedSv1 = OfficialSourceIngestionService.ingestOfficialArtifact({
       article: sv1,
-      rawPayload: '{"orgao":"STF","dje":"DJe 31/2007"}',
+      rawPayload: JSON.stringify({ orgao: 'STF', dje: 'DJe 31/2007', enunciado: sv1.content }),
       extractedText: sv1.content,
       exactUrl: 'https://jurisprudencia.stf.jus.br/pages/search/seq-sumula/801',
       authority: 'Supremo Tribunal Federal (Plenário)',

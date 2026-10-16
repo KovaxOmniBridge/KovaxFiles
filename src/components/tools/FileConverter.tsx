@@ -17,8 +17,8 @@ import {
   Sparkles,
   FileType
 } from 'lucide-react';
-import { LocalPdfEngine, ImageToPdfOptions, PdfToImageOptions, TextToPdfOptions } from '../../services/pdfEngine';
-import { CompressionEngine } from '../../services/compressionEngine';
+import { CoreConversionService, ImageToPdfOptions, PdfToImageOptions, TextToPdfOptions } from '../../core/documents';
+import { CoreCompressionService } from '../../core/compression';
 
 export interface ConvertedItem {
   fileName: string;
@@ -111,7 +111,7 @@ export const FileConverter: React.FC = () => {
         mergeIntoSinglePdf: true
       };
 
-      const pdfBytes = await LocalPdfEngine.imagesToPdf(items, options);
+      const pdfBytes = await CoreConversionService.imagesToPdf(items, options);
 
       setResults([{
         fileName: outputPdfName.endsWith('.pdf') ? outputPdfName : `${outputPdfName}.pdf`,
@@ -153,7 +153,7 @@ export const FileConverter: React.FC = () => {
         scale: imageScale
       };
 
-      const pagesImages = await LocalPdfEngine.pdfToImages(buffer, options);
+      const pagesImages = await CoreConversionService.pdfToImages(buffer, options);
 
       const items: ConvertedItem[] = pagesImages.map(img => ({
         fileName: `${pdfForImages.name.replace(/\.pdf$/i, '')}_${img.fileName}`,
@@ -201,7 +201,7 @@ export const FileConverter: React.FC = () => {
         title: txtTitle
       };
 
-      const pdfBytes = await LocalPdfEngine.textToPdf(textContent, options);
+      const pdfBytes = await CoreConversionService.textToPdf(textContent, options);
 
       setResults([{
         fileName: `${(txtTitle || 'documento_texto').toLowerCase().replace(/[^a-z0-9]/g, '_')}.pdf`,
@@ -230,7 +230,7 @@ export const FileConverter: React.FC = () => {
   const handleDownloadAllZip = () => {
     if (!results || results.length === 0) return;
     const zipFiles = results.map(r => ({ name: r.fileName, data: r.data }));
-    const zipData = CompressionEngine.createZipArchive(zipFiles);
+    const zipData = CoreCompressionService.createZipArchive(zipFiles);
     const blob = new Blob([new Uint8Array(zipData)], { type: 'application/zip' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

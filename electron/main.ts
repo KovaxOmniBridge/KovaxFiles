@@ -10,6 +10,8 @@ import { fileURLToPath } from 'url';
 import { WindowManager } from './main/windowManager';
 import { configureSessionSecurity } from './main/sessionSecurity';
 import { registerAllIpcHandlers } from './ipc';
+import { runPadesE2eRealElectronTest } from './main/padesE2eRunner';
+import { runCleanEnvironmentPackagedTest } from './main/cleanEnvironmentRunner';
 
 export * from './pathSecurity';
 
@@ -19,6 +21,7 @@ const __dirname = path.dirname(__filename);
 const preloadPath = path.join(__dirname, 'preload.cjs');
 const windowManager = new WindowManager(preloadPath);
 const isSmokeTest = process.argv.includes('--smoke-test') || process.argv.includes('--test-clean-environment');
+const isPadesE2eTest = process.argv.includes('--test-pades-e2e');
 
 app.whenReady().then(() => {
   // 1. Configurar segurança de sessão (bloqueio de rede e CSP estrita)
@@ -29,9 +32,19 @@ app.whenReady().then(() => {
 
   // 3. Suporte a Smoke Test / Teste de Execução em Ambiente Limpo (CI / Testes Automatizados)
   if (isSmokeTest) {
-    console.log('[SmokeTest] Inicialização do processo principal concluída com sucesso em ambiente limpo.');
-    console.log('[SmokeTest] Módulos nativos, IPC e SessionSecurity carregados.');
-    app.exit(0);
+    const win = windowManager.createWindow();
+    win.webContents.once('did-finish-load', async () => {
+      await runCleanEnvironmentPackagedTest(win);
+    });
+    return;
+  }
+
+  // 4. Suporte a Teste E2E de Integração Criptográfica Real no Electron
+  if (isPadesE2eTest) {
+    const win = windowManager.createWindow();
+    win.webContents.once('did-finish-load', async () => {
+      await runPadesE2eRealElectronTest(win);
+    });
     return;
   }
 

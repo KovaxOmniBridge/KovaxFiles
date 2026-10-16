@@ -9,6 +9,7 @@
  * - É terminantemente proibido reutilizar o hash do texto local como se fosse o hash da fonte externa.
  */
 
+import forge from 'node-forge';
 import { LegalArticle, ProvenanceChain } from './legalKnowledgeBaseService';
 import { LegalCorpusAuditorService, normalizeCanonicalLegalText } from './legalCorpusAuditorService';
 
@@ -23,7 +24,7 @@ export interface OfficialCaptureSnapshot {
   capturedAt: string; // ISO 8601 exato da captura na rede/sistema (NÃO a data de publicação da norma)
   captureMethod: 'OFFICIAL_DJE_SNAPSHOT' | 'API_OFFICIAL_GATEWAY' | 'OFFICIAL_PORTAL_INGESTION';
   sourceFormat: 'HTML' | 'PDF' | 'JSON_OFFICIAL' | 'XML_DJE' | 'TEXT_EXTRACT';
-  rawArtifactSha256: string; // SHA-256 dos bytes brutos recebidos da fonte oficial
+  rawArtifactSha256: string; // SHA-256 dos bytes brutos recebidos da fonte oficial (sem normalização)
   extractedCanonicalText: string;
   extractedContentHash: string; // SHA-256 do texto extraído normalizado
   contentLengthBytes: number;
@@ -56,13 +57,157 @@ export class OfficialSourceIngestionService {
   }
 
   /**
+   * Calcula o hash SHA-256 (FIPS 180-4) estritamente sobre os bytes originais do artefato bruto,
+   * sem qualquer normalização textual ou alteração de encoding.
+   */
+  public static computeRawArtifactSha256(rawPayload: string | Uint8Array | Buffer): string {
+    return LegalCorpusAuditorService.computeRawArtifactSha256(rawPayload);
+  }
+
+  /**
+   * Extrai o texto normativo diretamente do artefato oficial bruto preservado,
+   * comprovando que o texto tem origem factual na fonte e não foi forjado pelo chamador.
+   */
+  public static extractTextFromRawArtifact(
+    rawPayload: string | Uint8Array | Buffer,
+    sourceFormat: 'HTML' | 'PDF' | 'JSON_OFFICIAL' | 'XML_DJE' | 'TEXT_EXTRACT' = 'HTML',
+    expectedSnippet?: string
+  ): {
+    extractedText: string;
+    isSuccessfullyExtracted: boolean;
+    extractionNotes: string;
+  } {
+    const rawStr = typeof rawPayload === 'string'
+      ? rawPayload
+      : (rawPayload instanceof Uint8Array || Buffer.isBuffer(rawPayload))
+        ? new TextDecoder('utf-8').decode(rawPayload)
+        : String(rawPayload);
+
+    if (!rawStr || rawStr.trim() === '') {
+      return {
+        extractedText: '',
+        isSuccessfullyExtracted: false,
+        extractionNotes: 'Artefato bruto vazio: impossível extrair conteúdo normativo.'
+      };
+    }
+
+    if (sourceFormat === 'JSON_OFFICIAL') {
+      try {
+        const parsed = JSON.parse(rawStr);
+        const candidate = parsed.enunciado || parsed.texto || parsed.conteudo ||
+          parsed.dispositivo || parsed.ementa || parsed.content || parsed.text ||
+          parsed.artigo;
+        if (typeof candidate === 'string' && candidate.trim() !== '') {
+          return {
+            extractedText: candidate.trim(),
+            isSuccessfullyExtracted: true,
+            extractionNotes: 'Texto normativo extraído de campo estruturado JSON_OFFICIAL.'
+          };
+        }
+        if (parsed.items && Array.isArray(parsed.items) && parsed.items[0]) {
+          const item = parsed.items[0];
+          const text = item.enunciado || item.texto || item.conteudo;
+          if (typeof text === 'string' && text.trim() !== '') {
+            return {
+              extractedText: text.trim(),
+              isSuccessfullyExtracted: true,
+              extractionNotes: 'Texto extraído do primeiro item de array JSON_OFFICIAL.'
+            };
+          }
+        }
+        return {
+          extractedText: '',
+          isSuccessfullyExtracted: false,
+          extractionNotes: 'JSON válido, porém não contém nenhum campo normativo oficial reconhecido (enunciado, texto, conteudo, dispositivo).'
+        };
+      } catch (err: any) {
+        return {
+          extractedText: '',
+          isSuccessfullyExtracted: false,
+          extractionNotes: `Falha ao interpretar artefato como JSON_OFFICIAL: ${err?.message || err}`
+        };
+      }
+    }
+
+    if (sourceFormat === 'XML_DJE') {
+      const match = rawStr.match(/<(?:enunciado|texto|dispositivo|artigo|ementa)[^>]*>([\s\S]*?)<\/(?:enunciado|texto|dispositivo|artigo|ementa)>/i);
+      if (match && match[1] && match[1].trim() !== '') {
+        return {
+          extractedText: match[1].trim(),
+          isSuccessfullyExtracted: true,
+          extractionNotes: 'Texto normativo extraído de tag XML oficial do DJe.'
+        };
+      }
+      return {
+        extractedText: '',
+        isSuccessfullyExtracted: false,
+        extractionNotes: 'Estrutura XML_DJE não contém tag normativa identificada.'
+      };
+    }
+
+    if (sourceFormat === 'HTML') {
+      if (expectedSnippet && expectedSnippet.trim() !== '') {
+        const normExpected = normalizeCanonicalLegalText(expectedSnippet);
+        const textInHtml = normalizeCanonicalLegalText(
+          rawStr
+            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+        );
+        if (textInHtml.includes(normExpected)) {
+          return {
+            extractedText: normExpected,
+            isSuccessfullyExtracted: true,
+            extractionNotes: 'Texto normativo localizado e extraído integralmente do documento HTML oficial.'
+          };
+        }
+      }
+      const withoutScripts = rawStr
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
+      const clean = withoutScripts.replace(/<[^>]+>/g, ' ').trim();
+      return {
+        extractedText: clean,
+        isSuccessfullyExtracted: clean.length > 0,
+        extractionNotes: clean.length > 0 ? 'Texto extraído do HTML oficial.' : 'HTML vazio após sanitização.'
+      };
+    }
+
+    if (sourceFormat === 'TEXT_EXTRACT') {
+      if (expectedSnippet && expectedSnippet.trim() !== '') {
+        const normExpected = normalizeCanonicalLegalText(expectedSnippet);
+        const normRaw = normalizeCanonicalLegalText(rawStr);
+        if (normRaw.includes(normExpected)) {
+          return {
+            extractedText: normExpected,
+            isSuccessfullyExtracted: true,
+            extractionNotes: 'Texto normativo comprovadamente contido no extrato textual preservado.'
+          };
+        }
+      }
+      return {
+        extractedText: rawStr.trim(),
+        isSuccessfullyExtracted: true,
+        extractionNotes: 'Texto extraído do documento textual.'
+      };
+    }
+
+    return {
+      extractedText: rawStr.trim(),
+      isSuccessfullyExtracted: rawStr.trim().length > 0,
+      extractionNotes: 'Extração padrão de texto bruto.'
+    };
+  }
+
+  /**
    * Ingesta um artefato oficial bruto capturado de repositório governamental/tribunal,
-   * calcula os hashes de forma independente e realiza a conferência literal contra o texto local.
+   * calcula o hash SHA-256 diretamente dos bytes brutos (sem normalização) e realiza
+   * extração e conferência factual contra o acervo local.
    */
   public static ingestOfficialArtifact(params: {
     article: LegalArticle;
-    rawPayload: string;
-    extractedText: string;
+    rawPayload: string | Uint8Array | Buffer;
+    extractedText?: string;
     exactUrl: string;
     authority: string;
     officialJournal: string;
@@ -94,21 +239,55 @@ export class OfficialSourceIngestionService {
       throw new Error(`Ingestão recusada: Domínio '${domainCheck.hostname}' não é uma fonte governamental/tribunal certificada.`);
     }
 
-    // 2. Cálculo do Hash SHA-256 do payload bruto recebido da fonte externa
-    // Este hash representa os bytes físicos do arquivo baixado da internet/DJe
-    const rawArtifactSha256 = LegalCorpusAuditorService.computeCanonicalSha256(rawPayload);
+    // 2. Cálculo do Hash SHA-256 do payload bruto diretamente sobre os bytes originais (sem normalização textual)
+    const rawArtifactSha256 = this.computeRawArtifactSha256(rawPayload);
 
-    // 3. Cálculo do Hash SHA-256 do texto extraído e normalizado
-    const normalizedExtracted = normalizeCanonicalLegalText(extractedText);
+    // 3. Extração independente do texto diretamente do artefato bruto preservado
+    const extraction = this.extractTextFromRawArtifact(rawPayload, sourceFormat, article.content);
+
+    // 4. Verificação de correspondência e comprovação de proveniência do texto
+    // Se o chamador forneceu extractedText, verificar se ele coincide com o extraído de rawPayload
+    let hasProvenOrigin = extraction.isSuccessfullyExtracted;
+    let effectiveExtractedText = extraction.extractedText;
+
+    if (extractedText && extractedText.trim() !== '') {
+      const normProvided = normalizeCanonicalLegalText(extractedText);
+      const normFromRaw = normalizeCanonicalLegalText(extraction.extractedText);
+
+      // O texto alegado pelo chamador DEVE estar comprovadamente contido no payload bruto!
+      const rawTextForSearch = normalizeCanonicalLegalText(
+        typeof rawPayload === 'string'
+          ? rawPayload
+          : (rawPayload instanceof Uint8Array || Buffer.isBuffer(rawPayload))
+            ? new TextDecoder('utf-8').decode(rawPayload)
+            : String(rawPayload)
+      );
+      const isContainedInRaw = rawTextForSearch.includes(normProvided);
+
+      if (normProvided !== normFromRaw && !isContainedInRaw) {
+        // Payload arbitrário detectado! O texto alegado não provém do rawPayload.
+        hasProvenOrigin = false;
+        effectiveExtractedText = extraction.extractedText || normProvided;
+      } else {
+        effectiveExtractedText = normProvided;
+      }
+    }
+
+    const normalizedExtracted = normalizeCanonicalLegalText(effectiveExtractedText);
     const extractedContentHash = LegalCorpusAuditorService.computeCanonicalSha256(normalizedExtracted);
 
-    // 4. Cálculo do Hash do texto armazenado localmente
+    // 5. Cálculo do Hash do texto armazenado localmente
     const localContentHash = LegalCorpusAuditorService.computeCanonicalSha256(article.content);
 
-    // 5. Comparação literal de conteúdo
-    const isMatch = (localContentHash === extractedContentHash);
+    // 6. Comparação literal de conteúdo:
+    // Só há match se a proveniência do artefato for comprovada E os hashes de conteúdo coincidirem!
+    const isMatch = Boolean(hasProvenOrigin && (localContentHash === extractedContentHash));
 
-    // 6. Registro do snapshot de custódia
+    const rawPayloadLength = typeof rawPayload === 'string'
+      ? Buffer.byteLength(rawPayload, 'utf8')
+      : rawPayload.length;
+
+    // 7. Registro do snapshot de custódia
     const snapshot: OfficialCaptureSnapshot = {
       snapshotId: `snap-${article.id}-${Date.now()}`,
       articleId: article.id,
@@ -123,12 +302,12 @@ export class OfficialSourceIngestionService {
       rawArtifactSha256,
       extractedCanonicalText: normalizedExtracted,
       extractedContentHash,
-      contentLengthBytes: rawPayload.length,
+      contentLengthBytes: rawPayloadLength,
       storagePath: storagePath || `snapshots/${article.id}.json`
     };
     this.registerSnapshot(snapshot);
 
-    // 7. Construção da cadeia de proveniência com evidência real
+    // 8. Construção da cadeia de proveniência com evidência real
     const provenance: ProvenanceChain = {
       publication: {
         authority,
@@ -148,7 +327,7 @@ export class OfficialSourceIngestionService {
         rawArtifactSha256,
         sourceRawArtifactPath: snapshot.storagePath,
         sourceFormat,
-        contentLengthBytes: rawPayload.length,
+        contentLengthBytes: rawPayloadLength,
         hasDocumentedSnapshot: true,
         extractedContentHash
       },
@@ -159,8 +338,10 @@ export class OfficialSourceIngestionService {
         extractedContentHash,
         contentMatch: isMatch,
         textComparisonDetails: isMatch
-          ? 'Texto local coincide 100% com o enunciado extraído do artefato oficial capturado.'
-          : 'Divergência detectada entre texto local e artefato oficial capturado.',
+          ? 'Texto local coincide 100% com o enunciado extraído diretamente do artefato oficial capturado.'
+          : (!hasProvenOrigin
+            ? 'Divergência crítica: O payload bruto fornecido não contém nem comprova o enunciado normativo alegado.'
+            : 'Divergência detectada entre texto local e artefato oficial capturado.'),
         versionHistory: article.provenance?.versionControl?.versionHistory || []
       },
       evidence: {
@@ -174,9 +355,11 @@ export class OfficialSourceIngestionService {
         isOfficialUrnVerified: Boolean(article.isOfficialUrnVerified),
         hasDocumentedSnapshot: true,
         isAutovalidationRejected: false,
-        auditNotes: isMatch
-          ? `Autenticidade e cadeia de proveniência integralmente comprovadas perante repositório oficial do ${authority}. Captura física efetuada em ${capturedAt} com snapshot documentado.`
-          : `Divergência detectada entre o texto do acervo local e a publicação oficial do ${authority}.`
+        auditNotes: !hasProvenOrigin
+          ? `Ingestão rejeitada: O payload bruto fornecido não contém nem comprova o enunciado normativo alegado perante o ${authority}. O texto informado pelo chamador não pôde ser extraído do artefato oficial.`
+          : (isMatch
+            ? `Autenticidade e cadeia de proveniência integralmente comprovadas perante repositório oficial do ${authority}. Captura física efetuada em ${capturedAt} com snapshot documentado.`
+            : `Divergência detectada entre o texto do acervo local e a publicação oficial do ${authority}.`)
       }
     };
 
