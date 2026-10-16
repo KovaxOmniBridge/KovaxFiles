@@ -96,6 +96,8 @@ export interface RedactionRectangle {
 
 export type RasterizationQualityProfile = 'balanced' | 'high_quality' | 'compact' | 'custom';
 
+export type PageRasterizationStatus = 'optimal' | 'adapted_acceptable' | 'below_standard' | 'measurement_unavailable';
+
 export interface PageRasterizationInfo {
   pageNumber: number;
   widthPt: number;
@@ -108,7 +110,8 @@ export interface PageRasterizationInfo {
   megaPixels: number;
   wasAdapted: boolean;
   qualityWarning?: string;
-  status: 'optimal' | 'adapted_acceptable' | 'below_standard';
+  status: PageRasterizationStatus;
+  measurementStatus?: 'measured' | 'measurement_unavailable';
 }
 
 export interface RasterizationQualityReport {
@@ -125,6 +128,7 @@ export interface RasterizationQualityReport {
   pages: PageRasterizationInfo[];
   securitySanitizationStatus: 'fully_destroyed_and_flattened';
   summaryMessage: string;
+  measurementStatus?: 'measured' | 'measurement_unavailable';
 }
 
 export const RASTER_QUALITY_PROFILES: Record<
@@ -179,6 +183,13 @@ export interface AnonymizePdfOptions {
   targetFileName?: string;
   targetFileId?: string;
   /**
+   * Se true, reprova a operação com erro fatal se o motor de rasterização
+   * não fornecer as medições obrigatórias reais (DPI efetivo, pixels renderizados).
+   * Se false ou omitido, retorna o relatório explicitamente identificado como 'measurement_unavailable',
+   * sem jamais presumir valores arbitrários (como A4, DPI nominal ou status 'optimal').
+   */
+  strictReport?: boolean;
+  /**
    * @deprecated sanitizeFlatten NÃO PODE ser desativado no método de anonimização.
    * A tentativa de passar `false` resultará em lançamento de exceção de segurança.
    * Para marcação visual de conferência sem destruição de dados, utilize `applyVisualOverlay`.
@@ -215,6 +226,93 @@ export async function computeSha256Hex(data: Uint8Array): Promise<string> {
 }
 
 export class LocalPdfEngine {
+  /**
+   * Valida se um relatório de rasterização contém todas as medições técnicas obrigatórias reais,
+   * reprovando relatórios com medidas presumidas, incompletas ou corrompidas.
+   */
+  static validateRasterizationReport(report: any): report is RasterizationQualityReport {
+    if (!report || typeof report !== 'object') return false;
+    if (typeof report.totalPages !== 'number' || report.totalPages < 1) return false;
+    if (!Array.isArray(report.pages) || report.pages.length !== report.totalPages) return false;
+    if (typeof report.averageEffectiveDpi !== 'number' || report.averageEffectiveDpi <= 0) return false;
+    if (typeof report.minEffectiveDpi !== 'number' || report.minEffectiveDpi <= 0) return false;
+    if (typeof report.maxEffectiveDpi !== 'number' || report.maxEffectiveDpi <= 0) return false;
+
+    return report.pages.every((p: any) =>
+      p &&
+      typeof p.pageNumber === 'number' && p.pageNumber >= 1 &&
+      typeof p.widthPt === 'number' && p.widthPt > 0 &&
+      typeof p.heightPt === 'number' && p.heightPt > 0 &&
+      typeof p.effectiveDpi === 'number' && p.effectiveDpi > 0 &&
+      typeof p.renderedWidthPx === 'number' && p.renderedWidthPx > 0 &&
+      typeof p.renderedHeightPx === 'number' && p.renderedHeightPx > 0 &&
+      typeof p.megaPixels === 'number' && p.megaPixels >= 0 &&
+      ['optimal', 'adapted_acceptable', 'below_standard', 'measurement_unavailable'].includes(p.status)
+    );
+  }
+
+  /**
+   * Cria um laudo técnico seguro com identificação explícita de 'measurement_unavailable',
+   * sem jamais presumir tamanho A4 (595x842 pt), DPI nominal ou status 'optimal'.
+   */
+  static createUnavailableMeasurementReport(
+    profile: RasterizationQualityProfile,
+    targetDpi: number,
+    minDpi: number,
+    quality: number,
+    maxPixelsPerPage: number,
+    realPages: Array<{ widthPt: number; heightPt: number }>
+  ): RasterizationQualityReport {
+    const pagesInfo: PageRasterizationInfo[] = realPages.length > 0
+      ? realPages.map((p, idx) => ({
+          pageNumber: idx + 1,
+          widthPt: Math.round(p.widthPt * 10) / 10,
+          heightPt: Math.round(p.heightPt * 10) / 10,
+          targetDpi,
+          effectiveDpi: 0,
+          minDpiThreshold: minDpi,
+          renderedWidthPx: 0,
+          renderedHeightPx: 0,
+          megaPixels: 0,
+          wasAdapted: false,
+          qualityWarning: 'Medições técnicas de DPI e pixels não disponibilizadas pelo motor de rasterização headless (status: measurement_unavailable).',
+          status: 'measurement_unavailable',
+          measurementStatus: 'measurement_unavailable'
+        }))
+      : [{
+          pageNumber: 1,
+          widthPt: 0,
+          heightPt: 0,
+          targetDpi,
+          effectiveDpi: 0,
+          minDpiThreshold: minDpi,
+          renderedWidthPx: 0,
+          renderedHeightPx: 0,
+          megaPixels: 0,
+          wasAdapted: false,
+          qualityWarning: 'Dimensões da página e medições técnicas indisponíveis (measurement_unavailable).',
+          status: 'measurement_unavailable',
+          measurementStatus: 'measurement_unavailable'
+        }];
+
+    return {
+      profile,
+      targetDpi,
+      minDpi,
+      quality,
+      maxPixelsPerPage,
+      totalPages: pagesInfo.length,
+      averageEffectiveDpi: 0,
+      minEffectiveDpi: 0,
+      maxEffectiveDpi: 0,
+      adaptedPagesCount: 0,
+      pages: pagesInfo,
+      securitySanitizationStatus: 'fully_destroyed_and_flattened',
+      summaryMessage: 'Sanitização por achatamento concluída, porém as medições técnicas de resolução não puderam ser aferidas pelo motor headless. Status identificado expressamente como measurement_unavailable.',
+      measurementStatus: 'measurement_unavailable'
+    };
+  }
+
   /**
    * Mesclar múltiplos arquivos PDF em um único documento 100% local
    */
@@ -1436,11 +1534,23 @@ export class LocalPdfEngine {
               try {
                 const reportRaw = fs.readFileSync(tmpReport, 'utf-8');
                 const jsonRep = JSON.parse(reportRaw);
-                parsedReport = {
-                  ...jsonRep,
-                  profile
-                };
-              } catch {}
+
+                if (LocalPdfEngine.validateRasterizationReport(jsonRep)) {
+                  parsedReport = {
+                    ...jsonRep,
+                    profile,
+                    measurementStatus: 'measured',
+                    pages: jsonRep.pages.map((p: any) => ({
+                      ...p,
+                      measurementStatus: 'measured' as const
+                    }))
+                  };
+                } else {
+                  console.warn('[LocalPdfEngine] Relatório de rasterização gerado pelo motor headless reprovado: não contém todas as medidas obrigatórias.');
+                }
+              } catch (parseErr) {
+                console.warn('[LocalPdfEngine] Falha ao ler relatório técnico de rasterização headless:', parseErr);
+              }
             }
 
             try {
@@ -1449,33 +1559,41 @@ export class LocalPdfEngine {
               if (tmpReport && fs.existsSync(tmpReport)) fs.unlinkSync(tmpReport);
             } catch {}
 
-            const finalReport: RasterizationQualityReport = parsedReport || {
-              profile,
-              targetDpi,
-              minDpi,
-              quality: targetQuality,
-              maxPixelsPerPage: maxPixels,
-              totalPages: 1,
-              averageEffectiveDpi: targetDpi,
-              minEffectiveDpi: targetDpi,
-              maxEffectiveDpi: targetDpi,
-              adaptedPagesCount: 0,
-              pages: [{
-                pageNumber: 1,
-                widthPt: 595,
-                heightPt: 842,
+            // Se o chamador exigiu relatório medido estrito ou se faltarem medidas sob reprovação obrigatória:
+            if (!parsedReport && options?.strictReport) {
+              throw new Error(
+                'Falha de integridade e auditoria: O motor headless não forneceu as medições obrigatórias de rasterização ' +
+                '(DPI efetivo, dimensões reais em pixels e métricas por página). A geração do relatório foi reprovada.'
+              );
+            }
+
+            let finalReport: RasterizationQualityReport;
+            if (parsedReport) {
+              finalReport = parsedReport;
+            } else {
+              // Inspeção segura do binário PDF resultante para aferir dimensões reais sem presumir A4, DPI nominal ou status optimal
+              const realPages: Array<{ widthPt: number; heightPt: number }> = [];
+              try {
+                const outDoc = await PDFDocument.load(outBytes);
+                const totalPages = outDoc.getPageCount();
+                for (let idx = 0; idx < totalPages; idx++) {
+                  const p = outDoc.getPage(idx);
+                  realPages.push({
+                    widthPt: p.getWidth(),
+                    heightPt: p.getHeight()
+                  });
+                }
+              } catch {}
+
+              finalReport = LocalPdfEngine.createUnavailableMeasurementReport(
+                profile,
                 targetDpi,
-                effectiveDpi: targetDpi,
-                minDpiThreshold: minDpi,
-                renderedWidthPx: Math.round((595 * targetDpi) / 72),
-                renderedHeightPx: Math.round((842 * targetDpi) / 72),
-                megaPixels: Number((((595 * targetDpi) / 72 * (842 * targetDpi) / 72) / 1_000_000).toFixed(2)),
-                wasAdapted: false,
-                status: 'optimal'
-              }],
-              securitySanitizationStatus: 'fully_destroyed_and_flattened',
-              summaryMessage: 'Sanitização por achatamento concluída com sucesso via motor nativo.'
-            };
+                minDpi,
+                targetQuality,
+                maxPixels,
+                realPages
+              );
+            }
 
             return {
               pdfBytes: new Uint8Array(outBytes),
@@ -1590,7 +1708,8 @@ export class LocalPdfEngine {
         megaPixels: Number(((canvas.width * canvas.height) / 1_000_000).toFixed(2)),
         wasAdapted,
         qualityWarning,
-        status
+        status,
+        measurementStatus: 'measured'
       });
 
       if (options?.onProgress) {
@@ -1631,7 +1750,8 @@ export class LocalPdfEngine {
         `Sanitização por achatamento concluída. ${pagesInfo.length} página(s) processada(s) ` +
         `com DPI efetivo médio de ${avgDpi} DPI. ` +
         (adaptedPagesCount > 0 ? `${adaptedPagesCount} página(s) adaptada(s) respeitando o piso de ${minDpi} DPI.` : 'Todas as páginas renderizadas no DPI nominal.')
-      )
+      ),
+      measurementStatus: 'measured'
     };
 
     return {

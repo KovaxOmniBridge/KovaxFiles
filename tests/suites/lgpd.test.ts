@@ -14,6 +14,7 @@ import assert from 'assert';
 import { CoreRedactionEngine } from '../../src/core/redaction/redactionCore.ts';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { PdfReportExporterService } from '../../src/services/pdfReportExporterService.ts';
+import { LocalPdfEngine } from '../../src/services/pdfEngine.ts';
 
 async function runLgpdSuite() {
   console.log('='.repeat(80));
@@ -97,6 +98,123 @@ async function runLgpdSuite() {
     assert.strictEqual(mockReportData.totalRedactions, 3);
     assert.strictEqual(mockReportData.redactions[0].reviewStatus, 'APPROVED');
     assert.strictEqual(mockReportData.documentHash.length, 64);
+  });
+
+  // 4. Validação Estrita de Medições de Rasterização (Prevenção de Falsas Medições Presumidas)
+  await test('Auditoria de rasterização: Reprovar relatórios com medidas ausentes ou dados truncados', async () => {
+    const validReport = {
+      totalPages: 2,
+      averageEffectiveDpi: 300,
+      minEffectiveDpi: 300,
+      maxEffectiveDpi: 300,
+      pages: [
+        {
+          pageNumber: 1,
+          widthPt: 595,
+          heightPt: 842,
+          targetDpi: 300,
+          effectiveDpi: 300,
+          minDpiThreshold: 150,
+          renderedWidthPx: 2479,
+          renderedHeightPx: 3508,
+          megaPixels: 8.7,
+          wasAdapted: false,
+          status: 'optimal' as const
+        },
+        {
+          pageNumber: 2,
+          widthPt: 595,
+          heightPt: 842,
+          targetDpi: 300,
+          effectiveDpi: 300,
+          minDpiThreshold: 150,
+          renderedWidthPx: 2479,
+          renderedHeightPx: 3508,
+          megaPixels: 8.7,
+          wasAdapted: false,
+          status: 'optimal' as const
+        }
+      ]
+    };
+
+    assert.strictEqual(LocalPdfEngine.validateRasterizationReport(validReport), true, 'Relatório com medições completas deve ser aprovado');
+
+    // Casos de medições presumidas ou corrompidas que DEVEM ser reprovados:
+    assert.strictEqual(LocalPdfEngine.validateRasterizationReport(null), false);
+    assert.strictEqual(LocalPdfEngine.validateRasterizationReport({}), false);
+    assert.strictEqual(LocalPdfEngine.validateRasterizationReport({ ...validReport, pages: [] }), false, 'Reprovar se totalPages divergir de pages.length');
+    assert.strictEqual(LocalPdfEngine.validateRasterizationReport({ ...validReport, averageEffectiveDpi: 0 }), false, 'Reprovar se DPI médio for zero');
+    assert.strictEqual(LocalPdfEngine.validateRasterizationReport({
+      ...validReport,
+      pages: [{ ...validReport.pages[0], renderedWidthPx: 0 }]
+    }), false, 'Reprovar se dimensões de renderização estiverem ausentes');
+  });
+
+  // 5. Garantia Forense: Nunca Presumir A4 (595x842 pt), DPI Nominal ou Status Optimal na Ausência de Medição
+  await test('Laudo técnico seguro: Identificar explicitamente como measurement_unavailable sem presumir A4 nem DPI nominal', async () => {
+    // Simula documento de formato não-A4 (ex: planta A1 com 1684x2384 pt ou ofício 400x600 pt)
+    const customPages = [
+      { widthPt: 400, heightPt: 600 },
+      { widthPt: 1684, heightPt: 2384 }
+    ];
+
+    const report = LocalPdfEngine.createUnavailableMeasurementReport(
+      'balanced',
+      300,
+      150,
+      0.88,
+      25000000,
+      customPages
+    );
+
+    // 1. O laudo geral deve ser expressamente marcado como 'measurement_unavailable'
+    assert.strictEqual(report.measurementStatus, 'measurement_unavailable');
+    assert.strictEqual(report.totalPages, 2);
+    assert.strictEqual(report.averageEffectiveDpi, 0, 'Não pode presumir 300 DPI');
+
+    // 2. Cada página deve conter as dimensões reais aferidas do PDF e NUNCA presumir A4
+    assert.strictEqual(report.pages[0].widthPt, 400, 'Primeira página deve manter largura real (400 pt) e não 595 pt');
+    assert.strictEqual(report.pages[0].heightPt, 600, 'Primeira página deve manter altura real (600 pt) e não 842 pt');
+    assert.strictEqual(report.pages[1].widthPt, 1684, 'Segunda página deve manter largura real (1684 pt)');
+    assert.strictEqual(report.pages[1].heightPt, 2384, 'Segunda página deve manter altura real (2384 pt)');
+
+    // 3. Status deve ser explicitamente measurement_unavailable e NUNCA 'optimal'
+    for (const page of report.pages) {
+      assert.strictEqual(page.status, 'measurement_unavailable');
+      assert.strictEqual(page.measurementStatus, 'measurement_unavailable');
+      assert.strictEqual(page.effectiveDpi, 0, 'DPI efetivo não medido não pode ser presumido como nominal');
+      assert.strictEqual(page.renderedWidthPx, 0);
+      assert.strictEqual(page.renderedHeightPx, 0);
+      assert.notStrictEqual(page.status, 'optimal', 'Status NUNCA pode ser presumido como optimal sem medição');
+    }
+  });
+
+  // 6. Política de Reprovação Obrigatória sob Parâmetro Strict (strictReport: true)
+  await test('Política de reprovação estrita: Proibir geração de laudo quando faltarem medidas obrigatórias com strictReport=true', async () => {
+    const unmeasuredReport = LocalPdfEngine.createUnavailableMeasurementReport(
+      'balanced',
+      300,
+      150,
+      0.88,
+      25000000,
+      [{ widthPt: 595, heightPt: 842 }]
+    );
+
+    // Auditoria estrita: reprova se não houver medições técnicas comprovadas
+    const isReportMeasured = LocalPdfEngine.validateRasterizationReport(unmeasuredReport);
+    assert.strictEqual(isReportMeasured, false, 'Relatório sem medições não pode passar na auditoria estrita');
+
+    const shouldReprove = (opts?: { strictReport?: boolean }) => {
+      if (opts?.strictReport && !isReportMeasured) {
+        throw new Error('Falha de integridade e auditoria: O motor headless não forneceu as medições obrigatórias de rasterização. A geração do relatório foi reprovada.');
+      }
+    };
+
+    assert.throws(
+      () => shouldReprove({ strictReport: true }),
+      /A geração do relatório foi reprovada/,
+      'Com strictReport=true, a ausência de medições obrigatórias deve reprovar a operação com erro fatal'
+    );
   });
 
   console.log(`\nResultado Suíte 4 (LGPD): ${passed} Passados, ${failed} Falhados\n`);

@@ -86,7 +86,8 @@ def flatten(
                 "megaPixels": round((pix.width * pix.height) / 1000000.0, 2),
                 "wasAdapted": was_adapted,
                 "qualityWarning": warning_msg,
-                "status": status
+                "status": status,
+                "measurementStatus": "measured"
             }
             pages_info.append(page_info)
 
@@ -125,6 +126,7 @@ def flatten(
                 "adaptedPagesCount": adapted_count,
                 "pages": pages_info,
                 "securitySanitizationStatus": "fully_destroyed_and_flattened",
+                "measurementStatus": "measured",
                 "summaryMessage": (
                     f"Sanitização por achatamento concluída. {len(pages_info)} página(s) processada(s) "
                     f"com DPI efetivo médio de {avg_dpi:.0f} DPI. "

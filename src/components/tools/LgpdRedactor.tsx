@@ -1783,27 +1783,45 @@ export const LgpdRedactor: React.FC = () => {
                             {res.rasterReport.pages.map((p) => (
                               <tr key={p.pageNumber} className="hover:bg-slate-800/30">
                                 <td className="py-1.5 px-2 text-slate-300 font-bold">Pág. {p.pageNumber}</td>
-                                <td className="py-1.5 px-2 text-slate-400">{p.widthPt}x{p.heightPt} pt</td>
+                                <td className="py-1.5 px-2 text-slate-400">
+                                  {p.widthPt > 0 && p.heightPt > 0 ? `${p.widthPt}x${p.heightPt} pt` : 'N/D'}
+                                </td>
                                 <td className="py-1.5 px-2">
-                                  <span className={p.wasAdapted ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
-                                    {p.effectiveDpi} DPI
+                                  <span className={
+                                    p.status === 'measurement_unavailable'
+                                      ? 'text-slate-400 font-medium'
+                                      : p.wasAdapted
+                                        ? 'text-amber-400 font-bold'
+                                        : 'text-emerald-400 font-bold'
+                                  }>
+                                    {p.status === 'measurement_unavailable' ? 'Indisponível' : `${p.effectiveDpi} DPI`}
                                   </span>
                                   <span className="text-slate-500 text-[9px]"> (Alvo: {p.targetDpi})</span>
                                 </td>
-                                <td className="py-1.5 px-2 text-slate-300">{p.megaPixels} MP</td>
+                                <td className="py-1.5 px-2 text-slate-300">
+                                  {p.status === 'measurement_unavailable' ? 'N/D' : `${p.megaPixels} MP`}
+                                </td>
                                 <td className="py-1.5 px-2 font-sans">
                                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
                                     p.status === 'optimal'
                                       ? 'bg-emerald-500/20 text-emerald-300'
                                       : p.status === 'adapted_acceptable'
                                         ? 'bg-amber-500/20 text-amber-300'
-                                        : 'bg-red-500/20 text-red-300'
+                                        : p.status === 'measurement_unavailable'
+                                          ? 'bg-slate-700/50 text-slate-300 border border-slate-600/40'
+                                          : 'bg-red-500/20 text-red-300'
                                   }`}>
-                                    {p.status === 'optimal' ? 'Ótima Nitidez' : 'Piso Garantido'}
+                                    {p.status === 'optimal'
+                                      ? 'Ótima Nitidez'
+                                      : p.status === 'adapted_acceptable'
+                                        ? 'Piso Garantido'
+                                        : p.status === 'measurement_unavailable'
+                                          ? 'Medição Indisponível'
+                                          : 'Abaixo do Padrão'}
                                   </span>
                                 </td>
                                 <td className="py-1.5 px-2 font-sans text-slate-400">
-                                  {p.qualityWarning || 'Resolução plena sem redução operacional.'}
+                                  {p.qualityWarning || (p.status === 'measurement_unavailable' ? 'Medição técnica indisponível.' : 'Resolução plena sem redução operacional.')}
                                 </td>
                               </tr>
                             ))}
