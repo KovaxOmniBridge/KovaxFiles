@@ -9,6 +9,7 @@
     "prepare:tessdata": "npx tsx scripts/prepare_offline_tessdata.ts",
     "build": "npx tsx scripts/prepare_offline_tessdata.ts && tsc && vite build",
     "preview": "vite preview",
+    "test": "npm run test:pr",
     "test:pr": "npx tsx scripts/run_pr_test_battery.ts",
     "test:release": "npx tsx tests/suites/desktop_packaged.test.ts",
     "test:load": "npx tsx tests/suites/performance_load.test.ts",
