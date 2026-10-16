@@ -48,9 +48,9 @@ async function runLegalTrustAndIsolationSuite() {
   const pass = 'SenhaForte@2026';
 
   // --------------------------------------------------------------------------
-  // TESTE 1: Assinatura Eletrônica Qualificada ICP-Brasil (Presunção Legal)
+  // TESTE 1: Rejeição de Falsa Qualificação (Indícios Declarados sem Validação de Cadeia Raiz)
   // --------------------------------------------------------------------------
-  console.log('1. Testando Assinatura Eletrônica Qualificada ICP-Brasil (MP 2.200-2/2001, art. 10, § 1º)...');
+  console.log('1. Testando Rejeição de Falsa Qualificação por Indícios Nominais de ICP-Brasil sem Raiz Validada...');
   const icpIssuerAttrs = [
     { name: 'commonName', value: 'Autoridade Certificadora OAB v5' },
     { name: 'organizationName', value: 'ICP-Brasil' },
@@ -64,14 +64,15 @@ async function runLegalTrustAndIsolationSuite() {
   const p12IcpBuffer = generateCert(icpIssuerAttrs, icpSubjectAttrs, pass);
 
   const icpParsed = PadesSignatureService.parseCertificate(p12IcpBuffer, pass);
-  assert.strictEqual(icpParsed.certInfo.isIcpBrasil, true, 'Deve identificar emissor da cadeia ICP-Brasil');
-  assert.strictEqual(icpParsed.certInfo.legalSignatureType, 'QUALIFICADA_ICP_BRASIL', 'Classificação deve ser Qualificada ICP-Brasil');
-  assert.strictEqual(icpParsed.certInfo.hasLegalPresumption, true, 'Deve possuir presunção legal de veracidade');
-  assert.ok(icpParsed.certInfo.legalBasis.includes('2.200-2/2001'), 'Base legal deve citar MP 2.200-2/2001');
-  assert.strictEqual(icpParsed.certInfo.juridicalWarning, undefined, 'Não deve ter alerta de restrição judicial para ICP-Brasil');
-  console.log('  ✓ [PASS] Identificado como Assinatura Qualificada ICP-Brasil com presunção legal absoluta');
+  assert.strictEqual(icpParsed.certInfo.hasIcpBrasilClues, true, 'Deve identificar atributos declarados compatíveis com ICP-Brasil');
+  assert.strictEqual(icpParsed.certInfo.isIcpBrasil, false, 'Cadeia não validada na raiz não pode receber isIcpBrasil=true');
+  assert.strictEqual(icpParsed.certInfo.trustStatus, 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA', 'Classificação deve ser INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA');
+  assert.strictEqual(icpParsed.certInfo.legalSignatureType, 'AVANCADA_NAO_ICP', 'Classificação não pode ser qualificada');
+  assert.strictEqual(icpParsed.certInfo.hasLegalPresumption, false, 'NÃO deve possuir presunção legal por campos autodeclarados');
+  assert.ok(icpParsed.certInfo.juridicalWarning?.includes('VALIDAR do ITI'), 'Deve orientar submissão ao VALIDAR do ITI');
+  console.log('  ✓ [PASS] Identificado como Assinatura com Indícios de ICP-Brasil (Cadeia Não Validada), sem presunção qualificada');
 
-  // Criar e assinar PDF com o certificado ICP-Brasil
+  // Criar e assinar PDF com o certificado com indícios de ICP-Brasil
   const doc1 = await PDFDocument.create();
   const page1 = doc1.addPage([595, 842]);
   page1.drawText('PETIÇÃO INICIAL COM CERTIFICADO ICP-BRASIL', { x: 50, y: 800, size: 12 });
@@ -83,10 +84,11 @@ async function runLegalTrustAndIsolationSuite() {
   const valIcp = PadesSignatureService.verifyPdf(signedIcpBytes);
   assert.strictEqual(valIcp.allValid, true);
   assert.strictEqual(valIcp.signatures[0].technicalIntegrity, 'INTEGRO');
-  assert.strictEqual(valIcp.signatures[0].legalSignatureType, 'QUALIFICADA_ICP_BRASIL');
-  assert.strictEqual(valIcp.signatures[0].hasLegalPresumption, true);
-  assert.ok(valIcp.legalSummaryText.includes('Qualificada(s) ICP-Brasil'));
-  console.log('  ✓ [PASS] Laudo atesta integridade técnica íntegra e qualificação jurídica ICP-Brasil');
+  assert.strictEqual(valIcp.signatures[0].trustStatus, 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA');
+  assert.strictEqual(valIcp.signatures[0].legalSignatureType, 'AVANCADA_NAO_ICP');
+  assert.strictEqual(valIcp.signatures[0].hasLegalPresumption, false);
+  assert.ok(valIcp.legalSummaryText.includes('VALIDAR do ITI'));
+  console.log('  ✓ [PASS] Laudo atesta integridade técnica íntegra e rejeita presunção qualificada prematura');
 
   // --------------------------------------------------------------------------
   // TESTE 2: Assinatura Eletrônica Avançada Não-ICP (Lei 14.063/2020)

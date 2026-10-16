@@ -116,6 +116,57 @@ async function runPadesSuite() {
     assert.strictEqual(valTampered.signatures[0].digestMatches, false, 'Digest não pode conferir');
   });
 
+  // 5. Rejeição de Falsa Qualificação: Certificado com indícios nominais de ICP-Brasil sem âncora de raiz confiável
+  await test('Rejeição de falsa qualificação: Atributos nominais de ICP-Brasil sem validação de cadeia raiz recebem INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA e hasLegalPresumption === false', async () => {
+    const keys = forge.pki.rsa.generateKeyPair(2048);
+    const cert = forge.pki.createCertificate();
+    cert.publicKey = keys.publicKey;
+    cert.serialNumber = '9902';
+    cert.validity.notBefore = new Date(Date.now() - 3600000);
+    cert.validity.notAfter = new Date(Date.now() + 31536000000);
+
+    const issuerAttrs = [
+      { name: 'commonName', value: 'Autoridade Certificadora Certisign Multipla G7' },
+      { name: 'organizationName', value: 'ICP-Brasil' },
+      { name: 'countryName', value: 'BR' }
+    ];
+    const subjectAttrs = [
+      { name: 'commonName', value: 'ADVOGADO COM CERTIFICADO ARTIFICIAL:11122233344' },
+      { name: 'organizationName', value: 'Ordem dos Advogados do Brasil' },
+      { name: 'countryName', value: 'BR' }
+    ];
+    cert.setSubject(subjectAttrs);
+    cert.setIssuer(issuerAttrs);
+    cert.sign(keys.privateKey, forge.md.sha256.create());
+
+    const p12Asn1 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], certPass, {
+      generateLocalKeyId: true,
+      friendlyName: 'Certificado com Indicios ICP'
+    });
+    const fakeIcpP12Buffer = Buffer.from(forge.asn1.toDer(p12Asn1).getBytes(), 'binary');
+
+    const { certInfo } = PadesSignatureService.parseCertificate(fakeIcpP12Buffer, certPass);
+    assert.strictEqual(certInfo.hasIcpBrasilClues, true, 'Deve identificar a presença de indícios declarados de ICP-Brasil');
+    assert.strictEqual(certInfo.trustStatus, 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA', 'Deve classificar estritamente como INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA');
+    assert.strictEqual(certInfo.legalSignatureType, 'AVANCADA_NAO_ICP', 'Tipo legal deve ser AVANCADA_NAO_ICP e nunca QUALIFICADA');
+    assert.strictEqual(certInfo.hasLegalPresumption, false, 'NÃO pode conceder presunção legal absoluta por campos autodeclarados');
+    assert.ok(certInfo.juridicalWarning?.includes('VALIDAR do ITI'), 'Alerta jurídico deve orientar conferência no VALIDAR do ITI');
+
+    // Assinar documento de teste com esse certificado e verificar laudo
+    const doc = await PDFDocument.create();
+    doc.addPage([595, 842]);
+    const pdfBytes = await doc.save();
+    const signedBytes = await PadesSignatureService.signPdf(pdfBytes, fakeIcpP12Buffer, certPass);
+    const report = PadesSignatureService.verifyPdf(signedBytes);
+
+    const sig = report.signatures[0];
+    assert.strictEqual(sig.technicalIntegrity, 'INTEGRO', 'Integridade matemática deve ser íntegra');
+    assert.strictEqual(sig.trustStatus, 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA', 'Laudo deve apontar INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA');
+    assert.strictEqual(sig.hasLegalPresumption, false, 'Laudo não pode atribuir presunção legal');
+    assert.strictEqual(sig.legalSignatureType, 'AVANCADA_NAO_ICP');
+    assert.ok(sig.chainValidationDescription.includes('VALIDAR do ITI'));
+  });
+
   console.log(`\nResultado Suíte 8 (PAdES): ${passed} Passados, ${failed} Falhados\n`);
   if (failed > 0) {
     process.exit(1);

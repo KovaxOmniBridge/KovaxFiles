@@ -581,8 +581,12 @@ export const DigitalSignatureTool: React.FC = () => {
                     <div className="text-[10px] text-slate-500 uppercase font-semibold">Classificação Jurídica Nacional</div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                        certInfo.isIcpBrasil
+                        certInfo.trustStatus === 'RECONHECIDO_ICP_BRASIL'
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : certInfo.trustStatus === 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA'
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : certInfo.trustStatus === 'AUTOASSINADO'
+                          ? 'bg-slate-700/40 text-slate-300 border-slate-600'
                           : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
                       }`}>
                         {certInfo.legalClassificationText}
@@ -800,8 +804,10 @@ export const DigitalSignatureTool: React.FC = () => {
                       <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
                         sig.trustStatus === 'RECONHECIDO_ICP_BRASIL'
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : sig.trustStatus === 'AUTOASSINADO'
+                          : sig.trustStatus === 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA'
                           ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : sig.trustStatus === 'AUTOASSINADO'
+                          ? 'bg-slate-700/40 text-slate-300 border-slate-600'
                           : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
                       }`}>
                         {sig.legalClassificationText}

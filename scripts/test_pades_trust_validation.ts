@@ -109,9 +109,9 @@ async function runTrustValidationSuite() {
   console.log('  -> [PASS] Integridade técnica confirmada com confiança não atestada (nunca convertida em ICP-Brasil)');
 
   // --------------------------------------------------------------------------
-  // 2. VÍNCULO DE CADEIA ICP-BRASIL
+  // 2. VÍNCULO NOMINAL COM CADEIA ICP-BRASIL (INDÍCIOS DECLARADOS vs CADEIA NÃO VALIDADA)
   // --------------------------------------------------------------------------
-  console.log('\n[2/7] Testando Vínculo com Autoridade da Cadeia ICP-Brasil...');
+  console.log('\n[2/7] Testando Vínculo Nominal com Cadeia ICP-Brasil (Indícios Declarados sem Raiz Validada)...');
   const icpRootAttrs = [
     { name: 'commonName', value: 'Autoridade Certificadora Raiz Brasileira v5' },
     { name: 'organizationName', value: 'ICP-Brasil' },
@@ -137,11 +137,13 @@ async function runTrustValidationSuite() {
   const sigIcp = valIcp.signatures[0];
   assert.strictEqual(sigIcp.technicalIntegrity, 'INTEGRO');
   assert.strictEqual(sigIcp.isSelfSigned, false);
-  assert.strictEqual(sigIcp.isIcpBrasil, true);
-  assert.strictEqual(sigIcp.trustStatus, 'RECONHECIDO_ICP_BRASIL');
-  assert.strictEqual(sigIcp.hasLegalPresumption, true);
-  assert.ok(sigIcp.chainValidationDescription.includes('ICP-Brasil'));
-  console.log('  -> [PASS] Certificado com vínculo ICP-Brasil reconhecido com presunção legal');
+  assert.strictEqual(sigIcp.isIcpBrasil, false, 'Cadeia não validada na raiz não pode receber isIcpBrasil=true');
+  assert.strictEqual(sigIcp.trustStatus, 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA', 'Atributos autodeclarados devem ser classificados como INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA');
+  assert.strictEqual(sigIcp.legalSignatureType, 'AVANCADA_NAO_ICP');
+  assert.strictEqual(sigIcp.hasLegalPresumption, false, 'Campos autodeclarados NÃO concedem presunção legal absoluta');
+  assert.ok(sigIcp.juridicalWarning?.includes('VALIDAR do ITI'));
+  assert.ok(sigIcp.chainValidationDescription.includes('VALIDAR do ITI'));
+  console.log('  -> [PASS] Certificado com indícios declarados de ICP-Brasil classificado com prudência e sem presunção indevida');
 
   // --------------------------------------------------------------------------
   // 3. VERIFICAÇÃO DE REVOGAÇÃO (CRL/OCSP OFFLINE)

@@ -8,10 +8,11 @@ import { PDFDocument, PDFName, PDFHexString, PDFString, rgb, StandardFonts } fro
 export type TechnicalIntegrityStatus = 'INTEGRO' | 'ADULTERADO' | 'FORMATO_CORROMPIDO';
 
 export type CertificateTrustStatus =
-  | 'RECONHECIDO_ICP_BRASIL'      // Cadeia vinculada a AC credenciada da ICP-Brasil
-  | 'AUTOASSINADO'                // Certificado autoassinado (raiz própria não reconhecida)
-  | 'CONFIANCA_NAO_VERIFICADA'    // AC privada/corporativa desconhecida
-  | 'CADEIA_INCOMPLETA';          // Falta certificado intermediário
+  | 'RECONHECIDO_ICP_BRASIL'                   // Cadeia criptograficamente validada até AC Raiz confiável
+  | 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA' // Atributos/OIDs nominais compatíveis com ICP-Brasil, sem validação da cadeia
+  | 'AUTOASSINADO'                             // Certificado autoassinado (raiz própria não reconhecida)
+  | 'CONFIANCA_NAO_VERIFICADA'                 // AC privada/corporativa desconhecida
+  | 'CADEIA_INCOMPLETA';                       // Falta certificado intermediário
 
 export type RevocationStatus =
   | 'OFFLINE_NAO_VERIFICADO'      // Operação offline segura (não pôde consultar LCR/OCSP em tempo real)
@@ -24,8 +25,8 @@ export type TimestampType =
   | 'CARIMBO_DO_TEMPO_RFC3161';   // Token RFC 3161 emitido por ACT credenciada
 
 export type LegalSignatureType =
-  | 'QUALIFICADA_ICP_BRASIL'   // Emitida por Autoridade Certificadora credenciada na ICP-Brasil (MP 2.200-2/2001 e Lei 14.063/2020)
-  | 'AVANCADA_NAO_ICP'         // Criptografia assimétrica válida, porém emitida por autoridade não-ICP ou corporativa privada (Lei 14.063/2020)
+  | 'QUALIFICADA_ICP_BRASIL'   // Emitida por Autoridade Certificadora credenciada na ICP-Brasil com cadeia raiz validada (MP 2.200-2/2001 e Lei 14.063/2020)
+  | 'AVANCADA_NAO_ICP'         // Criptografia assimétrica válida, emitida por AC corporativa/privada ou com cadeia não validada (Lei 14.063/2020)
   | 'INVALIDA';                // Assinatura com adulteração de bytes ou quebra matemática
 
 export interface CertificateChainNode {
@@ -36,6 +37,7 @@ export interface CertificateChainNode {
   notAfter: Date;
   isSelfSigned: boolean;
   isIcpBrasil: boolean;
+  hasIcpBrasilClues?: boolean;
   fingerprintSha256: string;
 }
 
@@ -53,6 +55,7 @@ export interface Pkcs12CertificateInfo {
   // Campos de Confiança Jurídica e Distinção de Integridade Técnica
   isSelfSigned: boolean;
   isIcpBrasil: boolean;
+  hasIcpBrasilClues?: boolean;
   trustStatus: CertificateTrustStatus;
   legalSignatureType: LegalSignatureType;
   hasLegalPresumption: boolean;
@@ -187,13 +190,19 @@ function uint8ArrayToHex(bytes: Uint8Array): string {
 
 export class PadesSignatureService {
   /**
-   * Identifica se um certificado ou cadeia pertence à Infraestrutura de Chaves Públicas Brasileira (ICP-Brasil).
+   * Detecta se um certificado apresenta atributos autodeclarados (OIDs 2.16.76.1.*, nomes de emissor
+   * como "ICP-Brasil", "AC Certisign", etc.) compatíveis com a Infraestrutura de Chaves Públicas Brasileira.
+   *
+   * IMPORTANTE: Esta detecção indica apenas INDÍCIOS NOMINAIS declarados pelo emissor no próprio certificado.
+   * Não comprova cadeia criptográfica confiável nem ancoragem em Autoridade Certificadora Raiz credenciada,
+   * pois tais campos podem ser reproduzidos por certificados autoassinados ou forjados.
+   * Sob nenhuma hipótese atribui presunção legal qualificada sem ancoragem em AC Raiz confiável.
    */
   static detectIcpBrasilChain(
     issuer: string,
     subject: string,
     cert?: forge.pki.Certificate | null
-  ): { isIcpBrasil: boolean; identifiedIssuer?: string; matchedOid?: string } {
+  ): { hasIcpBrasilClues: boolean; isIcpBrasil: boolean; identifiedIssuer?: string; matchedOid?: string } {
     let fullIssuer = issuer || '';
     let fullSubject = subject || '';
 
@@ -208,7 +217,7 @@ export class PadesSignatureService {
       if (cert.extensions) {
         for (const ext of cert.extensions) {
           if (ext.id && ext.id.startsWith('2.16.76.1.')) {
-            return { isIcpBrasil: true, identifiedIssuer: issuer, matchedOid: ext.id };
+            return { hasIcpBrasilClues: true, isIcpBrasil: true, identifiedIssuer: issuer, matchedOid: ext.id };
           }
         }
       }
@@ -222,7 +231,7 @@ export class PadesSignatureService {
       normIssuer.includes('ac raiz brasileira') ||
       normSubject.includes('icp-brasil')
     ) {
-      return { isIcpBrasil: true, identifiedIssuer: issuer };
+      return { hasIcpBrasilClues: true, isIcpBrasil: true, identifiedIssuer: issuer };
     }
 
     const icpCas = [
@@ -235,11 +244,11 @@ export class PadesSignatureService {
 
     for (const ca of icpCas) {
       if (normIssuer.includes(ca)) {
-        return { isIcpBrasil: true, identifiedIssuer: issuer };
+        return { hasIcpBrasilClues: true, isIcpBrasil: true, identifiedIssuer: issuer };
       }
     }
 
-    return { isIcpBrasil: false };
+    return { hasIcpBrasilClues: false, isIcpBrasil: false };
   }
 
   /**
@@ -332,32 +341,44 @@ export class PadesSignatureService {
     } catch {}
 
     // Avaliação de Confiança Jurídica (ICP-Brasil vs Avançada Lei 14.063/2020)
+    // REQUISITO FORENSE CRÍTICO: Atributos declarados no certificado (OIDs 2.16.76.1.* ou nomes de ACs)
+    // constituem meros indícios nominais. Sem validação criptográfica completa até uma Autoridade
+    // Certificadora Raiz confiável, a aplicação NÃO deve atribuir 'RECONHECIDO_ICP_BRASIL',
+    // 'QUALIFICADA_ICP_BRASIL' ou presunção legal absoluta.
     const icpCheck = PadesSignatureService.detectIcpBrasilChain(issuerCn, cn, mainCert);
-    const isIcpBrasil = icpCheck.isIcpBrasil && !isSelfSigned;
+    const hasIcpBrasilClues = (icpCheck.hasIcpBrasilClues || icpCheck.isIcpBrasil) && !isSelfSigned;
 
     let trustStatus: CertificateTrustStatus = 'CONFIANCA_NAO_VERIFICADA';
     if (isSelfSigned) {
       trustStatus = 'AUTOASSINADO';
-    } else if (isIcpBrasil) {
-      trustStatus = 'RECONHECIDO_ICP_BRASIL';
+    } else if (hasIcpBrasilClues) {
+      // Classificação forense estrita: indícios declarados presentes, mas sem cadeia raiz validada
+      trustStatus = 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA';
     } else {
       trustStatus = 'CONFIANCA_NAO_VERIFICADA';
     }
 
-    const legalSignatureType: LegalSignatureType = isIcpBrasil ? 'QUALIFICADA_ICP_BRASIL' : 'AVANCADA_NAO_ICP';
-    const hasLegalPresumption = isIcpBrasil;
-    const legalClassificationText = isIcpBrasil
-      ? 'Assinatura Eletrônica Qualificada (ICP-Brasil)'
+    // Sem validação até raiz confiável da ICP-Brasil, a classificação legal é Avançada (Lei 14.063/2020)
+    const legalSignatureType: LegalSignatureType = 'AVANCADA_NAO_ICP';
+    const hasLegalPresumption = false;
+    const isIcpBrasil = false; // Cadeia não validada na raiz oficial
+
+    const legalClassificationText = hasIcpBrasilClues
+      ? 'Assinatura com Indícios de ICP-Brasil (Cadeia Não Validada)'
       : (isSelfSigned ? 'Assinatura Avançada (Autoassinada - Raiz Própria)' : 'Assinatura Eletrônica Avançada (Não-ICP-Brasil)');
 
-    const legalBasis = isIcpBrasil
-      ? 'Art. 10, § 1º da Medida Provisória nº 2.200-2/2001 e Art. 4º, III da Lei nº 14.063/2020'
-      : 'Art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e Art. 4º, II da Lei nº 14.063/2020';
+    const legalBasis = hasIcpBrasilClues
+      ? 'Art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e Art. 4º, II da Lei nº 14.063/2020 (Validade qualificada requer conferência no VALIDAR do ITI)'
+      : (isSelfSigned
+          ? 'Art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e Art. 4º, II da Lei nº 14.063/2020'
+          : 'Art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e Art. 4º, II da Lei nº 14.063/2020');
 
     let juridicalWarning: string | undefined;
     if (isSelfSigned) {
       juridicalWarning = 'Atenção jurídica: Integridade criptográfica confirmada; confiança do certificado não verificada. O certificado utilizado é autoassinado. A criptografia funciona matematicamente, mas não possui vínculo com Autoridade Certificadora credenciada nem presunção legal de veracidade perante a ICP-Brasil apenas porque a matemática confere.';
-    } else if (!isIcpBrasil) {
+    } else if (hasIcpBrasilClues) {
+      juridicalWarning = 'Aviso de Confiança Jurídica: O certificado apresenta atributos declarados compatíveis com o padrão ICP-Brasil (OIDs ou nomes de emissores), mas a cadeia criptográfica NÃO foi validada contra uma Autoridade Certificadora Raiz confiável. A assinatura confere integridade técnica (ISO 32000), mas a presunção legal qualificada (art. 10, § 1º da MP 2.200-2/2001) não pode ser presumida sem validação no serviço VALIDAR do ITI (https://validar.iti.gov.br).';
+    } else {
       juridicalWarning = 'Aviso de Confiança Jurídica: Integridade criptográfica confirmada; confiança do certificado não verificada. Este certificado proporciona integridade técnica criptográfica (padrão ISO 32000), mas não integra a cadeia oficial da ICP-Brasil. Conforme a Lei 14.063/2020, sua eficácia depende de prévia aceitação entre as partes, não possuindo presunção legal absoluta para peticionamento em tribunais que exijam assinatura qualificada (Lei 11.419/2006).';
     }
 
@@ -379,6 +400,7 @@ export class PadesSignatureService {
       fingerprintSha256,
       isSelfSigned,
       isIcpBrasil,
+      hasIcpBrasilClues,
       trustStatus,
       legalSignatureType,
       hasLegalPresumption,
@@ -460,7 +482,11 @@ export class PadesSignatureService {
         opacity: 0.92
       });
 
-      const certLabel = certInfo.isIcpBrasil ? 'ASSINADO DIGITALMENTE (ICP-BRASIL)' : 'ASSINADO DIGITALMENTE (PAdES)';
+      const certLabel = certInfo.trustStatus === 'RECONHECIDO_ICP_BRASIL'
+        ? 'ASSINADO DIGITALMENTE (ICP-BRASIL)'
+        : (certInfo.trustStatus === 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA'
+            ? 'ASSINADO DIGITALMENTE (PAdES - INDÍCIOS ICP)'
+            : 'ASSINADO DIGITALMENTE (PAdES)');
       targetPage.drawText(certLabel, {
         x: widgetRect[0] + 8,
         y: widgetRect[1] + 32,
@@ -968,7 +994,8 @@ export class PadesSignatureService {
                 const cSub = c.subject.getField('CN')?.value as string || 'Desconhecido';
                 const cIss = c.issuer.getField('CN')?.value as string || 'Desconhecido';
                 const isSelf = cSub === cIss;
-                const isIcp = PadesSignatureService.detectIcpBrasilChain(cIss, cSub, c).isIcpBrasil;
+                const nodeCheck = PadesSignatureService.detectIcpBrasilChain(cIss, cSub, c);
+                const hasNodeClues = nodeCheck.hasIcpBrasilClues || nodeCheck.isIcpBrasil;
                 const cDer = forge.asn1.toDer(forge.pki.certificateToAsn1(c)).getBytes();
                 const fp = forge.md.sha256.create().update(cDer).digest().toHex();
 
@@ -979,7 +1006,8 @@ export class PadesSignatureService {
                   notBefore: c.validity.notBefore,
                   notAfter: c.validity.notAfter,
                   isSelfSigned: isSelf,
-                  isIcpBrasil: isIcp,
+                  isIcpBrasil: false, // Cadeia não validada na raiz oficial
+                  hasIcpBrasilClues: hasNodeClues,
                   fingerprintSha256: fp
                 });
               }
@@ -1101,11 +1129,12 @@ export class PadesSignatureService {
       }
 
       const icpCheck = PadesSignatureService.detectIcpBrasilChain(issuer, signerName, signerCert);
-      const isIcpBrasil = icpCheck.isIcpBrasil && !isSelfSigned;
+      const hasIcpBrasilClues = (icpCheck.hasIcpBrasilClues || icpCheck.isIcpBrasil) && !isSelfSigned;
 
       let trustStatus: CertificateTrustStatus = 'CONFIANCA_NAO_VERIFICADA';
       let legalSignatureType: LegalSignatureType = 'INVALIDA';
       let hasLegalPresumption = false;
+      let isIcpBrasil = false; // Cadeia não validada na raiz confiável
       let legalClassificationText = 'Assinatura Inválida / Adulterada';
       let legalBasis = 'Sem eficácia jurídica probatória (violação de integridade técnica)';
       let juridicalWarning: string | undefined;
@@ -1120,14 +1149,14 @@ export class PadesSignatureService {
           legalBasis = 'Art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e Art. 4º, II da Lei nº 14.063/2020';
           chainValidationDescription = 'Certificado autoassinado. Integridade criptográfica confirmada; confiança do certificado não verificada (não possui vínculo com autoridades certificadoras credenciadas na ICP-Brasil).';
           juridicalWarning = 'Atenção jurídica: Integridade criptográfica confirmada; confiança do certificado não verificada. O certificado é autoassinado e não possui presunção legal de veracidade perante a ICP-Brasil ou tribunais apenas porque a matemática confere.';
-        } else if (isIcpBrasil) {
-          trustStatus = 'RECONHECIDO_ICP_BRASIL';
-          legalSignatureType = 'QUALIFICADA_ICP_BRASIL';
-          hasLegalPresumption = true;
-          legalClassificationText = 'Assinatura Eletrônica Qualificada (ICP-Brasil)';
-          legalBasis = 'Art. 10, § 1º da Medida Provisória nº 2.200-2/2001 e Art. 4º, III da Lei nº 14.063/2020';
-          chainValidationDescription = 'Cadeia de certificação vinculada à Infraestrutura de Chaves Públicas Brasileira (ICP-Brasil). Presunção legal absoluta de veracidade em processos judiciais.';
-          juridicalWarning = 'Presunção legal de veracidade (art. 10, § 1º da MP 2.200-2/2001). Nota técnica: validação matemática de integridade executada localmente em modo offline; verificação de revogação em tempo real (LCR/OCSP) deve ser realizada junto ao serviço VALIDAR do ITI.';
+        } else if (hasIcpBrasilClues) {
+          trustStatus = 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA';
+          legalSignatureType = 'AVANCADA_NAO_ICP';
+          hasLegalPresumption = false;
+          legalClassificationText = 'Assinatura com Indícios de ICP-Brasil (Cadeia Não Validada)';
+          legalBasis = 'Art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e Art. 4º, II da Lei nº 14.063/2020 (Validade qualificada requer conferência no VALIDAR do ITI)';
+          chainValidationDescription = 'Certificado com indícios declarados de ICP-Brasil (campos nominais/OIDs), porém a cadeia NÃO foi criptograficamente validada até uma AC Raiz confiável. A presunção legal qualificada não pode ser atribuída apenas com base em campos autodeclarados; requer conferência no VALIDAR do ITI.';
+          juridicalWarning = 'Aviso de Confiança Jurídica: O certificado apresenta atributos declarados compatíveis com o padrão ICP-Brasil (OIDs ou nomes de emissores), mas a cadeia criptográfica NÃO foi validada contra uma AC Raiz confiável. A assinatura confere integridade técnica (ISO 32000), mas a presunção legal qualificada (art. 10, § 1º da MP 2.200-2/2001) não pode ser presumida sem validação no serviço VALIDAR do ITI (https://validar.iti.gov.br).';
         } else {
           trustStatus = 'CONFIANCA_NAO_VERIFICADA';
           legalSignatureType = 'AVANCADA_NAO_ICP';
@@ -1217,24 +1246,36 @@ export class PadesSignatureService {
           : `Integridade Técnica: Falha ou adulteração detectada em uma ou mais assinaturas.`)
       : 'Nenhuma assinatura digital PAdES encontrada no documento.';
 
-    const icpCount = signatures.filter(s => s.isIcpBrasil && s.status === 'VALIDA').length;
-    const selfSignedCount = signatures.filter(s => s.isSelfSigned && s.status === 'VALIDA').length;
-    const advancedCount = signatures.filter(s => !s.isIcpBrasil && !s.isSelfSigned && s.status === 'VALIDA').length;
+    const icpVerifiedCount = signatures.filter(s => s.trustStatus === 'RECONHECIDO_ICP_BRASIL' && s.status === 'VALIDA').length;
+    const icpCluesCount = signatures.filter(s => s.trustStatus === 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA' && s.status === 'VALIDA').length;
+    const selfSignedCount = signatures.filter(s => s.trustStatus === 'AUTOASSINADO' && s.status === 'VALIDA').length;
+    const advancedCount = signatures.filter(s => s.trustStatus === 'CONFIANCA_NAO_VERIFICADA' && s.status === 'VALIDA').length;
 
     let trustSummaryText = 'Nenhuma assinatura inspecionada.';
     let legalSummaryText = 'Sem eficácia jurídica.';
 
     if (hasSignatures) {
       if (allValid) {
-        if (icpCount > 0 && advancedCount === 0 && selfSignedCount === 0) {
-          trustSummaryText = 'Confiança: Certificado(s) da cadeia oficial ICP-Brasil.';
+        if (icpVerifiedCount > 0 && icpCluesCount === 0 && advancedCount === 0 && selfSignedCount === 0) {
+          trustSummaryText = 'Confiança: Certificado(s) da cadeia oficial ICP-Brasil com âncora de raiz validada.';
           legalSummaryText = 'Validade Jurídica: Assinatura(s) Eletrônica(s) Qualificada(s) ICP-Brasil com presunção legal de veracidade (MP 2.200-2/2001, art. 10, § 1º).';
-        } else if (selfSignedCount > 0 && icpCount === 0 && advancedCount === 0) {
+        } else if (icpCluesCount > 0 && icpVerifiedCount === 0 && advancedCount === 0 && selfSignedCount === 0) {
+          trustSummaryText = `Confiança: ${icpCluesCount} certificado(s) com indícios de ICP-Brasil (cadeia não validada contra AC Raiz confiável).`;
+          legalSummaryText = 'Validade Jurídica: Assinatura Eletrônica Avançada (Lei 14.063/2020). Presunção de Qualificada ICP-Brasil depende de validação no VALIDAR do ITI.';
+        } else if (selfSignedCount > 0 && icpVerifiedCount === 0 && icpCluesCount === 0 && advancedCount === 0) {
           trustSummaryText = 'Confiança: Certificado autoassinado (raiz própria não reconhecida; confiança não verificada).';
           legalSummaryText = 'Validade Jurídica: Integridade criptográfica confirmada; confiança do certificado não verificada (não possui presunção legal em tribunais).';
+        } else if (advancedCount > 0 && icpVerifiedCount === 0 && icpCluesCount === 0 && selfSignedCount === 0) {
+          trustSummaryText = `Confiança: ${advancedCount} certificado(s) com AC não verificada (Avançada não-ICP).`;
+          legalSummaryText = 'Validade Jurídica: Assinatura Eletrônica Avançada (Lei 14.063/2020, art. 4º, II). Requer aceitação prévia entre as partes.';
         } else {
-          trustSummaryText = `Confiança: ${icpCount} ICP-Brasil, ${advancedCount} Avançada(s) não-ICP, ${selfSignedCount} Autoassinada(s).`;
-          legalSummaryText = 'Validade Jurídica: Assinatura(s) Eletrônica(s) Avançada(s) (Lei 14.063/2020, art. 4º, II). Requer aceitação entre as partes.';
+          const parts: string[] = [];
+          if (icpVerifiedCount > 0) parts.push(`${icpVerifiedCount} ICP Validada`);
+          if (icpCluesCount > 0) parts.push(`${icpCluesCount} Indício(s) ICP`);
+          if (advancedCount > 0) parts.push(`${advancedCount} Avançada(s) não-ICP`);
+          if (selfSignedCount > 0) parts.push(`${selfSignedCount} Autoassinada(s)`);
+          trustSummaryText = `Confiança: ${parts.join(', ')}.`;
+          legalSummaryText = 'Validade Jurídica: Assinatura(s) Eletrônica(s) Avançada(s) (Lei 14.063/2020). Requer aceitação entre as partes ou validação no VALIDAR do ITI.';
         }
       } else {
         trustSummaryText = 'Confiança: Comprometida por falha ou adulteração de integridade.';
