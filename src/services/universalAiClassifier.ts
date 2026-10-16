@@ -13,7 +13,15 @@ export interface LegalRegimeAnalysis {
   blockedLaws: string[];
 }
 
-export class UniversalAiClassifier {
+/**
+ * Classificador determinístico de entidades documentais e dados sensíveis baseado em regras contextuais.
+ * 
+ * NOTA METODOLÓGICA:
+ * Os índices de confiança (ex: 0.98, 0.88, 0.99) representam pontuações heurísticas predefinidas e
+ * ponderadas por âncoras contextuais (termos precursores, proximidade de OAB, estrutura sintática),
+ * e NÃO probabilidades estatísticas computadas por inferência de modelos generativos ou de machine learning.
+ */
+export class DocumentEntityClassifier {
   /**
    * Set estático case-insensitive de termos institucionais, legais, procedimentais e de negócios a ignorar.
    */
@@ -315,3 +323,7 @@ export class UniversalAiClassifier {
     }
   }
 }
+
+// Aliases para manter compatibilidade com módulos e scripts existentes
+export const UniversalAiClassifier = DocumentEntityClassifier;
+export const SensitiveDataDetector = DocumentEntityClassifier;

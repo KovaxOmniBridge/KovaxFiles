@@ -17,10 +17,13 @@ import {
   ShieldCheck,
   Award,
   Sliders,
-  UserCheck
+  UserCheck,
+  Info,
+  BookOpen
 } from 'lucide-react';
-import { LocalPdfEngine, ProcessStampOptions } from '../../services/pdfEngine';
+import { LocalPdfEngine, ProcessStampOptions, computeSha256Hex } from '../../services/pdfEngine';
 import { CompressionEngine } from '../../services/compressionEngine';
+import { PDFDocument } from 'pdf-lib';
 
 export interface StampedResultItem {
   fileName: string;
@@ -42,6 +45,8 @@ export const ProcessStamper: React.FC = () => {
   const [showTimestamp, setShowTimestamp] = useState<boolean>(true);
   const [mergeOutput, setMergeOutput] = useState<boolean>(false);
   const [appendAuditPage, setAppendAuditPage] = useState<boolean>(true);
+  const [continuousPagination, setContinuousPagination] = useState<boolean>(true);
+  const [generateIndexCover, setGenerateIndexCover] = useState<boolean>(true);
   const [signerName, setSignerName] = useState<string>('Dr(a). Servidor / Advogado Responsável');
 
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -130,28 +135,111 @@ export const ProcessStamper: React.FC = () => {
         signerName
       };
 
+      // 1. Extrair contagem de páginas e hash SHA-256 de cada peça
+      const fileBuffers = await Promise.all(selectedFiles.map(f => f.arrayBuffer()));
+      let currentFolha = startPageNumber;
+      const piecesMetadata: {
+        pieceIndex: number;
+        title: string;
+        fileName: string;
+        startFolha: number;
+        endFolha: number;
+        pageCount: number;
+        sha256Hex: string;
+      }[] = [];
+
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const buffer = fileBuffers[i];
+        const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+        const count = doc.getPageCount();
+        const hash = await computeSha256Hex(new Uint8Array(buffer));
+        const effectiveCount = (skipFirstPage && i === 0) ? Math.max(1, count - 1) : count;
+
+        piecesMetadata.push({
+          pieceIndex: i + 1,
+          title: file.name.replace(/\.[^/.]+$/, ''),
+          fileName: file.name,
+          startFolha: currentFolha,
+          endFolha: currentFolha + effectiveCount - 1,
+          pageCount: count,
+          sha256Hex: hash
+        });
+
+        if (continuousPagination) {
+          currentFolha += effectiveCount;
+        }
+      }
+
+      // 2. Gerar Capa de Juntada e Índice com Manifesto SHA-256 se habilitado
+      let coverBytes: Uint8Array | null = null;
+      if (generateIndexCover) {
+        coverBytes = await LocalPdfEngine.generateJuntadaCoverAndIndex({
+          processNumber,
+          departmentName,
+          signerName,
+          prefix,
+          padDigits,
+          pieces: piecesMetadata
+        });
+      }
+
+      // 3. Processar saída (Mesclada ou Individual)
       if (mergeOutput && selectedFiles.length > 1) {
-        // Mesclar todos os PDFs primeiro e aplicar a chancela + termo PAdES
-        const buffers = await Promise.all(selectedFiles.map(f => f.arrayBuffer()));
-        const mergedBuffer = await LocalPdfEngine.mergePdfs(buffers);
-        const stampedBytes = await LocalPdfEngine.stampProcess(mergedBuffer, baseOptions);
+        const stampedBuffers: Uint8Array[] = [];
+        if (coverBytes) {
+          stampedBuffers.push(coverBytes);
+        }
+
+        for (let i = 0; i < selectedFiles.length; i++) {
+          const piece = piecesMetadata[i];
+          const fileOptions: ProcessStampOptions = {
+            ...baseOptions,
+            startPageNumber: piece.startFolha,
+            appendAuditPage: false // termo individual desnecessário se unificado com capa e manifesto
+          };
+          const stamped = await LocalPdfEngine.stampProcess(fileBuffers[i], fileOptions);
+          stampedBuffers.push(stamped);
+        }
+
+        const mergedAll = await LocalPdfEngine.mergePdfs(stampedBuffers.map(b => b.buffer as ArrayBuffer));
+        let finalOutput = mergedAll;
+
+        if (appendAuditPage) {
+          finalOutput = await LocalPdfEngine.stampProcess(mergedAll, {
+            ...baseOptions,
+            startPageNumber: 1,
+            skipFirstPage: true,
+            opacity: 0,
+            appendAuditPage: true
+          });
+        }
 
         setResults([{
-          fileName: `Juntada_Processo_${processNumber.replace(/[^a-zA-Z0-9]/g, '_')}_PAdES_Completo.pdf`,
-          data: stampedBytes
+          fileName: `Juntada_Processo_${processNumber.replace(/[^a-zA-Z0-9]/g, '_')}_Completo.pdf`,
+          data: finalOutput
         }]);
       } else {
-        // Aplicar a chancela individualmente
-        const processedResults = await Promise.all(
-          selectedFiles.map(async file => {
-            const buffer = await file.arrayBuffer();
-            const stampedBytes = await LocalPdfEngine.stampProcess(buffer, baseOptions);
-            return {
-              fileName: file.name.replace(/\.pdf$/i, '_carimbado_juntada_pades.pdf'),
-              data: stampedBytes
-            };
-          })
-        );
+        const processedResults: StampedResultItem[] = [];
+        if (coverBytes) {
+          processedResults.push({
+            fileName: `00_Capa_e_Indice_de_Juntada_Processo_${processNumber.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
+            data: coverBytes
+          });
+        }
+
+        for (let i = 0; i < selectedFiles.length; i++) {
+          const piece = piecesMetadata[i];
+          const fileOptions: ProcessStampOptions = {
+            ...baseOptions,
+            startPageNumber: piece.startFolha
+          };
+          const stampedBytes = await LocalPdfEngine.stampProcess(fileBuffers[i], fileOptions);
+          processedResults.push({
+            fileName: selectedFiles[i].name.replace(/\.pdf$/i, `_fls_${String(piece.startFolha).padStart(padDigits, '0')}_a_${String(piece.endFolha).padStart(padDigits, '0')}.pdf`),
+            data: stampedBytes
+          });
+        }
         setResults(processedResults);
       }
     } catch (err: any) {
@@ -181,7 +269,7 @@ export const ProcessStamper: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'Documentos_Carimbados_Juntada_PAdES.zip';
+    a.download = 'Documentos_Carimbados_Juntada.zip';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -210,19 +298,31 @@ export const ProcessStamper: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
-      {/* Header com Banner de Respaldo Legal PAdES */}
+      {/* Header com Banner de Respaldo Administrativo e Integridade SHA-256 */}
       <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-slate-800 gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <h2 className="text-xl font-bold text-slate-100">Juntada, Chancela & Carimbo PAdES</h2>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              Assinatura Avançada PAdES / MP 2.200-2
+            <h2 className="text-xl font-bold text-slate-100">Juntada, Numeração & Chancela de Autos</h2>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+              Chancela Administrativa & Hash SHA-256
             </span>
           </div>
           <p className="text-xs text-slate-400">
-            Carimbo oficial de numeração de folhas, selo redondo estilo chancela em marca d'água e geração automática de Termo de Autenticidade com Hash SHA-256 (Lei 14.063/2020).
+            Carimbo oficial de numeração sequencial de folhas (Fl. 001/2026), chancela visual em marca d'água e geração de Termo de Juntada e Integridade Documental com Hash SHA-256.
           </p>
+        </div>
+      </div>
+
+      {/* Aviso de Conformidade Legal e Técnica */}
+      <div className="p-3.5 rounded-xl bg-blue-950/30 border border-blue-500/30 text-xs text-blue-200 flex items-start gap-2.5">
+        <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+        <div>
+          <span className="font-semibold text-blue-100">Aviso de Conformidade Técnica e Legal:</span>
+          <span className="text-slate-300 ml-1">
+            Esta rotina aplica chancela visual e numeração sequencial de autos, registrando o hash SHA-256 das peças. 
+            <strong> Este ato administrativo não constitui assinatura digital PAdES (ISO 32000 / ETSI EN 319 142) nem substitui certificado digital ICP-Brasil com chave privada.</strong> Para assinar peças e petições com certificado digital A1 (.pfx/.p12), utilize o módulo dedicado <strong>Assinador & Validador PAdES</strong> no menu lateral.
+          </span>
         </div>
       </div>
 
@@ -231,7 +331,7 @@ export const ProcessStamper: React.FC = () => {
         {/* Config Form (2 cols) */}
         <div className="lg:col-span-2 p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
-            <Building2 className="w-4 h-4" /> Configuração do Carimbo & Respaldo Legal
+            <Building2 className="w-4 h-4" /> Configuração da Chancela & Numeração
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -369,7 +469,7 @@ export const ProcessStamper: React.FC = () => {
                 onChange={(e) => setAppendAuditPage(e.target.checked)}
                 className="rounded bg-slate-950 border-slate-800 text-emerald-600 focus:ring-emerald-500"
               />
-              <span className="font-semibold">Anexar Termo de Autenticidade e Registro PAdES ao final do PDF (Hash SHA-256 e respaldo legal)</span>
+              <span className="font-semibold">Anexar Termo de Juntada e Integridade Documental ao final do PDF (Hash SHA-256)</span>
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300">
@@ -391,6 +491,26 @@ export const ProcessStamper: React.FC = () => {
                   className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-indigo-500"
                 />
                 <span>Pular 1ª página (ex: Capa original)</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={continuousPagination}
+                  onChange={(e) => setContinuousPagination(e.target.checked)}
+                  className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span>Paginação contínua entre peças (Fl. sequencial)</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={generateIndexCover}
+                  onChange={(e) => setGenerateIndexCover(e.target.checked)}
+                  className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span>Gerar Capa com Índice & Manifesto SHA-256</span>
               </label>
             </div>
           </div>
@@ -443,7 +563,7 @@ export const ProcessStamper: React.FC = () => {
                     </div>
                   )}
                   <div className="text-[6.5px] leading-tight text-center opacity-75 truncate max-w-[80px] mt-0.5">
-                    {showTimestamp ? '31/08/2026 11:44' : 'Offline PAdES'}
+                    {showTimestamp ? '31/08/2026 11:44' : 'Chancela Oficial'}
                   </div>
                 </div>
               </div>
@@ -465,7 +585,7 @@ export const ProcessStamper: React.FC = () => {
                   </div>
                 )}
                 <div className="text-[7px] opacity-75 leading-tight truncate">
-                  {sampleDeptText} • PAdES
+                  {sampleDeptText} • CHANCELA
                 </div>
               </div>
             )}
@@ -480,9 +600,9 @@ export const ProcessStamper: React.FC = () => {
               Com opacidade de <strong className="text-slate-200">{(opacity * 100).toFixed(0)}%</strong>, o carimbo atuará como marca d'água sem cobrir assinaturas ou textos sob ele.
             </p>
             {appendAuditPage && (
-              <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] flex items-center gap-1.5">
-                <Award className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                <span>Termo PAdES com Hash SHA-256 será anexado ao final.</span>
+              <div className="p-2 rounded bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[10px] flex items-center gap-1.5">
+                <Award className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                <span>Termo de Juntada com Hash SHA-256 será anexado ao final.</span>
               </div>
             )}
           </div>
@@ -509,10 +629,10 @@ export const ProcessStamper: React.FC = () => {
           </div>
           <div>
             <p className="text-sm font-semibold text-slate-200">
-              Arraste um ou múltiplos PDFs para juntada e chancela PAdES
+              Arraste um ou múltiplos PDFs para juntada e numeração de folhas
             </p>
             <p className="text-xs text-slate-500 mt-0.5">
-              Defina a ordem exata das peças antes de gerar o pacote autenticado.
+              Defina a ordem exata das peças antes de gerar o documento com chancela oficial.
             </p>
           </div>
         </div>
@@ -622,15 +742,15 @@ export const ProcessStamper: React.FC = () => {
             {isProcessing ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Gerando chancela e termo PAdES para {selectedFiles.length} PDF(s)...</span>
+                <span>Gerando chancela e termo de juntada para {selectedFiles.length} PDF(s)...</span>
               </>
             ) : (
               <>
                 <Stamp className="w-4 h-4" />
                 <span>
                   {mergeOutput 
-                    ? `Chancelar e Mesclar em 1 PDF PAdES` 
-                    : `Gerar Chancelas PAdES em Lote (${selectedFiles.length})`}
+                    ? `Chancelar e Mesclar em 1 PDF de Autos` 
+                    : `Chancelar Documentos em Lote (${selectedFiles.length})`}
                 </span>
               </>
             )}
@@ -645,9 +765,9 @@ export const ProcessStamper: React.FC = () => {
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-6 h-6 text-emerald-400" />
               <div>
-                <h3 className="text-sm font-bold text-slate-100">{results.length} Documento(s) Autenticado(s) com Sucesso!</h3>
+                <h3 className="text-sm font-bold text-slate-100">{results.length} Documento(s) Chancelado(s) com Sucesso!</h3>
                 <p className="text-xs text-slate-400">
-                  Chancela oficial em marca d'água {appendAuditPage && 'e Termo de Registro PAdES com Hash SHA-256 anexado no final'}.
+                  Chancela oficial em marca d'água {appendAuditPage && 'e Termo de Juntada com Hash SHA-256 anexado no final'}.
                 </p>
               </div>
             </div>
@@ -675,7 +795,7 @@ export const ProcessStamper: React.FC = () => {
                   className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 font-semibold text-xs flex items-center gap-1.5 border border-emerald-500/30"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  Baixar PDF Autenticado
+                  Baixar PDF Chancelado
                 </button>
               </div>
             ))}

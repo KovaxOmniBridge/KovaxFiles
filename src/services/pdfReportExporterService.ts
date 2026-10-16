@@ -5,11 +5,15 @@
 
 export interface LgpdAuditRecord {
   id: string;
+  fileName?: string;
+  pageNumber?: number;
   originalTerm: string;
   maskedTerm: string;
   entityType: string;
   detectionReason: string;
+  coordinates?: string;
   timestamp: string;
+  status?: string;
 }
 
 export class PdfReportExporterService {
@@ -19,15 +23,36 @@ export class PdfReportExporterService {
   public static exportLgpdAuditCsv(records: LgpdAuditRecord[], fileName: string = 'relatorio_auditoria_lgpd.csv'): void {
     if (!records || records.length === 0) return;
 
-    const headers = ['ID', 'Termo Original', 'Termo Mascarado', 'Categoria', 'Motivo da Detecção', 'Data/Hora'];
-    const rows = records.map(r => [
-      `"${r.id}"`,
-      `"${(r.originalTerm || '').replace(/"/g, '""')}"`,
-      `"${(r.maskedTerm || '').replace(/"/g, '""')}"`,
-      `"${(r.entityType || '').replace(/"/g, '""')}"`,
-      `"${(r.detectionReason || '').replace(/"/g, '""')}"`,
-      `"${r.timestamp}"`
-    ]);
+    const hasExtendedFields = records.some(r => r.fileName || r.pageNumber !== undefined || r.coordinates);
+
+    const headers = hasExtendedFields
+      ? ['ID', 'Arquivo', 'Página', 'Categoria', 'Termo Original', 'Termo Mascarado', 'Coordenadas (PDF)', 'Motivo da Detecção', 'Data/Hora', 'Status']
+      : ['ID', 'Termo Original', 'Termo Mascarado', 'Categoria', 'Motivo da Detecção', 'Data/Hora'];
+
+    const rows = records.map(r => {
+      if (hasExtendedFields) {
+        return [
+          `"${r.id}"`,
+          `"${(r.fileName || '').replace(/"/g, '""')}"`,
+          `"${r.pageNumber !== undefined ? r.pageNumber : ''}"`,
+          `"${(r.entityType || '').replace(/"/g, '""')}"`,
+          `"${(r.originalTerm || '').replace(/"/g, '""')}"`,
+          `"${(r.maskedTerm || '').replace(/"/g, '""')}"`,
+          `"${(r.coordinates || '').replace(/"/g, '""')}"`,
+          `"${(r.detectionReason || '').replace(/"/g, '""')}"`,
+          `"${r.timestamp}"`,
+          `"${(r.status || 'REMOVIDO / TARJADO').replace(/"/g, '""')}"`
+        ];
+      }
+      return [
+        `"${r.id}"`,
+        `"${(r.originalTerm || '').replace(/"/g, '""')}"`,
+        `"${(r.maskedTerm || '').replace(/"/g, '""')}"`,
+        `"${(r.entityType || '').replace(/"/g, '""')}"`,
+        `"${(r.detectionReason || '').replace(/"/g, '""')}"`,
+        `"${r.timestamp}"`
+      ];
+    });
 
     const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
     this.downloadFile(csvContent, fileName, 'text/csv;charset=utf-8;');

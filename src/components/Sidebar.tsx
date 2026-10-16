@@ -13,7 +13,9 @@ import {
   RefreshCw,
   FileText,
   Lock,
-  ShieldCheck
+  ShieldCheck,
+  Award,
+  Briefcase
 } from 'lucide-react';
 
 export interface TabItem {
@@ -27,12 +29,28 @@ export interface TabItem {
 
 export const TABS: TabItem[] = [
   {
+    id: 'court_filing',
+    label: 'Preparação de Protocolo',
+    category: 'Advocacia',
+    icon: Briefcase,
+    description: 'Fluxo integrado: seleção, ordenação, divisão de volumes, numeração de peças e manifesto',
+    badge: 'Fluxo Integrado'
+  },
+  {
     id: 'editor',
     label: 'Editor de Documentos',
     category: 'Advocacia',
     icon: FileText,
     description: 'Crie e edite petições, procurações e pareceres com formatação ABNT/PJe',
     badge: 'Estilo Docs'
+  },
+  {
+    id: 'pades_signer',
+    label: 'Assinador & Validador PAdES',
+    category: 'Advocacia',
+    icon: Award,
+    description: 'Assine digitalmente com certificado A1 (.pfx) e valide PAdES / ICP-Brasil',
+    badge: 'ISO 32000'
   },
   {
     id: 'compressor',

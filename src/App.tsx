@@ -9,14 +9,22 @@ import { PdfManipulator } from './components/tools/PdfManipulator';
 import { OcrScanner } from './components/tools/OcrScanner';
 import { LexmlSearchTool } from './components/tools/LexmlSearchTool';
 import { DocEditor } from './components/tools/DocEditor';
+import { DigitalSignatureTool } from './components/tools/DigitalSignatureTool';
+import { CourtFilingWizard } from './components/tools/CourtFilingWizard';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<string>('editor');
+  const [activeTab, setActiveTab] = useState<string>('court_filing');
 
   const renderActiveTool = () => {
     switch (activeTab) {
+      case 'court_filing':
+      case 'protocolo':
+        return <CourtFilingWizard />;
       case 'editor':
         return <DocEditor />;
+      case 'pades_signer':
+      case 'signature':
+        return <DigitalSignatureTool />;
       case 'lexml':
         return <LexmlSearchTool />;
       case 'compressor':

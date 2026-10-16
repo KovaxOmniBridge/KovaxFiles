@@ -180,7 +180,7 @@ Mesmo uma matriz de CI multiplataforma aprovada testa os códigos-fonte e binár
 
 ---
 
-## 7. Delimitação de Escopo de IA: Reconhecimento Inteligente Assistido vs. Desacoplamento de Chatbot Jurídico
+## 7. Delimitação de Escopo: Detecção Algorítmica Determinística e Heurística vs. Desacoplamento de Modelos Generativos
 
 Em consonância com as melhores práticas de governança tecnológica para o setor jurídico e público, o KovaxFiles separa estritamente duas dimensões tecnológicas que não devem ser confundidas:
 
@@ -195,10 +195,10 @@ flowchart TD
         E["Carimbador & Assinatura Digital"]
     end
 
-    subgraph RECURSO_OPCIONAL["RECURSO AUXILIAR OPCIONAL (Supervisão Humana Ativa)"]
+    subgraph RECURSO_AUXILIAR["RECURSO AUXILIAR DETERMINÍSTICO (Supervisão Humana Ativa)"]
         direction TB
-        F["IA Local Leve (BERT-NER / Transformers.js WASM)"]
-        G["Classificação Heurística de Tokens Sensíveis"]
+        F["Varredura Regex de Alta Precisão (CPFs, CNPJs, RGs, etc.)"]
+        G["Classificação Heurística Estruturada (DocumentEntityClassifier)"]
         H["👉 Sugestões Preliminares de Tarjamento"]
         F & G --> H
         H --> I["REVISÃO & CONFIRMAÇÃO HUMANA OBRIGATÓRIA"]
@@ -213,15 +213,31 @@ flowchart TD
     end
 ```
 
-### 7.1 IA para Auxílio na Identificação de Dados Sensíveis (Mantida como Recurso Opcional)
-* **Objetivo:** Acelerar a triagem de documentos extensos (petições, contratos, laudos periciais) identificando nomes de partes, testemunhas, logradouros e dados de contexto não cobertos por expressões regulares rígidas.
-* **Arquitetura:** Executada localmente via WebAssembly (`LocalNerService` baseado em `@xenova/transformers`), sem necessidade de servidores externos, sem envio de telemetria ou dados para a nuvem.
-* **Supervisão Humana Obrigatória (*Human-in-the-Loop*):** As marcações geradas pela IA são tratadas como **sugestões pendentes de validação**. O operador humano mantém controle visual e explícito de seleção/deseleção de cada retângulo antes de autorizar o *burn-in* definitivo.
+### 7.1 Detecção Algorítmica Determinística e Heurística Estruturada
+* **Objetivo:** Acelerar a triagem de documentos extensos (petições, contratos, laudos periciais) identificando tanto identificadores estruturados (CPFs, CNPJs, RGs, e-mails, telefones, dados bancários e CIDs) quanto entidades de contexto (nomes de partes e testemunhas com prefixos jurídicos, logradouros residenciais com CEPs) com blindagem geométrica de registros OAB.
+* **Arquitetura:** Executada 100% no cliente em JavaScript/TypeScript puro (`RedactionDetectionService` e `DocumentEntityClassifier`), de forma determinística e ultrarrápida, sem modelos neurais pesados, sem dependência de Transformers.js, sem servidores externos e sem telemetria.
+* **Supervisão Humana Obrigatória (*Human-in-the-Loop*):** As marcações geradas pelo motor algorítmico são tratadas como **sugestões preliminares pendentes de validação**. O operador humano mantém controle visual e explícito de seleção/deseleção de cada retângulo antes de autorizar o *burn-in* definitivo.
 
-### 7.2 Desacoplamento da IA Jurídica Generativa (Chatbot / Pareceres)
+### 7.2 Desacoplamento de LLMs e Modelos Generativos
 * **Retirada do Núcleo Obrigatório:** Foram eliminadas as dependências e expectativas de servidores locais pesados de LLM (ex.: modelos de 8B GGUF na porta 18888, prompts de chatbot e rotinas que pretendiam atestar competência jurídica com smoke tests sintéticos).
 * **Fundamentação Estratégica:**
   1. **Solidez e Usabilidade Comercial:** O valor comercial central do KovaxFiles reside na sua velocidade, confiabilidade matemática e soberania como **estação de trabalho documental offline** (PJe, LGPD, compressão e juntada). Ele não depende de um assistente de conversação para ser indispensável.
   2. **Risco Jurídico e Ético de Alucinação:** A geração autônoma de aconselhamento legal por LLMs locais apresenta riscos inaceitáveis de alucinação de jurisprudência, erro na citação de prazos processuais e responsabilização ética perante órgãos de classe (OAB).
   3. **Eficiência de Distribuição:** Desacoplar modelos generativos reduz gigabytes no instalador, elimina dependências de aceleração por GPU/CUDA e assegura compatibilidade imediata em computadores corporativos modestos de gabinetes e prefeituras.
+
+### 7.3 Reconhecimento Óptico de Caracteres (OCR Local via Tesseract.js e Garantia Offline)
+* **Objetivo:** Permitir indexação, busca textual e marcação precisa em petições, laudos e documentos escaneados antigos diretamente no dispositivo do usuário, convertendo cópias digitalizadas em camadas de texto pesquisáveis.
+* **Distinção Arquitetural:** O Tesseract OCR é uma ferramenta clássica de visão computacional e reconhecimento de caracteres geométricos, e não um modelo de linguagem generativo (LLM) ou assistente conversacional.
+* **Empacotamento Local e Soberania Offline:**
+  1. **Assets Embutidos no Repositório e Distribuição:** O modelo treinado para língua portuguesa (`por.traineddata`, 2.4 MB), o worker JavaScript (`worker.min.js`) e os binários WebAssembly (`tesseract-core-lstm.wasm`, `tesseract-core-simd-lstm.wasm` e loaders `.wasm.js`) acompanham a distribuição em `public/tessdata/` e são incluídos diretamente no bundle `dist/tessdata/`.
+  2. **Zero Requisições Externas:** O inicializador centralizado (`tesseractOfflineConfig.ts`) configura explicitamente os caminhos locais (resolução nativa sob `file://` no Electron ou rotas locais estáticas), desativando `gzip` remoto e prevenindo chamadas aos CDNs públicos do jsdelivr ou naptha.
+  3. **Validação Automatizada de Isolamento:** A suíte `npm run test:offline-ocr` valida tanto no Node.js quanto em sandbox Electron que a inicialização e o reconhecimento de texto em documentos operam com 100% de sucesso sem efetuar qualquer conexão de rede externa na primeira utilização.
+
+### 7.4 Proteção Criptográfica Real de PDFs com Senha (ISO 32000 AES-256)
+* **Mitigação de Falha Crítica:** A biblioteca `pdf-lib` (v1.17.1) não implementa criptografia de PDFs nativamente (`pdfDoc.encrypt` não existe). A implementação legada continha uma verificação defensiva incompleta que permitia que o documento fosse salvo sem erro e sem proteção.
+* **Nova Arquitetura Homologada:** O motor `EncryptionEngine` foi totalmente reestruturado com suporte aos padrões criptográficos internacionais (ISO 32000):
+  1. **Criptografia Real AES-256 (V=5, R=6):** Os arquivos são criptografados com chave AES de 256 bits derivada de senhas de leitura (User Password) e de gerenciamento de permissões (Owner Password), exigindo autenticação em qualquer leitor padrão de PDF (Adobe Acrobat, Foxit, navegadores e sistemas de tribunais).
+  2. **Eliminação de Falhas Silenciosas:** Qualquer tentativa de chamada sem senha válida é rejeitada com exceção imediata. Além disso, uma trava de validação pós-criptografia inspeciona o buffer resultante antes de retornar ao usuário; se o arquivo não estiver criptografado, o processo é abortado com erro fatal.
+  3. **Descriptografia Autorizada e Cofre Forte AES-GCM:** Adicionado suporte à remoção de senha em documentos conhecidos e mantido o Cofre Forte AES-GCM 256 bits com derivação PBKDF2 (100.000 iterações) para proteção de arquivos arbitrários.
+  4. **Homologação e Auditoria Externa:** A suíte `npm run test:pdf-encryption` testa de forma automatizada a rejeição de senhas vazias, a exigência de autenticação via PyMuPDF independente, a rejeição de senhas incorretas e a recuperação de documentos descriptografados.
 

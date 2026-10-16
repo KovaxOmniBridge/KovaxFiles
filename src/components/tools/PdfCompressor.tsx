@@ -1,19 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileArchive, Upload, Download, CheckCircle2, AlertCircle, RefreshCw, Zap, 
   Layers, PackageCheck, FileText, Hash, ShieldCheck, FolderArchive, FileSpreadsheet,
   FileType, Image, FileCode, Archive, Sparkles, Settings2, ChevronDown, ChevronUp,
-  FileSignature, ShieldAlert, Award, Sliders, Trash2
+  FileSignature, ShieldAlert, Award, Sliders, Trash2, AlertTriangle, Eye, X
 } from 'lucide-react';
 import { 
   TARGET_PRESETS, TargetPreset, CompressionEngine, VolumeBundleOutput, 
-  DirectCompressOutput, GenericZipOutput, AdvancedCompressOptions 
+  DirectCompressOutput, GenericZipOutput, AdvancedCompressOptions,
+  PdfWorkflowMode 
 } from '../../services/compressionEngine';
+import * as pdfjsLib from 'pdfjs-dist';
 
 export type CompressorMode = 'direct_pdf' | 'volume_pdf' | 'generic_zip';
 
 export const PdfCompressor: React.FC = () => {
   const [activeMode, setActiveMode] = useState<CompressorMode>('generic_zip');
+  const [workflowMode, setWorkflowMode] = useState<PdfWorkflowMode>('unsigned_optimization');
+  const [generateConsultationCopy, setGenerateConsultationCopy] = useState<boolean>(true);
   const [selectedPreset, setSelectedPreset] = useState<TargetPreset>(TARGET_PRESETS[0]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [processNumber, setProcessNumber] = useState<string>('');
@@ -23,6 +27,7 @@ export const PdfCompressor: React.FC = () => {
   // Configurações Avançadas Opcionais
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [advancedOptions, setAdvancedOptions] = useState<AdvancedCompressOptions>({
+    workflowMode: 'unsigned_optimization',
     enableImageReencode: false,
     imageQuality: 0.70,
     maxDpi: 150,
@@ -39,6 +44,90 @@ export const PdfCompressor: React.FC = () => {
   const [zipResult, setZipResult] = useState<GenericZipOutput | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progressInfo, setProgressInfo] = useState<{ message: string; percent: number } | null>(null);
+
+  const [customMaxSizeMB, setCustomMaxSizeMB] = useState<number>(20);
+  const [detectedSignedFiles, setDetectedSignedFiles] = useState<{ name: string; count: number }[]>([]);
+  const [confirmSignedReencode, setConfirmSignedReencode] = useState<boolean>(false);
+  const [comparisonModalData, setComparisonModalData] = useState<{
+    originalBuffer: ArrayBuffer;
+    compressedBuffer: Uint8Array;
+    originalSize: number;
+    newSize: number;
+    fileName: string;
+  } | null>(null);
+  const canvasOriginalRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasCompressedRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Efeito para renderização da comparação visual antes/depois no canvas
+  useEffect(() => {
+    if (!comparisonModalData) return;
+    let isCancelled = false;
+
+    const renderComparison = async () => {
+      try {
+        const origTask = pdfjsLib.getDocument({ data: new Uint8Array(comparisonModalData.originalBuffer) });
+        const origPdf = await origTask.promise;
+        const origPage = await origPdf.getPage(1);
+        const origViewport = origPage.getViewport({ scale: 0.8 });
+
+        if (canvasOriginalRef.current && !isCancelled) {
+          canvasOriginalRef.current.width = origViewport.width;
+          canvasOriginalRef.current.height = origViewport.height;
+          const ctxOrig = canvasOriginalRef.current.getContext('2d');
+          if (ctxOrig) {
+            await origPage.render({ canvasContext: ctxOrig, viewport: origViewport }).promise;
+          }
+        }
+
+        const compTask = pdfjsLib.getDocument({ data: new Uint8Array(comparisonModalData.compressedBuffer) });
+        const compPdf = await compTask.promise;
+        const compPage = await compPdf.getPage(1);
+        const compViewport = compPage.getViewport({ scale: 0.8 });
+
+        if (canvasCompressedRef.current && !isCancelled) {
+          canvasCompressedRef.current.width = compViewport.width;
+          canvasCompressedRef.current.height = compViewport.height;
+          const ctxComp = canvasCompressedRef.current.getContext('2d');
+          if (ctxComp) {
+            await compPage.render({ canvasContext: ctxComp, viewport: compViewport }).promise;
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao renderizar comparação visual:', err);
+      }
+    };
+
+    renderComparison();
+    return () => { isCancelled = true; };
+  }, [comparisonModalData]);
+
+  // Verificação preventiva e automática de assinaturas digitais nos arquivos PDF selecionados
+  useEffect(() => {
+    let isCancelled = false;
+    const checkSignatures = async () => {
+      const signedList: { name: string; count: number }[] = [];
+      for (const file of selectedFiles) {
+        if (file.name.toLowerCase().endsWith('.pdf')) {
+          try {
+            const buf = await file.slice(0, 5000000).arrayBuffer();
+            const res = CompressionEngine.detectDigitalSignatures(buf);
+            if (res.hasSignatures) {
+              signedList.push({ name: file.name, count: res.signatureCount });
+            }
+          } catch {}
+        }
+      }
+      if (!isCancelled) {
+        setDetectedSignedFiles(signedList);
+        if (signedList.length === 0) {
+          setConfirmSignedReencode(false);
+          setAdvancedOptions(prev => ({ ...prev, allowSignedPdfReencoding: false }));
+        }
+      }
+    };
+    checkSignatures();
+    return () => { isCancelled = true; };
+  }, [selectedFiles]);
 
   const resetResults = () => {
     setDirectResult(null);
@@ -139,6 +228,12 @@ export const PdfCompressor: React.FC = () => {
     resetResults();
 
     try {
+      if (detectedSignedFiles.length > 0 && !confirmSignedReencode) {
+        throw new Error(
+          `OPERAÇÃO BLOQUEADA POR SEGURANÇA JURÍDICA: O(s) arquivo(s) [${detectedSignedFiles.map(d => d.name).join(', ')}] possui(em) assinatura digital válida. Para prosseguir ciente de que as assinaturas serão removidas/invalidadas, marque a caixa de autorização expressa no alerta exibido.`
+        );
+      }
+
       const fileBuffers = await Promise.all(
         selectedFiles.map(async f => ({
           name: f.name,
@@ -158,6 +253,13 @@ export const PdfCompressor: React.FC = () => {
         const results: DirectCompressOutput[] = [];
         const totalFiles = fileBuffers.length;
 
+        const effectiveOptions: AdvancedCompressOptions = {
+          ...advancedOptions,
+          workflowMode,
+          generateConsultationCopy,
+          allowSignedPdfReencoding: confirmSignedReencode
+        };
+
         for (let i = 0; i < totalFiles; i++) {
           const f = fileBuffers[i];
           const ext = f.name.toLowerCase().split('.').pop();
@@ -169,11 +271,11 @@ export const PdfCompressor: React.FC = () => {
           };
 
           if (ext === 'pdf') {
-            const res = await CompressionEngine.compressDirectPdf(f.buffer, f.name, advancedOptions, handleProgress);
+            const res = await CompressionEngine.compressDirectPdf(f.buffer, f.name, effectiveOptions, handleProgress);
             results.push(res);
           } else {
             handleProgress({ message: 'Otimizando imagem...', percent: 50 });
-            const res = await CompressionEngine.compressDirectImage(f.buffer, f.name, advancedOptions);
+            const res = await CompressionEngine.compressDirectImage(f.buffer, f.name, effectiveOptions);
             results.push(res);
           }
         }
@@ -185,13 +287,22 @@ export const PdfCompressor: React.FC = () => {
           throw new Error('O modo "Fracionar em Volumes" aceita apenas arquivos .PDF. Para outros formatos (.docx, .xlsx, .csv), utilize o modo "Criar Pacote ZIP".');
         }
 
+        const effectivePreset = selectedPreset.id === 'custom'
+          ? { ...selectedPreset, maxSizeMB: customMaxSizeMB }
+          : selectedPreset;
+
         const res = await CompressionEngine.packIntoVolumeBundle(
           fileBuffers,
-          selectedPreset,
+          effectivePreset,
           {
             processNumber,
             title: packageTitle || selectedFiles[0].name.replace(/\.[^/.]+$/, ''),
-            advanced: advancedOptions
+            advanced: {
+              ...advancedOptions,
+              workflowMode,
+              customMaxSizeMB: selectedPreset.id === 'custom' ? customMaxSizeMB : undefined,
+              allowSignedPdfReencoding: confirmSignedReencode
+            }
           },
           prog => setProgressInfo(prog)
         );
@@ -335,6 +446,104 @@ export const PdfCompressor: React.FC = () => {
         </div>
       </div>
 
+      {/* SELETOR DE FLUXO DE INTEGRIDADE JURÍDICA */}
+      {activeMode !== 'generic_zip' && (
+        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-blue-400" />
+              <span>Fluxo de Integridade Jurídica & Assinaturas:</span>
+            </label>
+            <span className="text-[10px] text-slate-400 font-medium">
+              Separação estrita conforme normas da ICP-Brasil & CNJ
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Fluxo 1: Otimização Não Assinados */}
+            <button
+              type="button"
+              onClick={() => {
+                setWorkflowMode('unsigned_optimization');
+                setAdvancedOptions(prev => ({ ...prev, workflowMode: 'unsigned_optimization' }));
+                resetResults();
+              }}
+              className={`p-3.5 rounded-xl text-left border transition-all ${
+                workflowMode === 'unsigned_optimization'
+                  ? 'bg-emerald-950/30 border-emerald-500 text-slate-100 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500/40'
+                  : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                  🟢 Otimização Não Assinados
+                </span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-semibold">
+                  Padrão
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Para minutas, peças iniciais e anexos que <strong>ainda não foram assinados</strong>. Bloqueia PDFs assinados para resguardar a validade.
+              </p>
+            </button>
+
+            {/* Fluxo 2: Preparação Pré-Assinatura */}
+            <button
+              type="button"
+              onClick={() => {
+                setWorkflowMode('pre_signature_preparation');
+                setAdvancedOptions(prev => ({ ...prev, workflowMode: 'pre_signature_preparation', enablePdfA: true }));
+                resetResults();
+              }}
+              className={`p-3.5 rounded-xl text-left border transition-all ${
+                workflowMode === 'pre_signature_preparation'
+                  ? 'bg-amber-950/30 border-amber-500 text-slate-100 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500/40'
+                  : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                  🟡 Preparação Pré-Assinatura
+                </span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-semibold">
+                  Padronização XMP/sRGB
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Normaliza, expurga scripts dinâmicos, enquadra no limite do tribunal e padroniza metadados <strong>antes</strong> de assinar com ICP-Brasil/Gov.br.
+              </p>
+            </button>
+
+            {/* Fluxo 3: Documentos Já Assinados */}
+            <button
+              type="button"
+              onClick={() => {
+                setWorkflowMode('signed_preservation');
+                setAdvancedOptions(prev => ({ ...prev, workflowMode: 'signed_preservation' }));
+                resetResults();
+              }}
+              className={`p-3.5 rounded-xl text-left border transition-all ${
+                workflowMode === 'signed_preservation'
+                  ? 'bg-blue-950/30 border-blue-500 text-slate-100 shadow-lg shadow-blue-500/10 ring-1 ring-blue-500/40'
+                  : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-blue-400 flex items-center gap-1.5">
+                  🔵 Documentos Já Assinados
+                </span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-semibold">
+                  Custódia Estrita
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                <strong>Preserva a matriz original 100% intacta</strong>. Audita assinaturas, emite Relatório Técnico de Custódia e gera cópia desvinculada para consulta.
+              </p>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Preset options if Volume PDF mode */}
       {activeMode === 'volume_pdf' && (
         <div className="p-4 rounded-xl bg-blue-950/20 border border-blue-500/30 space-y-3">
@@ -345,7 +554,10 @@ export const PdfCompressor: React.FC = () => {
             {TARGET_PRESETS.map((preset) => (
               <button
                 key={preset.id}
-                onClick={() => { setSelectedPreset(preset); resetResults(); }}
+                onClick={() => {
+                  setSelectedPreset(preset.id === 'custom' ? { ...preset, maxSizeMB: customMaxSizeMB } : preset);
+                  resetResults();
+                }}
                 className={`p-2.5 rounded-lg text-left border text-xs transition-all ${
                   selectedPreset.id === preset.id
                     ? 'bg-blue-600/30 border-blue-400 text-slate-100 font-semibold'
@@ -353,10 +565,39 @@ export const PdfCompressor: React.FC = () => {
                 }`}
               >
                 <div className="font-bold text-slate-200">{preset.name}</div>
-                <div className="text-[10px] text-blue-400">Máx {preset.maxSizeMB}MB por parte</div>
+                <div className="text-[10px] text-blue-400">
+                  {preset.id === 'custom' ? `Configurável (${customMaxSizeMB}MB)` : `Máx ${preset.maxSizeMB}MB por parte`}
+                </div>
               </button>
             ))}
           </div>
+
+          {selectedPreset.id === 'custom' && (
+            <div className="mt-3 p-3 rounded-lg bg-blue-900/30 border border-blue-500/40 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold text-slate-200">Definir Limite Personalizado do Portal:</div>
+                <div className="text-[11px] text-slate-400">Informe o tamanho máximo exato por volume aceito pelo tribunal ou sistema municipal.</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0.5"
+                  max="100"
+                  step="0.5"
+                  value={customMaxSizeMB}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 1;
+                    setCustomMaxSizeMB(val);
+                    setSelectedPreset(prev => ({ ...prev, maxSizeMB: val }));
+                    setAdvancedOptions(prev => ({ ...prev, customMaxSizeMB: val }));
+                    resetResults();
+                  }}
+                  className="w-24 px-3 py-1.5 rounded-lg bg-slate-950 border border-blue-500 text-slate-100 font-bold text-xs focus:outline-none"
+                />
+                <span className="text-xs text-blue-300 font-bold">MB</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -467,6 +708,13 @@ export const PdfCompressor: React.FC = () => {
                         <span>Tons de Cinza (Grayscale)</span>
                       </label>
                     </div>
+
+                    {advancedOptions.enableImageReencode && ((advancedOptions.imageQuality || 0.7) <= 0.50 || (advancedOptions.maxDpi || 150) <= 100) && (
+                      <div className="col-span-full mt-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+                        <span><strong>Aviso de Degradação Visual:</strong> Resolução de 100 DPI ou qualidade ≤ 50% reduz bastante o tamanho, mas pode dificultar a leitura de carimbos, assinaturas manuscritas ou notas de rodapé pequenas em petições.</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -485,7 +733,7 @@ export const PdfCompressor: React.FC = () => {
                 <span className="text-[10px] text-slate-400">Emite aviso prévio de integridade</span>
               </div>
 
-              {/* Opção 3: Conformidade PDF/A-1b */}
+              {/* Opção 3: Padronização Arquivística Preliminar (XMP/sRGB) */}
               <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
                 <label className="flex items-center gap-2 text-slate-200 font-semibold cursor-pointer">
                   <input
@@ -494,12 +742,12 @@ export const PdfCompressor: React.FC = () => {
                     onChange={(e) => setAdvancedOptions(prev => ({ ...prev, enablePdfA: e.target.checked }))}
                     className="rounded bg-slate-950 border-slate-700 text-purple-600 focus:ring-purple-500"
                   />
-                  <span>🏛️ Aplicar Metadados Padrão PDF/A-1b (Arquivamento Histórico)</span>
+                  <span>🏛️ Padronização Arquivística de Metadados (XMP & Perfil sRGB)</span>
                 </label>
-                <span className="text-[10px] text-blue-400">ISO 19005-1 Compliant</span>
+                <span className="text-[10px] text-blue-400">Metadados XMP/sRGB</span>
               </div>
 
-              {/* Opção 4: Certificado de Auditoria LGPD */}
+              {/* Opção 4: Relatório Técnico de Processamento e Integridade */}
               <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 text-slate-200 font-semibold cursor-pointer">
@@ -509,14 +757,14 @@ export const PdfCompressor: React.FC = () => {
                       onChange={(e) => setAdvancedOptions(prev => ({ ...prev, generateAuditCertificate: e.target.checked }))}
                       className="rounded bg-slate-950 border-slate-700 text-purple-600 focus:ring-purple-500"
                     />
-                    <span>📜 Emitir Certificado de Auditoria LGPD & Autenticidade (.PDF)</span>
+                    <span>📑 Emitir Relatório Técnico de Processamento e Integridade (.PDF)</span>
                   </label>
-                  <span className="text-[10px] text-purple-400">Relatório com Hashes SHA-256</span>
+                  <span className="text-[10px] text-purple-400">Rastreabilidade SHA-256</span>
                 </div>
 
                 {advancedOptions.generateAuditCertificate && (
                   <div className="pl-6 pt-2 border-t border-slate-800">
-                    <label className="block text-[11px] text-slate-400 mb-1">Nome do Órgão / Operador no Certificado:</label>
+                    <label className="block text-[11px] text-slate-400 mb-1">Nome do Órgão / Operador no Relatório Técnico:</label>
                     <input
                       type="text"
                       value={advancedOptions.operatorDepartment || ''}
@@ -682,6 +930,66 @@ export const PdfCompressor: React.FC = () => {
         </div>
       )}
 
+      {/* Alerta de Segurança: Assinaturas Digitais Detectadas */}
+      {detectedSignedFiles.length > 0 && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/40 text-xs space-y-3">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1.5 flex-1">
+              <div className="font-bold text-amber-300 text-sm">
+                ⚠️ Assinatura Digital Detectada ({detectedSignedFiles.length} documento(s))
+              </div>
+              <p className="text-slate-300 leading-relaxed">
+                Identificamos chancelas criptográficas ICP-Brasil / PKCS#7 em: <span className="font-semibold text-amber-200">{detectedSignedFiles.map(f => `${f.name} (${f.count} assinatura(s))`).join(', ')}</span>.
+                A regravação convencional de PDFs altera a tabela de objetos e destrói irreversivelmente a validade jurídica das assinaturas existentes.
+              </p>
+
+              {workflowMode !== 'signed_preservation' ? (
+                <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWorkflowMode('signed_preservation');
+                      setAdvancedOptions(prev => ({ ...prev, workflowMode: 'signed_preservation' }));
+                      resetResults();
+                    }}
+                    className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/20 transition-all"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Mudar para Fluxo "Documentos Já Assinados (Preservação)"</span>
+                  </button>
+                  <span className="text-[11px] text-amber-200/80">
+                    Garante intocabilidade da matriz original e emite Certificado Forense de Custódia.
+                  </span>
+                </div>
+              ) : (
+                <div className="pt-1 text-emerald-400 text-xs font-semibold flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Modo de Preservação & Custódia Ativo: A matriz original será mantida 100% inalterada bit a bit.</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {workflowMode !== 'signed_preservation' && (
+            <label className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-950/40 border border-amber-500/50 cursor-pointer hover:bg-amber-950/60 transition-all">
+              <input
+                type="checkbox"
+                checked={confirmSignedReencode}
+                onChange={(e) => {
+                  setConfirmSignedReencode(e.target.checked);
+                  setAdvancedOptions(prev => ({ ...prev, allowSignedPdfReencoding: e.target.checked }));
+                }}
+                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-amber-400"
+              />
+              <span className="font-semibold text-amber-200 text-xs leading-normal">
+                Estou ciente de que a assinatura digital existente será invalidada/removida e autorizo expressamente a recompressão/fracionamento do arquivo.
+              </span>
+            </label>
+          )}
+        </div>
+      )}
+
       {/* Error display */}
       {errorMessage && (
         <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-3">
@@ -763,7 +1071,7 @@ export const PdfCompressor: React.FC = () => {
                     const zipFiles = directResult.map(res => ({ name: res.fileName, data: res.data }));
                     directResult.forEach((res, idx) => {
                       if (res.auditCertificatePdf) {
-                        zipFiles.push({ name: `Certificado_Auditoria_${idx + 1}_${res.fileName.replace(/\.[^/.]+$/, '')}.pdf`, data: res.auditCertificatePdf });
+                        zipFiles.push({ name: `Relatorio_Tecnico_Integridade_${idx + 1}_${res.fileName.replace(/\.[^/.]+$/, '')}.pdf`, data: res.auditCertificatePdf });
                       }
                     });
                     const zipBytes = CompressionEngine.createZipArchive(zipFiles);
@@ -842,20 +1150,32 @@ export const PdfCompressor: React.FC = () => {
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             {directResult.map((res, idx) => (
-              <div key={idx} className="flex flex-col space-y-2 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {res.isImage ? (
-                      <Image className="w-4 h-4 text-purple-400 shrink-0" />
+              <div key={idx} className="flex flex-col space-y-3 p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    {res.isPreservedOriginal ? (
+                      <ShieldCheck className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                    ) : res.workflowMode === 'pre_signature_preparation' ? (
+                      <Award className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    ) : res.isImage ? (
+                      <Image className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
                     ) : (
-                      <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <FileText className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                     )}
                     <div>
                       <div className="font-bold text-slate-200 flex items-center gap-2 flex-wrap">
-                        {res.fileName}
-                        {res.isImage ? (
+                        <span>{res.fileName}</span>
+                        {res.isPreservedOriginal ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">
+                            🛡️ Matriz Preservada 100% Intacta
+                          </span>
+                        ) : res.workflowMode === 'pre_signature_preparation' ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                            🏛️ Pronto para Assinatura (Padronização XMP/sRGB)
+                          </span>
+                        ) : res.isImage ? (
                           <span className="text-[10px] px-2 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-normal">
                             🖼️ Imagem Otimizada (.JPG)
                           </span>
@@ -875,35 +1195,113 @@ export const PdfCompressor: React.FC = () => {
                           </span>
                         ) : null}
                       </div>
-                      <div className="text-[11px] text-slate-400">
-                        {formatBytes(res.originalSize)} ➔ <span className="font-semibold text-emerald-400">{formatBytes(res.newSize)}</span> 
-                        <span className={`ml-2 px-1.5 py-0.2 rounded font-bold ${res.savedPercent > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
-                          {res.savedPercent > 0 ? `-${res.savedPercent}%` : 'Sem alteração'}
-                        </span>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        {res.isPreservedOriginal ? (
+                          <span>Tamanho original: <strong className="text-slate-200">{formatBytes(res.originalSize)}</strong> • Bytes inalterados para validação ICP-Brasil</span>
+                        ) : (
+                          <>
+                            {formatBytes(res.originalSize)} ➔ <span className="font-semibold text-emerald-400">{formatBytes(res.newSize)}</span> 
+                            <span className={`ml-2 px-1.5 py-0.2 rounded font-bold ${res.savedPercent > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                              {res.savedPercent > 0 ? `-${res.savedPercent}%` : 'Sem alteração'}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {res.auditCertificatePdf && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {res.forensicCertificatePdf && (
                       <button
-                        onClick={() => downloadFile(res.auditCertificatePdf!, `Certificado_Auditoria_${res.fileName}`, 'application/pdf')}
-                        className="px-3 py-1.5 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 font-semibold text-xs flex items-center gap-1.5 border border-purple-500/40"
+                        onClick={() => downloadFile(res.forensicCertificatePdf!, `Relatorio_Custodia_${res.fileName}`, 'application/pdf')}
+                        className="px-3 py-1.5 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 font-semibold text-xs flex items-center gap-1.5 border border-blue-500/40"
+                        title="Baixar Relatório Técnico de Preservação e Custódia"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        Relatório de Custódia
+                      </button>
+                    )}
+
+                    {res.preSignatureCertificatePdf && (
+                      <button
+                        onClick={() => downloadFile(res.preSignatureCertificatePdf!, `Relatorio_Preparacao_${res.fileName}`, 'application/pdf')}
+                        className="px-3 py-1.5 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 font-semibold text-xs flex items-center gap-1.5 border border-amber-500/40"
+                        title="Baixar Relatório Técnico de Preparação Pré-Assinatura"
                       >
                         <Award className="w-3.5 h-3.5" />
-                        Certificado LGPD
+                        Relatório Pré-Assinatura
+                      </button>
+                    )}
+
+                    {res.auditCertificatePdf && !res.forensicCertificatePdf && !res.preSignatureCertificatePdf && (
+                      <button
+                        onClick={() => downloadFile(res.auditCertificatePdf!, `Relatorio_Integridade_${res.fileName}`, 'application/pdf')}
+                        className="px-3 py-1.5 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 font-semibold text-xs flex items-center gap-1.5 border border-purple-500/40"
+                        title="Baixar Relatório Técnico de Processamento e Integridade"
+                      >
+                        <Award className="w-3.5 h-3.5" />
+                        Relatório de Integridade
+                      </button>
+                    )}
+
+                    {selectedFiles[idx] && selectedFiles[idx].name.toLowerCase().endsWith('.pdf') && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const origBuf = await selectedFiles[idx].arrayBuffer();
+                          setComparisonModalData({
+                            originalBuffer: origBuf,
+                            compressedBuffer: res.data,
+                            originalSize: res.originalSize,
+                            newSize: res.newSize,
+                            fileName: res.fileName
+                          });
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 transition-all"
+                        title="Comparação visual antes/depois da compressão"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Comparar Antes/Depois</span>
                       </button>
                     )}
 
                     <button
                       onClick={() => downloadFile(res.data, res.fileName, res.mimeType || (res.isImage ? 'image/jpeg' : 'application/pdf'))}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5"
+                      className={`px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center gap-1.5 ${
+                        res.isPreservedOriginal 
+                          ? 'bg-blue-600 hover:bg-blue-500 text-white' 
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      }`}
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>{res.isImage ? 'Baixar Imagem' : 'Baixar PDF'}</span>
+                      <span>{res.isPreservedOriginal ? 'Baixar Matriz Preservada' : res.isImage ? 'Baixar Imagem' : 'Baixar PDF'}</span>
                     </button>
                   </div>
                 </div>
+
+                {/* Sub-Card para Cópia Reprográfica de Consulta (se gerada no fluxo de preservação) */}
+                {res.consultationCopy && (
+                  <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-3 mt-1">
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-slate-300 flex items-center gap-2">
+                        <span>📑 Cópia Reprográfica para Simples Consulta (Desvinculada)</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-semibold">
+                          Marca D'água Aplicada
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Otimizada para {formatBytes(res.consultationCopy.sizeBytes)} ({res.consultationCopy.savedPercent > 0 ? `-${res.consultationCopy.savedPercent}%` : 'Tamanho mantido'}). As assinaturas originais foram desvinculadas para envio leve.
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => downloadFile(res.consultationCopy!.data, res.consultationCopy!.fileName, 'application/pdf')}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 shrink-0 border border-slate-700"
+                    >
+                      <Download className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Baixar Cópia Consulta</span>
+                    </button>
+                  </div>
+                )}
 
                 {res.sha256Post && (
                   <div className="text-[10px] text-slate-500 font-mono bg-slate-900/60 p-1.5 rounded border border-slate-800/80 truncate">
@@ -975,16 +1373,16 @@ export const PdfCompressor: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <Award className="w-4 h-4 text-purple-400 shrink-0" />
                   <div>
-                    <div className="font-bold text-purple-300">00_Certificado_de_Auditoria_LGPD.pdf</div>
-                    <div className="text-[11px] text-slate-400">Relatório de Integridade Documental e Autenticidade Gravado no ZIP</div>
+                    <div className="font-bold text-purple-300">00_Relatorio_Tecnico_Integridade_LGPD.pdf</div>
+                    <div className="text-[11px] text-slate-400">Relatório Técnico de Integridade e Rastreabilidade SHA-256 Gravado no ZIP</div>
                   </div>
                 </div>
                 <button
-                  onClick={() => downloadFile(volumeResult.auditCertificatePdf!, '00_Certificado_de_Auditoria_LGPD.pdf', 'application/pdf')}
+                  onClick={() => downloadFile(volumeResult.auditCertificatePdf!, '00_Relatorio_Tecnico_Integridade_LGPD.pdf', 'application/pdf')}
                   className="px-3 py-1.5 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 text-xs font-semibold flex items-center gap-1.5 border border-purple-500/40"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  Baixar Certificado
+                  Baixar Relatório Técnico
                 </button>
               </div>
             )}
@@ -1075,6 +1473,65 @@ export const PdfCompressor: React.FC = () => {
               <FolderArchive className="w-4 h-4" />
               <span>Salvar Arquivo ZIP</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE COMPARAÇÃO VISUAL ANTES / DEPOIS */}
+      {comparisonModalData && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-blue-400" />
+                  <span>Comparação Visual Antes / Depois • {comparisonModalData.fileName}</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Original: <strong className="text-slate-200">{formatBytes(comparisonModalData.originalSize)}</strong> ➔ 
+                  Otimizado: <strong className="text-emerald-400">{formatBytes(comparisonModalData.newSize)}</strong> 
+                  <span className="text-purple-300 ml-1 font-bold">
+                    (-{Math.round(((comparisonModalData.originalSize - comparisonModalData.newSize) / comparisonModalData.originalSize) * 100)}%)
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setComparisonModalData(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950/50">
+              <div className="flex flex-col items-center space-y-2">
+                <div className="text-xs font-bold text-slate-300 bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700">
+                  Documento Original (Página 1)
+                </div>
+                <div className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 flex items-center justify-center overflow-auto max-h-[550px]">
+                  <canvas ref={canvasOriginalRef} className="max-w-full h-auto shadow-md rounded" />
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center space-y-2">
+                <div className="text-xs font-bold text-emerald-300 bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-800/60">
+                  Otimizado / Comprimido (Página 1)
+                </div>
+                <div className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 flex items-center justify-center overflow-auto max-h-[550px]">
+                  <canvas ref={canvasCompressedRef} className="max-w-full h-auto shadow-md rounded" />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+              <span>🔍 Aproxime e verifique se as fontes, carimbos e assinaturas mantiveram a nitidez adequada para o protocolo.</span>
+              <button
+                onClick={() => setComparisonModalData(null)}
+                className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold"
+              >
+                Concluir Visualização
+              </button>
+            </div>
           </div>
         </div>
       )}

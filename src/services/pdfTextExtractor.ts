@@ -1,10 +1,11 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
-import { createWorker } from 'tesseract.js';
+import { createOfflineWorker } from './tesseractOfflineConfig.ts';
 
-// Configuração do Worker 100% Local e Offline do PDF.js via Vite
-if (typeof window !== 'undefined' && 'Worker' in window) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+// Configuração do Worker 100% Local e Offline do PDF.js via Vite com compatibilidade Node/Browser
+const pdfjs = (pdfjsLib as any).getDocument ? pdfjsLib : ((pdfjsLib as any).default || pdfjsLib);
+if (typeof window !== 'undefined' && 'Worker' in window && pdfjs.GlobalWorkerOptions) {
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 }
 
 export interface TextItemBounds {
@@ -15,6 +16,13 @@ export interface TextItemBounds {
   height: number;
 }
 
+export interface PageOcrQuality {
+  status: 'ok' | 'rejected_failed' | 'rejected_illegible' | 'rejected_low_confidence';
+  meanConfidence: number;
+  wordCount: number;
+  reason?: string;
+}
+
 export interface PageTextData {
   pageIndex: number;
   pageWidth: number;
@@ -22,6 +30,12 @@ export interface PageTextData {
   fullText: string;
   items: TextItemBounds[];
   isScanned: boolean; // Indica se a página foi processada via OCR por ser imagem escaneada
+  ocrQuality?: PageOcrQuality;
+}
+
+export interface ExtractTextOptions {
+  disableOcr?: boolean;
+  ocrLanguage?: string;
 }
 
 let measureCtx: CanvasRenderingContext2D | null = null;
@@ -37,15 +51,19 @@ export class PdfTextExtractor {
   /**
    * Extrai o texto do PDF com coordenadas Bounding Box milimétricas.
    * Inspeciona o MediaBox real para não cortar margens de autenticação (e-SAJ, PJe, TRF).
-   * Se a página for um documento escaneado (imagem), dispara o OCR Local via Tesseract.js WASM.
+   * Se a página for um documento escaneado (imagem), dispara o OCR Local via Tesseract.js WASM
+   * e extrai palavras e linhas com coordenadas no sistema PDF (origem bottom-left).
    */
   static async extractTextWithBounds(
     pdfBuffer: ArrayBuffer,
     onProgress?: (progress: { message: string; percent: number }) => void,
-    password?: string
+    password?: string,
+    options?: ExtractTextOptions
   ): Promise<PageTextData[]> {
-    const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(pdfBuffer),
+    const initialPdfBytes = new Uint8Array(pdfBuffer.byteLength > 0 ? pdfBuffer.slice(0) : pdfBuffer);
+    const getDoc = pdfjs.getDocument || (pdfjsLib as any).getDocument;
+    const loadingTask = getDoc({
+      data: initialPdfBytes.slice(0),
       useSystemFonts: true,
       isEvalSupported: false,
       password: password || undefined
@@ -70,7 +88,7 @@ export class PdfTextExtractor {
         const viewport = page.getViewport({ scale: 1.0, viewBox: mediaBox });
         const textContent = await page.getTextContent();
 
-        const items: TextItemBounds[] = [];
+        let items: TextItemBounds[] = [];
         const textPieces: string[] = [];
 
         for (const item of textContent.items as any[]) {
@@ -118,8 +136,223 @@ export class PdfTextExtractor {
           textPieces.push(item.str);
         }
 
-        const fullText = this.reconstructSpatialGridText(items);
+        let fullText = this.reconstructSpatialGridText(items);
         const isScanned = items.length < 5;
+
+        let ocrQuality: PageOcrQuality | undefined = undefined;
+        let ocrErrorCaught: any = null;
+        let ocrResultConfidence: number = 0;
+
+        // Se a página for um documento escaneado (pouco texto vetorial) e o OCR não estiver desativado:
+        if (isScanned && !options?.disableOcr) {
+          let imageSource: any = null;
+          let ocrScale = 2.0;
+
+          if (typeof document !== 'undefined') {
+            try {
+              // 1. Renderização de alta fidelidade em Canvas (Navegador Web / Electron Renderer)
+              const maxOcrPixels = 4_000_000;
+              const rawPixelsAt2x = (viewport.width * 2.0) * (viewport.height * 2.0);
+              ocrScale = rawPixelsAt2x > maxOcrPixels
+                ? Math.max(1.0, Math.sqrt(maxOcrPixels / (viewport.width * viewport.height)))
+                : 2.0;
+
+              const ocrViewport = page.getViewport({ scale: ocrScale, viewBox: mediaBox });
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.round(ocrViewport.width);
+              canvas.height = Math.round(ocrViewport.height);
+              const ctx = canvas.getContext('2d');
+
+              if (ctx) {
+                await page.render({ canvasContext: ctx, viewport: ocrViewport }).promise;
+                imageSource = canvas;
+              }
+            } catch (renderErr) {
+              console.warn(`[PdfTextExtractor] Falha ao renderizar Canvas para OCR na página ${i}:`, renderErr);
+            }
+          } else if (typeof process !== 'undefined' && (process as any).versions?.node) {
+            // 2. Fallback Headless para ambiente Node.js / CLI (ex: testes automatizados)
+            try {
+              const fs = await import('fs');
+              const path = await import('path');
+              const os = await import('os');
+              const { spawnSync } = await import('child_process');
+
+              const tmpPdf = path.join(os.tmpdir(), `kovax_ocr_in_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
+              const tmpPng = path.join(os.tmpdir(), `kovax_ocr_out_${Date.now()}_${Math.random().toString(36).substring(7)}.png`);
+              fs.writeFileSync(tmpPdf, initialPdfBytes);
+
+              const venvPython = path.resolve('.venv/Scripts/python.exe');
+              const pythonExe = fs.existsSync(venvPython) ? venvPython : 'python';
+
+              const renderPy = `
+import pymupdf, sys
+doc = pymupdf.open(sys.argv[1])
+p = doc.load_page(int(sys.argv[2]))
+pix = p.get_pixmap(dpi=144)
+pix.save(sys.argv[3])
+`;
+              const res = spawnSync(pythonExe, ['-c', renderPy, tmpPdf, String(i - 1), tmpPng]);
+              if (res.status === 0 && fs.existsSync(tmpPng)) {
+                imageSource = tmpPng;
+                ocrScale = 2.0;
+              }
+              try { if (fs.existsSync(tmpPdf)) fs.unlinkSync(tmpPdf); } catch {}
+            } catch (nodeErr) {
+              console.warn(`[PdfTextExtractor] Falha ao renderizar página headless no Node:`, nodeErr);
+            }
+          }
+
+          if (imageSource) {
+            try {
+              if (!ocrWorker) {
+                onProgress?.({
+                  message: `Inicializando motor OCR Local (Tesseract WASM)...`,
+                  percent: Math.round(((i - 0.9) / pdfDoc.numPages) * 100)
+                });
+                ocrWorker = await createOfflineWorker(options?.ocrLanguage || 'por');
+              }
+
+              onProgress?.({
+                message: `Executando OCR na página digitalizada ${i}/${pdfDoc.numPages}...`,
+                percent: Math.round(((i - 0.4) / pdfDoc.numPages) * 100)
+              });
+
+              const ocrResult = await ocrWorker.recognize(imageSource);
+              if (ocrResult?.data) {
+                ocrResultConfidence = typeof ocrResult.data.confidence === 'number' ? ocrResult.data.confidence : 0;
+                const ocrItems: TextItemBounds[] = [];
+                const lines = ocrResult.data.lines || [];
+
+                if (lines.length > 0) {
+                  for (const line of lines) {
+                    if (!line || !line.text || line.text.trim() === '') continue;
+                    const lineBbox = line.bbox || { x0: 0, y0: 0, x1: 0, y1: 0 };
+                    const words = (line.words || []).filter((w: any) => w && w.text && w.text.trim() !== '');
+
+                    // Envelope vertical unificado da linha expandido pelos ascendentes/descendentes de cada palavra
+                    let lineMinY = lineBbox.y0;
+                    let lineMaxY = lineBbox.y1;
+                    for (const w of words) {
+                      if (w.bbox) {
+                        if (w.bbox.y0 < lineMinY) lineMinY = w.bbox.y0;
+                        if (w.bbox.y1 > lineMaxY) lineMaxY = w.bbox.y1;
+                      }
+                    }
+
+                    const lineY = Math.max(0, viewport.height - (lineMaxY / ocrScale));
+                    const lineHeight = Math.max(8, (lineMaxY - lineMinY) / ocrScale);
+
+                    if (words.length > 0) {
+                      for (const w of words) {
+                        const wBbox = w.bbox || lineBbox;
+                        const wordX = Math.max(0, wBbox.x0 / ocrScale);
+                        const wordWidth = Math.max(4, (wBbox.x1 - wBbox.x0) / ocrScale);
+
+                        ocrItems.push({
+                          text: w.text.trim(),
+                          x: wordX,
+                          y: lineY,
+                          width: wordWidth,
+                          height: lineHeight
+                        });
+                      }
+                    } else {
+                      const lineX = Math.max(0, lineBbox.x0 / ocrScale);
+                      const lineWidth = Math.max(10, (lineBbox.x1 - lineBbox.x0) / ocrScale);
+                      ocrItems.push({
+                        text: line.text.trim(),
+                        x: lineX,
+                        y: lineY,
+                        width: lineWidth,
+                        height: lineHeight
+                      });
+                    }
+                  }
+                } else if (ocrResult.data.words && ocrResult.data.words.length > 0) {
+                  for (const w of ocrResult.data.words) {
+                    if (!w || !w.text || w.text.trim() === '') continue;
+                    const wBbox = w.bbox;
+                    const wordX = Math.max(0, wBbox.x0 / ocrScale);
+                    const wordY = Math.max(0, viewport.height - (wBbox.y1 / ocrScale));
+                    const wordWidth = Math.max(4, (wBbox.x1 - wBbox.x0) / ocrScale);
+                    const wordHeight = Math.max(8, (wBbox.y1 - wBbox.y0) / ocrScale);
+
+                    ocrItems.push({
+                      text: w.text.trim(),
+                      x: wordX,
+                      y: wordY,
+                      width: wordWidth,
+                      height: wordHeight
+                    });
+                  }
+                }
+
+                if (ocrItems.length > 0) {
+                  items = ocrItems;
+                  fullText = this.reconstructSpatialGridText(items);
+                  if (!fullText && ocrResult.data.text) {
+                    fullText = ocrResult.data.text.trim();
+                  }
+                } else if (ocrResult.data.text && ocrResult.data.text.trim().length > 0) {
+                  fullText = ocrResult.data.text.trim();
+                }
+              }
+            } catch (ocrErr: any) {
+              console.warn(`[PdfTextExtractor] Falha durante OCR na página ${i}:`, ocrErr);
+              ocrErrorCaught = ocrErr;
+            } finally {
+              if (typeof imageSource === 'string') {
+                try {
+                  const fs = await import('fs');
+                  if (fs.existsSync(imageSource)) fs.unlinkSync(imageSource);
+                } catch {}
+              }
+            }
+          }
+        }
+
+        // Avaliação de integridade e qualidade do OCR para documentos escaneados
+        if (isScanned) {
+          if (options?.disableOcr) {
+            ocrQuality = {
+              status: 'rejected_failed',
+              meanConfidence: 0,
+              wordCount: 0,
+              reason: 'Página digitalizada com OCR desativado nas opções de extração.'
+            };
+          } else if (ocrErrorCaught) {
+            ocrQuality = {
+              status: 'rejected_failed',
+              meanConfidence: 0,
+              wordCount: 0,
+              reason: `Falha no motor OCR local: ${ocrErrorCaught?.message || 'Erro inesperado'}`
+            };
+          } else {
+            const wordCount = items.length;
+            if (wordCount === 0 && (!fullText || fullText.trim().length === 0)) {
+              ocrQuality = {
+                status: 'rejected_illegible',
+                meanConfidence: ocrResultConfidence,
+                wordCount: 0,
+                reason: 'Nenhum caractere ou palavra legível pôde ser detectada na página digitalizada (rasura, mancha ou baixa resolução).'
+              };
+            } else if (ocrResultConfidence > 0 && ocrResultConfidence < 50 && wordCount < 5) {
+              ocrQuality = {
+                status: 'rejected_low_confidence',
+                meanConfidence: ocrResultConfidence,
+                wordCount,
+                reason: `Confiança óptica crítica (${Math.round(ocrResultConfidence)}%). Risco iminente de não detecção de dados pessoais por ilegibilidade.`
+              };
+            } else {
+              ocrQuality = {
+                status: 'ok',
+                meanConfidence: ocrResultConfidence || 100,
+                wordCount
+              };
+            }
+          }
+        }
 
         pagesData.push({
           pageIndex: i - 1,
@@ -127,7 +360,8 @@ export class PdfTextExtractor {
           pageHeight: viewport.height,
           fullText,
           items,
-          isScanned
+          isScanned,
+          ocrQuality
         });
       }
     } finally {
@@ -266,34 +500,82 @@ export class PdfTextExtractor {
       }
     }
 
-    // 2. Busca em sequência de itens de palavras isoladas
-    if (rects.length === 0 && cleanSearchNorm.includes(' ')) {
-      const searchWords = cleanSearchNorm.split(/\s+/).filter(w => w.length > 1);
+    // 2. Busca em sequência de itens de palavras isoladas ou fragmentos OCR
+    if (rects.length === 0) {
+      const searchWords = cleanSearchNorm.includes(' ')
+        ? cleanSearchNorm.split(/\s+/).filter(w => w.length > 0)
+        : null;
 
-      for (let i = 0; i <= pageData.items.length - searchWords.length; i++) {
-        let match = true;
-        for (let j = 0; j < searchWords.length; j++) {
-          const itemTextNorm = this.stripAccents(pageData.items[i + j].text).toLowerCase();
-          if (!itemTextNorm.includes(searchWords[j])) {
-            match = false;
-            break;
+      if (searchWords && searchWords.length > 1) {
+        for (let i = 0; i <= pageData.items.length - searchWords.length; i++) {
+          let match = true;
+          for (let j = 0; j < searchWords.length; j++) {
+            const itemTextNorm = this.stripAccents(pageData.items[i + j].text).toLowerCase();
+            if (!itemTextNorm.includes(searchWords[j])) {
+              match = false;
+              break;
+            }
+          }
+
+          if (match) {
+            const matchedItems = pageData.items.slice(i, i + searchWords.length);
+            // Agrupamento por linha para preservar geometria correta mesmo se houver quebra de linha
+            const linesGroup: TextItemBounds[][] = [];
+            matchedItems.forEach(item => {
+              const grp = linesGroup.find(g => Math.abs(g[0].y - item.y) <= 4.0);
+              if (grp) grp.push(item);
+              else linesGroup.push([item]);
+            });
+
+            for (const lineItems of linesGroup) {
+              const minX = Math.min(...lineItems.map(it => it.x));
+              const minY = Math.min(...lineItems.map(it => it.y));
+              const maxX = Math.max(...lineItems.map(it => it.x + it.width));
+              const maxH = Math.max(...lineItems.map(it => it.height));
+
+              rects.push({
+                pageIndex: pageData.pageIndex,
+                x: Math.max(0, minX - 1),
+                y: Math.max(0, minY - 1),
+                width: Math.max(12, (maxX - minX) + 2),
+                height: maxH + 2
+              });
+            }
           }
         }
+      } else {
+        // Busca resiliente por tokens adjacentes na mesma linha (ex: CPF / CNPJ / RG / telefone dividido pelo OCR)
+        const cleanNoPunct = cleanSearchNorm.replace(/[\s.\/\\-]/g, '');
+        for (let i = 0; i < pageData.items.length; i++) {
+          let accumText = '';
+          let accumNoPunct = '';
+          const matchedSlice: TextItemBounds[] = [];
 
-        if (match) {
-          const matchedItems = pageData.items.slice(i, i + searchWords.length);
-          const minX = Math.min(...matchedItems.map(it => it.x));
-          const minY = Math.min(...matchedItems.map(it => it.y));
-          const maxX = Math.max(...matchedItems.map(it => it.x + it.width));
-          const maxH = Math.max(...matchedItems.map(it => it.height));
+          for (let j = i; j < Math.min(pageData.items.length, i + 6); j++) {
+            const it = pageData.items[j];
+            if (matchedSlice.length > 0 && Math.abs(matchedSlice[0].y - it.y) > 4.0) {
+              break;
+            }
+            matchedSlice.push(it);
+            accumText += this.stripAccents(it.text).toLowerCase();
+            accumNoPunct += this.stripAccents(it.text).toLowerCase().replace(/[\s.\/\\-]/g, '');
 
-          rects.push({
-            pageIndex: pageData.pageIndex,
-            x: Math.max(0, minX - 1),
-            y: Math.max(0, minY - 1),
-            width: Math.max(20, (maxX - minX) + 3),
-            height: maxH + 2
-          });
+            if (accumText.includes(cleanSearchNorm) || (cleanNoPunct.length >= 5 && accumNoPunct.includes(cleanNoPunct))) {
+              const minX = Math.min(...matchedSlice.map(item => item.x));
+              const minY = Math.min(...matchedSlice.map(item => item.y));
+              const maxX = Math.max(...matchedSlice.map(item => item.x + item.width));
+              const maxH = Math.max(...matchedSlice.map(item => item.height));
+
+              rects.push({
+                pageIndex: pageData.pageIndex,
+                x: Math.max(0, minX - 1),
+                y: Math.max(0, minY - 1),
+                width: Math.max(12, (maxX - minX) + 2),
+                height: maxH + 2
+              });
+              break;
+            }
+          }
         }
       }
     }

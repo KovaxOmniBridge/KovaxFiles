@@ -29,7 +29,13 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
-  Info
+  Info,
+  Lock,
+  Unlock,
+  Check,
+  Table,
+  X,
+  FileX
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import {
@@ -41,8 +47,14 @@ import {
 } from '../../services/pdfEngine';
 import { CompressionEngine } from '../../services/compressionEngine';
 import { PdfTextExtractor, PageTextData } from '../../services/pdfTextExtractor';
-import { AiRedactionService, AiEngineMode, AiSettings, DetectedRedactionItem, RedactionCategoryOptions } from '../../services/aiRedactionService';
-import { UniversalAiClassifier, AiRigorLevel } from '../../services/universalAiClassifier';
+import {
+  RedactionDetectionService,
+  DetectionMode,
+  DetectionSettings,
+  DetectedRedactionItem,
+  RedactionCategoryOptions
+} from '../../services/aiRedactionService';
+import { DocumentEntityClassifier, DetectionRigorLevel } from '../../services/universalAiClassifier';
 import { PdfReportExporterService, LgpdAuditRecord } from '../../services/pdfReportExporterService';
 
 export interface RedactResultItem {
@@ -53,13 +65,24 @@ export interface RedactResultItem {
   rasterReport?: RasterizationQualityReport;
 }
 
+export interface FileRedactionStatus {
+  fileName: string;
+  fileSize: number;
+  totalPages: number;
+  isScanned: boolean;
+  reproved: boolean;
+  reprovedReason?: string;
+  manualOverride?: boolean;
+}
+
 export const LgpdRedactor: React.FC = () => {
   // Configuração dos Arquivos Selecionados
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [fileStatuses, setFileStatuses] = useState<FileRedactionStatus[]>([]);
   
-  // Configuração de Modo de Varredura - Padrão: Varredura Completa Determinística
-  const [aiMode, setAiMode] = useState<AiEngineMode>('pattern');
-  const [rigorLevel, setRigorLevel] = useState<AiRigorLevel>('broad');
+  // Configuração de Modo de Varredura - Padrão: Varredura por Padrões Determinísticos
+  const [scanMode, setScanMode] = useState<DetectionMode>('pattern');
+  const [rigorLevel, setRigorLevel] = useState<DetectionRigorLevel>('broad');
 
   // Configuração de Rasterização e Critérios de Qualidade (Achatamento Seguro)
   const [rasterProfile, setRasterProfile] = useState<RasterizationQualityProfile>('balanced');
@@ -97,12 +120,20 @@ export const LgpdRedactor: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
 
-  // Estados de Desenho Manual com o Mouse no Canvas
+  // Estados de Desenho Manual com o Mouse no Canvas e Seleção de Arquivo Ativo
+  const [activePreviewFileIndex, setActivePreviewFileIndex] = useState<number>(0);
   const [activePreviewPageIndex, setActivePreviewPageIndex] = useState<number>(0);
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [currentBox, setCurrentBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Estados de Controle Estrito por Arquivo, Confirmação Explícita e Relatório Técnico
+  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
+  const [confirmUnderstood, setConfirmUnderstood] = useState<boolean>(false);
+  const [fileViewFilter, setFileViewFilter] = useState<'ACTIVE' | 'ALL'>('ACTIVE');
+  const [removedItemsAudit, setRemovedItemsAudit] = useState<LgpdAuditRecord[]>([]);
+  const [showAuditTable, setShowAuditTable] = useState<boolean>(true);
 
   // Adicionar termo customizado
   const handleAddCustomTerm = () => {
@@ -141,22 +172,47 @@ export const LgpdRedactor: React.FC = () => {
   };
 
   const removeFile = (index: number) => {
+    const fileToRemove = selectedFiles[index];
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    if (fileToRemove) {
+      setFileStatuses(prev => prev.filter(f => f.fileName !== fileToRemove.name));
+      setDetectedItems(prev => prev.filter(item => item.fileName !== fileToRemove.name));
+    }
+    setActivePreviewFileIndex(0);
+    setActivePreviewPageIndex(0);
     setResults(null);
-    setDetectedItems([]);
+    setRemovedItemsAudit([]);
     setHasAnalyzed(false);
   };
 
   const clearAll = () => {
     setSelectedFiles([]);
+    setFileStatuses([]);
+    setActivePreviewFileIndex(0);
+    setActivePreviewPageIndex(0);
     setResults(null);
     setDetectedItems([]);
+    setRemovedItemsAudit([]);
     setPagesDataMap(new Map());
     setHasAnalyzed(false);
     setErrorMessage(null);
+    setShowConfirmModal(false);
+    setConfirmUnderstood(false);
   };
 
-  // Executar Análise Inteligente (Regex + IA + Fallback OCR)
+  // Alternar permissão manual para arquivo escaneado reprovado
+  const toggleFileManualOverride = (fileName: string) => {
+    setFileStatuses(prev => prev.map(f => f.fileName === fileName ? { ...f, manualOverride: !f.manualOverride } : f));
+  };
+
+  // Selecionar/desmarcar itens exclusivamente do arquivo informado
+  const setFileItemsSelection = (fileName: string, selected: boolean) => {
+    setDetectedItems(prev => prev.map(item =>
+      (!item.fileName || item.fileName === fileName) ? { ...item, selected } : item
+    ));
+  };
+
+  // Executar Análise Inteligente com Diagnóstico de Reprovação Óptica
   const handleRunAiAnalysis = async () => {
     if (selectedFiles.length === 0) return;
 
@@ -164,38 +220,76 @@ export const LgpdRedactor: React.FC = () => {
     setAnalysisProgress(10);
     setErrorMessage(null);
     setDetectedItems([]);
+    setFileStatuses([]);
+    setRemovedItemsAudit([]);
 
-    const aiSettings: AiSettings = {
-      mode: aiMode,
+    const detectionSettings: DetectionSettings = {
+      mode: scanMode,
       rigorLevel
     };
 
     try {
       const allDetected: DetectedRedactionItem[] = [];
       const newPagesMap = new Map<string, PageTextData[]>();
+      const newStatuses: FileRedactionStatus[] = [];
 
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
-        setAnalysisProgress(Math.round(((i + 0.3) / selectedFiles.length) * 80));
+        setAnalysisProgress(Math.round(((i + 0.1) / selectedFiles.length) * 80));
 
         const buffer = await file.arrayBuffer();
-        const pagesData = await PdfTextExtractor.extractTextWithBounds(buffer);
+        const pagesData = await PdfTextExtractor.extractTextWithBounds(
+          buffer,
+          p => setAnalysisProgress(Math.round(((i + (p.percent / 100) * 0.4) / selectedFiles.length) * 80))
+        );
         newPagesMap.set(file.name, pagesData);
 
+        // Avaliação de integridade óptica: o processamento deve reprovar se não puder analisar adequadamente
+        const isFileScanned = pagesData.some(p => p.isScanned);
+        const badOcrPage = pagesData.find(p => p.isScanned && p.ocrQuality && p.ocrQuality.status !== 'ok');
+        const isReproved = !!badOcrPage;
+        const reprovedReason = badOcrPage
+          ? `Página ${badOcrPage.pageIndex + 1}: ${badOcrPage.ocrQuality?.reason || 'Reconhecimento óptico incompleto/ilegível'}`
+          : undefined;
+
+        newStatuses.push({
+          fileName: file.name,
+          fileSize: file.size,
+          totalPages: pagesData.length,
+          isScanned: isFileScanned,
+          reproved: isReproved,
+          reprovedReason,
+          manualOverride: false
+        });
+
         // Executa varredura por padrões e regras LGPD com progresso por página em tempo real
-        const items = await AiRedactionService.analyzePdf(
+        const items = await RedactionDetectionService.analyzePdf(
           pagesData,
           categories,
-          aiSettings,
-          p => setAnalysisProgress(p.percent)
+          detectionSettings,
+          p => setAnalysisProgress(Math.round(((i + 0.4 + (p.percent / 100) * 0.6) / selectedFiles.length) * 80)),
+          file.name
         );
-        allDetected.push(...items);
+        const taggedItems = items.map(it => ({
+          ...it,
+          fileName: file.name,
+          rect: { ...it.rect, fileName: file.name }
+        }));
+        allDetected.push(...taggedItems);
       }
 
       setPagesDataMap(newPagesMap);
       setDetectedItems(allDetected);
+      setFileStatuses(newStatuses);
       setHasAnalyzed(true);
       setAnalysisProgress(100);
+
+      const reprovedFiles = newStatuses.filter(f => f.reproved);
+      if (reprovedFiles.length > 0) {
+        setErrorMessage(
+          `Aviso de Reprovação de Documento: ${reprovedFiles.length} arquivo(s) escaneado(s) não puderam ser analisados adequadamente pelo OCR (${reprovedFiles.map(f => f.fileName).join(', ')}). O processamento automatizado destes arquivos foi bloqueado para impedir vazamento de dados por omissão.`
+        );
+      }
     } catch (err: any) {
       setErrorMessage('Erro durante a análise de dados sensíveis: ' + (err?.message || 'Falha desconhecida.'));
     } finally {
@@ -209,7 +303,10 @@ export const LgpdRedactor: React.FC = () => {
 
     let isMounted = true;
     const renderPreview = async () => {
-      const file = selectedFiles[0];
+      const fileIndex = Math.min(activePreviewFileIndex, selectedFiles.length - 1);
+      const file = selectedFiles[fileIndex];
+      if (!file) return;
+
       const buffer = await file.arrayBuffer();
       const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
       const pdf = await loadingTask.promise;
@@ -229,8 +326,12 @@ export const LgpdRedactor: React.FC = () => {
 
       await page.render({ canvasContext: ctx, viewport }).promise;
 
-      // Desenhar sobreposição das tarjas detectadas na página
-      const pageItems = detectedItems.filter(item => item.pageIndex === pageIndex && item.selected);
+      // Desenhar sobreposição das tarjas detectadas na página EXCLUSIVAMENTE deste arquivo
+      const pageItems = detectedItems.filter(item =>
+        (!item.fileName || item.fileName === file.name) &&
+        item.pageIndex === pageIndex &&
+        item.selected
+      );
       for (const item of pageItems) {
         // Converter coordenadas do PDF (origem bottom-left) para Canvas (origem top-left)
         const pdfY = item.rect.y;
@@ -245,12 +346,20 @@ export const LgpdRedactor: React.FC = () => {
         ctx.lineWidth = 2;
         ctx.fillRect(canvasX, canvasY, canvasW, canvasH);
         ctx.strokeRect(canvasX, canvasY, canvasW, canvasH);
+
+        // Badge textual da categoria desenhado diretamente sobre a tarja para auditoria visual
+        const badgeW = Math.max(30, Math.min(canvasW, 75));
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(canvasX, Math.max(0, canvasY - 13), badgeW, 13);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillText(item.category.substring(0, 11), canvasX + 2, Math.max(9, canvasY - 3));
       }
     };
 
     renderPreview();
     return () => { isMounted = false; };
-  }, [hasAnalyzed, selectedFiles, activePreviewPageIndex, detectedItems]);
+  }, [hasAnalyzed, selectedFiles, activePreviewFileIndex, activePreviewPageIndex, detectedItems]);
 
   // Manipuladores de Evento de Desenho de Tarja Manual com o Mouse no Canvas
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -293,16 +402,21 @@ export const LgpdRedactor: React.FC = () => {
       const pdfH = currentBox.h / scale;
       const pdfY = (canvasH - (currentBox.y + currentBox.h)) / scale;
 
+      const fileIndex = Math.min(activePreviewFileIndex, selectedFiles.length - 1);
+      const activeFile = selectedFiles[fileIndex] || selectedFiles[0];
+
       const newManualItem: DetectedRedactionItem = {
         id: 'manual-' + Math.random().toString(36).substring(7),
         pageIndex: activePreviewPageIndex,
+        fileName: activeFile?.name,
         text: 'Tarja Manual (Desenho com o Mouse)',
         category: 'Personalizado',
-        reason: 'Tarja desenhada manualmente pelo usuário sobre elemento visual (foto/assinatura)',
+        reason: activeFile ? `Tarja manual em ${activeFile.name} (pág. ${activePreviewPageIndex + 1})` : 'Tarja desenhada manualmente pelo usuário sobre elemento visual',
         confidence: 1.0,
         selected: true,
         rect: {
           pageIndex: activePreviewPageIndex,
+          fileName: activeFile?.name,
           x: pdfX,
           y: pdfY,
           width: pdfW,
@@ -327,9 +441,18 @@ export const LgpdRedactor: React.FC = () => {
     setDetectedItems(prev => prev.map(item => ({ ...item, selected })));
   };
 
-  // Executar Burn-in (Anonimização Definitiva com Tarjas Pretas)
-  const handleProcessRedaction = async () => {
+  // 1. Inicia o fluxo com verificação estrita de reprovação e abre modal de confirmação explícita
+  const handleInitiateRedaction = () => {
     if (selectedFiles.length === 0) return;
+
+    // Bloqueio rigoroso de arquivo escaneado reprovado sem override explícito do operador
+    const blockedFiles = fileStatuses.filter(f => f.reproved && !f.manualOverride);
+    if (blockedFiles.length > 0) {
+      setErrorMessage(
+        `[PROCESSO REPROVADO]: O arquivo escaneado '${blockedFiles[0].fileName}' não pôde ser analisado adequadamente pelo OCR (${blockedFiles[0].reprovedReason}). Para prevenir vazamentos por omissão de dados, a exportação deste lote foi bloqueada. Remova o arquivo reprovado ou autorize a liberação manual após inspecioná-lo.`
+      );
+      return;
+    }
 
     const approvedItems = detectedItems.filter(i => i.selected);
     if (approvedItems.length === 0 && hasAnalyzed) {
@@ -337,26 +460,39 @@ export const LgpdRedactor: React.FC = () => {
       return;
     }
 
+    setErrorMessage(null);
+    setConfirmUnderstood(false);
+    setShowConfirmModal(true);
+  };
+
+  // 2. Executa o Burn-in Definitivo após confirmação explícita do operador
+  const handleExecuteConfirmedRedaction = async () => {
+    setShowConfirmModal(false);
     setIsRedacting(true);
     setErrorMessage(null);
 
     try {
       const processedResults: RedactResultItem[] = [];
+      const auditRecords: LgpdAuditRecord[] = [];
+      const approvedItems = detectedItems.filter(i => i.selected);
 
       for (const file of selectedFiles) {
         const buffer = await file.arrayBuffer();
         
-        let rectsToApply: { pageIndex: number; x: number; y: number; width: number; height: number }[] = [];
+        let rectsToApply: { pageIndex: number; x: number; y: number; width: number; height: number; fileName?: string }[] = [];
 
         if (hasAnalyzed) {
-          rectsToApply = approvedItems.map(i => i.rect);
+          // Filtra ESTRITAMENTE as tarjas aprovadas pertencentes a este arquivo específico
+          rectsToApply = approvedItems
+            .filter(i => !i.fileName || i.fileName === file.name)
+            .map(i => i.rect);
         } else {
-          // Tarjamento Heurístico Padrão de Emergência
+          // Tarjamento Padrão Determinístico de Emergência
           const pagesData = pagesDataMap.get(file.name) || await PdfTextExtractor.extractTextWithBounds(buffer);
-          const autoItems = await AiRedactionService.analyzePdf(pagesData, categories, {
-            mode: 'embedded',
-            geminiApiKey: ''
-          });
+          const autoItems = await RedactionDetectionService.analyzePdf(pagesData, categories, {
+            mode: 'pattern',
+            rigorLevel
+          }, undefined, file.name);
           rectsToApply = autoItems.map(i => i.rect);
         }
 
@@ -365,7 +501,8 @@ export const LgpdRedactor: React.FC = () => {
           dpi: rasterProfile === 'custom' ? customTargetDpi : undefined,
           minDpi: rasterProfile === 'custom' ? customMinDpi : undefined,
           quality: rasterProfile === 'custom' ? customQuality / 100 : undefined,
-          maxPixelsPerPage: rasterProfile === 'custom' ? customMaxPixels * 1_000_000 : undefined
+          maxPixelsPerPage: rasterProfile === 'custom' ? customMaxPixels * 1_000_000 : undefined,
+          targetFileName: file.name
         };
 
         const anonymizeRes = await LocalPdfEngine.anonymizePdfWithReport(buffer, rectsToApply, rasterOptions);
@@ -376,9 +513,27 @@ export const LgpdRedactor: React.FC = () => {
           redactionCount: rectsToApply.length,
           rasterReport: anonymizeRes.report
         });
+
+        // Registrar itens removidos para o Relatório Técnico de Integridade e Auditoria
+        const fileApprovedItems = approvedItems.filter(i => !i.fileName || i.fileName === file.name);
+        for (const item of fileApprovedItems) {
+          auditRecords.push({
+            id: item.id,
+            fileName: file.name,
+            pageNumber: item.pageIndex + 1,
+            originalTerm: item.text,
+            maskedTerm: '[DADO ANONIMIZADO LGPD]',
+            entityType: item.category,
+            detectionReason: item.reason || 'Regra de Conformidade LGPD',
+            coordinates: `X: ${item.rect.x.toFixed(1)}, Y: ${item.rect.y.toFixed(1)}, L: ${item.rect.width.toFixed(1)}, A: ${item.rect.height.toFixed(1)}`,
+            timestamp: new Date().toLocaleString('pt-BR'),
+            status: 'REMOVIDO / TARJADO'
+          });
+        }
       }
 
       setResults(processedResults);
+      setRemovedItemsAudit(auditRecords);
     } catch (err: any) {
       setErrorMessage('Erro ao queimar tarjas no PDF: ' + (err?.message || 'Erro inesperado.'));
     } finally {
@@ -433,8 +588,12 @@ export const LgpdRedactor: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Filtragem dos itens exibidos
+  // Filtragem dos itens exibidos com suporte a isolamento por arquivo
+  const activeFileName = selectedFiles[activePreviewFileIndex]?.name;
   const filteredDetectedItems = detectedItems.filter(item => {
+    if (fileViewFilter === 'ACTIVE' && activeFileName && item.fileName && item.fileName !== activeFileName) {
+      return false;
+    }
     if (categoryFilter === 'ALL') return true;
     return item.category === categoryFilter;
   });
@@ -480,9 +639,9 @@ export const LgpdRedactor: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Opção 1: Varredura Algorítmica Ampla */}
           <div
-            onClick={() => setAiMode('comprehensive')}
+            onClick={() => setScanMode('comprehensive')}
             className={`p-4 rounded-xl border cursor-pointer transition-all ${
-              aiMode !== 'pattern'
+              scanMode === 'comprehensive'
                 ? 'bg-emerald-950/50 border-emerald-500/70 ring-1 ring-emerald-500/40 shadow-lg shadow-emerald-950/50'
                 : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
             }`}
@@ -496,7 +655,7 @@ export const LgpdRedactor: React.FC = () => {
                 <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   Recomendado
                 </span>
-                {aiMode !== 'pattern' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                {scanMode === 'comprehensive' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
               </div>
             </div>
             <p className="text-[11px] text-slate-300 leading-relaxed mb-2">
@@ -512,9 +671,9 @@ export const LgpdRedactor: React.FC = () => {
 
           {/* Opção 2: Somente Padrões Determinísticos / Regex */}
           <div
-            onClick={() => setAiMode('pattern')}
+            onClick={() => setScanMode('pattern')}
             className={`p-4 rounded-xl border cursor-pointer transition-all ${
-              aiMode === 'pattern'
+              scanMode === 'pattern'
                 ? 'bg-emerald-950/40 border-emerald-500/60 ring-1 ring-emerald-500/30'
                 : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
             }`}
@@ -528,7 +687,7 @@ export const LgpdRedactor: React.FC = () => {
                 <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-800 text-slate-400 border border-slate-700">
                   Instantâneo
                 </span>
-                {aiMode === 'pattern' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                {scanMode === 'pattern' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
               </div>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed mb-2">
@@ -966,41 +1125,165 @@ export const LgpdRedactor: React.FC = () => {
       {/* 5. Visualizador Canvas de Páginas com Ferramenta de Desenho Manual de Tarjas por Mouse */}
       {hasAnalyzed && selectedFiles.length > 0 && (
         <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-4 shadow-xl">
+          {/* Abas Superiores de Isolamento Estrito de Arquivo */}
+          {selectedFiles.length > 1 && (
+            <div className="space-y-1.5 pb-2 border-b border-slate-800/80">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Documentos no Lote (Isolamento Estrito):
+              </span>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                {selectedFiles.map((f, idx) => {
+                  const fStatus = fileStatuses.find(s => s.fileName === f.name);
+                  const isReproved = fStatus?.reproved && !fStatus?.manualOverride;
+                  const fileItems = detectedItems.filter(i => (!i.fileName || i.fileName === f.name));
+                  const fileApproved = fileItems.filter(i => i.selected).length;
+
+                  return (
+                    <button
+                      key={f.name + idx}
+                      type="button"
+                      onClick={() => {
+                        setActivePreviewFileIndex(idx);
+                        setActivePreviewPageIndex(0);
+                      }}
+                      className={`px-3 py-2 rounded-xl text-left border shrink-0 transition-all text-xs flex items-center gap-2 ${
+                        idx === activePreviewFileIndex
+                          ? isReproved
+                            ? 'bg-red-950/60 border-red-500 text-white shadow-md ring-1 ring-red-500/50'
+                            : 'bg-emerald-950/60 border-emerald-500 text-white shadow-md ring-1 ring-emerald-500/50'
+                          : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <FileText className={`w-4 h-4 ${isReproved ? 'text-red-400' : 'text-emerald-400'}`} />
+                      <div className="flex flex-col text-left">
+                        <span className="font-bold truncate max-w-[170px]" title={f.name}>{f.name}</span>
+                        <div className="flex items-center gap-1 text-[10px]">
+                          {isReproved ? (
+                            <span className="text-red-400 font-bold">❌ Reprovado (OCR Ilegível)</span>
+                          ) : (
+                            <span className="text-emerald-400">{fileApproved} de {fileItems.length} aprovados</span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Banner de Reprovação Óptica para o Arquivo Ativo (se houver) */}
+          {(() => {
+            const activeFile = selectedFiles[activePreviewFileIndex];
+            const activeStatus = fileStatuses.find(s => s.fileName === activeFile?.name);
+            if (!activeStatus?.reproved) return null;
+
+            return (
+              <div className="p-4 rounded-xl bg-red-500/15 border border-red-500/40 text-xs text-red-200 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <strong className="block text-red-300 font-bold">
+                      ❌ ARQUIVO REPROVADO PARA PROCESSAMENTO AUTOMÁTICO
+                    </strong>
+                    <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-300 text-[10px] font-mono font-bold">
+                      {activeStatus.fileName}
+                    </span>
+                  </div>
+                  <p className="text-red-200/90 leading-relaxed">
+                    {activeStatus.reprovedReason}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    O processamento e a exportação deste arquivo foram <strong>bloqueados</strong> para prevenir vazamentos de dados pessoais decorrentes de reconhecimento omisso.
+                    Para aprovar a inclusão deste documento, inspecione a folha no visualizador abaixo, desenhe manualmente as tarjas pretas sobre os dados sensíveis e ative a liberação manual.
+                  </p>
+                  <div className="pt-1.5 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleFileManualOverride(activeStatus.fileName)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        activeStatus.manualOverride
+                          ? 'bg-emerald-600/30 border-emerald-500/50 text-emerald-300 shadow-sm'
+                          : 'bg-red-500/20 hover:bg-red-500/30 border-red-500/40 text-red-200'
+                      }`}
+                    >
+                      {activeStatus.manualOverride ? (
+                        <>
+                          <Unlock className="w-3.5 h-3.5" />
+                          <span>Liberação Manual Concedida (Tarjas Manuais Autorizadas)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Liberar Arquivo sob Revisão Manual do Operador</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-3 gap-3">
             <div>
               <div className="flex items-center gap-2">
                 <MousePointer className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-sm font-bold text-slate-100">Visualizador de Páginas & Desenho Manual de Tarja</h3>
+                <h3 className="text-sm font-bold text-slate-100">
+                  Revisão Visual Pré-Exportação & Desenho de Tarjas
+                </h3>
                 {isAnyScanned && (
                   <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-semibold flex items-center gap-1">
                     <ScanText className="w-3 h-3" />
-                    Documento Digitalizado (OCR Local Ativo)
+                    OCR Local Ativo
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Clique e arraste o mouse sobre a página para desenhar retângulos manuais (ex: fotos, assinaturas físicas ou carimbos).
+                Revise os retângulos detectados ou clique e arraste para desenhar tarjas adicionais antes da confirmação final.
               </p>
             </div>
 
-            {/* Navegação entre Páginas do PDF */}
-            <div className="flex items-center gap-2 text-xs">
-              <button
-                onClick={() => setActivePreviewPageIndex(prev => Math.max(0, prev - 1))}
-                disabled={activePreviewPageIndex === 0}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-medium"
-              >
-                Anterior
-              </button>
-              <span className="text-slate-300 font-bold px-2">
-                Página {activePreviewPageIndex + 1}
-              </span>
-              <button
-                onClick={() => setActivePreviewPageIndex(prev => prev + 1)}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium"
-              >
-                Próxima
-              </button>
+            {/* Navegação entre Arquivos e Páginas do PDF */}
+            <div className="flex items-center gap-3 text-xs flex-wrap">
+              {selectedFiles.length > 1 && (
+                <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                  <span className="text-slate-400 text-[11px] font-medium">Arquivo:</span>
+                  <select
+                    value={activePreviewFileIndex}
+                    onChange={(e) => {
+                      setActivePreviewFileIndex(Number(e.target.value));
+                      setActivePreviewPageIndex(0);
+                    }}
+                    className="bg-transparent text-slate-200 font-semibold text-xs focus:outline-none cursor-pointer max-w-[180px] truncate"
+                  >
+                    {selectedFiles.map((f, idx) => (
+                      <option key={f.name + idx} value={idx} className="bg-slate-900 text-slate-200">
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setActivePreviewPageIndex(prev => Math.max(0, prev - 1))}
+                  disabled={activePreviewPageIndex === 0}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-medium"
+                >
+                  Anterior
+                </button>
+                <span className="text-slate-300 font-bold px-2">
+                  Página {activePreviewPageIndex + 1}
+                </span>
+                <button
+                  onClick={() => setActivePreviewPageIndex(prev => prev + 1)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium"
+                >
+                  Próxima
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1038,29 +1321,79 @@ export const LgpdRedactor: React.FC = () => {
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <Brain className="w-4 h-4 text-emerald-400" />
-                <span>Resultados da Análise ({detectedItems.length} ocorrência(s) detectada(s))</span>
+                <span>Resultados da Análise ({detectedItems.length} ocorrência(s) no lote)</span>
               </h3>
               <p className="text-xs text-slate-400">
-                Revise os trechos identificados abaixo. Apenas os itens marcados serão queimados com tarja preta.
+                Cada arquivo mantém suas próprias detecções e aprovações. Apenas os itens marcados serão queimados com tarja definitiva.
               </p>
             </div>
 
-            {/* Controles da seleção */}
-            <div className="flex items-center gap-2 text-xs">
+            {/* Alternância de Visualização e Controles de Seleção */}
+            <div className="flex items-center gap-2 text-xs flex-wrap">
+              {selectedFiles.length > 1 && (
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setFileViewFilter('ACTIVE')}
+                    className={`px-2.5 py-1 rounded font-semibold transition-all ${
+                      fileViewFilter === 'ACTIVE'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Arquivo Ativo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFileViewFilter('ALL')}
+                    className={`px-2.5 py-1 rounded font-semibold transition-all ${
+                      fileViewFilter === 'ALL'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Todos do Lote
+                  </button>
+                </div>
+              )}
+
+              {activeFileName && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setFileItemsSelection(activeFileName, true)}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] flex items-center gap-1 transition-all"
+                    title={`Marcar todos os itens de ${activeFileName}`}
+                  >
+                    <CheckSquare className="w-3 h-3 text-emerald-400" />
+                    <span>Aprovar Deste Arquivo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFileItemsSelection(activeFileName, false)}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] flex items-center gap-1 transition-all"
+                    title={`Desmarcar todos os itens de ${activeFileName}`}
+                  >
+                    <Square className="w-3 h-3 text-slate-400" />
+                    <span>Desmarcar Deste</span>
+                  </button>
+                </>
+              )}
+
               <button
+                type="button"
                 onClick={() => setAllItemsSelection(true)}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium flex items-center gap-1.5 transition-all"
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] flex items-center gap-1 transition-all"
               >
-                <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Marcar Todos</span>
+                <span>Marcar Tudo</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setAllItemsSelection(false)}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium flex items-center gap-1.5 transition-all"
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] flex items-center gap-1 transition-all"
               >
-                <Square className="w-3.5 h-3.5 text-slate-400" />
-                <span>Desmarcar Todos</span>
+                <span>Desmarcar Tudo</span>
               </button>
             </div>
           </div>
@@ -1120,6 +1453,12 @@ export const LgpdRedactor: React.FC = () => {
                           Pág. {item.pageIndex + 1}
                         </span>
 
+                        {item.fileName && (
+                          <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-medium truncate max-w-[220px]" title={item.fileName}>
+                            {item.fileName}
+                          </span>
+                        )}
+
                         <span className="text-[10px] text-slate-500 font-mono">
                           Confiança: {Math.round(item.confidence * 100)}%
                         </span>
@@ -1146,14 +1485,14 @@ export const LgpdRedactor: React.FC = () => {
             </div>
           )}
 
-          {/* Rodapé de Ação de Burn-in */}
+          {/* Rodapé de Ação de Burn-in com Confirmação Explícita */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-800">
             <span className="text-xs font-semibold text-slate-300">
               {selectedCount} de {detectedItems.length} tarja(s) aprovada(s)
             </span>
 
             <button
-              onClick={handleProcessRedaction}
+              onClick={handleInitiateRedaction}
               disabled={isRedacting || selectedCount === 0}
               className="btn-action px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/25 disabled:opacity-50 transition-all"
             >
@@ -1169,6 +1508,73 @@ export const LgpdRedactor: React.FC = () => {
                 </>
               )}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação Explícita de Anonimização Definitiva */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-amber-400 border-b border-slate-800 pb-3">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <h3 className="text-base font-bold text-slate-100">
+                Confirmação Explícita de Anonimização Definitiva
+              </h3>
+            </div>
+
+            <div className="text-xs text-slate-300 space-y-3">
+              <p>
+                Você está prestes a aplicar <strong>{selectedCount} tarja(s) definitiva(s)</strong> em <strong>{selectedFiles.length} documento(s)</strong>:
+              </p>
+              
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px] max-h-36 overflow-y-auto">
+                {selectedFiles.map(f => {
+                  const count = detectedItems.filter(i => (!i.fileName || i.fileName === f.name) && i.selected).length;
+                  return (
+                    <div key={f.name} className="flex justify-between items-center py-0.5 text-slate-300">
+                      <span className="truncate max-w-[280px]">• {f.name}</span>
+                      <span className="text-emerald-400 font-bold">{count} tarja(s)</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200/90 text-[11px] leading-relaxed">
+                <strong>Aviso de Irreversibilidade Técnica (Burn-in):</strong> Esta operação destrói permanentemente o texto e os pixels originais sob as coordenadas aprovadas através de achatamento rasterizado seguro. O processo não pode ser desfeito.
+              </div>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700 transition-all">
+                <input
+                  type="checkbox"
+                  checked={confirmUnderstood}
+                  onChange={(e) => setConfirmUnderstood(e.target.checked)}
+                  className="w-4 h-4 accent-emerald-600 rounded mt-0.5 cursor-pointer"
+                />
+                <span className="text-slate-200 text-xs font-semibold leading-normal">
+                  Confirmo que revisei visualmente as páginas, coordenadas e aprovações de cada arquivo e autorizo a execução definitiva.
+                </span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteConfirmedRedaction}
+                disabled={!confirmUnderstood}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Confirmar e Queimar Tarjas</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1368,6 +1774,71 @@ export const LgpdRedactor: React.FC = () => {
             ))}
           </div>
 
+          {/* Relatório Técnico de Itens Removidos */}
+          {removedItemsAudit.length > 0 && (
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Table className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-bold text-slate-200">
+                    Relatório Técnico de Itens Removidos ({removedItemsAudit.length} ocorrência(s))
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAuditTable(!showAuditTable)}
+                  className="text-[11px] text-slate-400 hover:text-slate-200 underline flex items-center gap-1"
+                >
+                  {showAuditTable ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  <span>{showAuditTable ? 'Recolher Tabela' : 'Expandir Tabela'}</span>
+                </button>
+              </div>
+
+              {showAuditTable && (
+                <div className="overflow-x-auto max-h-60 overflow-y-auto border border-slate-800 rounded-lg">
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead className="bg-slate-900 text-slate-400 sticky top-0">
+                      <tr className="border-b border-slate-800">
+                        <th className="py-2 px-2.5">Arquivo</th>
+                        <th className="py-2 px-2.5">Pág.</th>
+                        <th className="py-2 px-2.5">Categoria</th>
+                        <th className="py-2 px-2.5">Termo Original / Identificado</th>
+                        <th className="py-2 px-2.5">Coordenadas (PDF)</th>
+                        <th className="py-2 px-2.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
+                      {removedItemsAudit.map((record) => (
+                        <tr key={record.id} className="hover:bg-slate-900/50">
+                          <td className="py-1.5 px-2.5 truncate max-w-[140px]" title={record.fileName}>
+                            {record.fileName}
+                          </td>
+                          <td className="py-1.5 px-2.5 text-slate-400">Pág. {record.pageNumber}</td>
+                          <td className="py-1.5 px-2.5">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-sans font-semibold">
+                              {record.entityType}
+                            </span>
+                          </td>
+                          <td className="py-1.5 px-2.5 text-slate-200 font-sans">
+                            "{record.originalTerm}"
+                          </td>
+                          <td className="py-1.5 px-2.5 text-slate-400 text-[10px]">
+                            {record.coordinates}
+                          </td>
+                          <td className="py-1.5 px-2.5 font-sans">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">
+                              {record.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-wrap justify-between items-center gap-3 pt-3 border-t border-slate-800">
             <button
               onClick={clearAll}
@@ -1379,40 +1850,52 @@ export const LgpdRedactor: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  if (!detectedItems || detectedItems.length === 0) return;
-                  const records: LgpdAuditRecord[] = detectedItems.map(item => ({
-                    id: item.id,
-                    originalTerm: item.text,
-                    maskedTerm: '[DADO ANONIMIZADO LGPD]',
-                    entityType: item.category,
-                    detectionReason: item.reason || 'Regra de Conformidade LGPD',
-                    timestamp: new Date().toLocaleString('pt-BR')
-                  }));
-                  PdfReportExporterService.exportLgpdAuditCsv(records);
+                  const recordsToExport = removedItemsAudit.length > 0
+                    ? removedItemsAudit
+                    : detectedItems.filter(i => i.selected).map(item => ({
+                        id: item.id,
+                        fileName: item.fileName,
+                        pageNumber: item.pageIndex + 1,
+                        originalTerm: item.text,
+                        maskedTerm: '[DADO ANONIMIZADO LGPD]',
+                        entityType: item.category,
+                        detectionReason: item.reason || 'Regra de Conformidade LGPD',
+                        coordinates: `X: ${item.rect.x.toFixed(1)}, Y: ${item.rect.y.toFixed(1)}, L: ${item.rect.width.toFixed(1)}, A: ${item.rect.height.toFixed(1)}`,
+                        timestamp: new Date().toLocaleString('pt-BR'),
+                        status: 'REMOVIDO / TARJADO'
+                      }));
+                  PdfReportExporterService.exportLgpdAuditCsv(recordsToExport, 'relatorio_tecnico_itens_removidos_lgpd.csv');
                 }}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs flex items-center gap-1.5 border border-slate-700 transition-all"
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 shadow-sm transition-all"
+                title="Baixar Relatório Técnico detalhado com todos os itens removidos e coordenadas em CSV"
               >
                 <Download className="w-3.5 h-3.5 text-blue-400" />
-                Auditoria (CSV)
+                <span>Relatório Técnico (CSV)</span>
               </button>
 
               <button
                 onClick={() => {
-                  if (!detectedItems || detectedItems.length === 0) return;
-                  const records: LgpdAuditRecord[] = detectedItems.map(item => ({
-                    id: item.id,
-                    originalTerm: item.text,
-                    maskedTerm: '[DADO ANONIMIZADO LGPD]',
-                    entityType: item.category,
-                    detectionReason: item.reason || 'Regra de Conformidade LGPD',
-                    timestamp: new Date().toLocaleString('pt-BR')
-                  }));
-                  PdfReportExporterService.exportLgpdAuditJson(records);
+                  const recordsToExport = removedItemsAudit.length > 0
+                    ? removedItemsAudit
+                    : detectedItems.filter(i => i.selected).map(item => ({
+                        id: item.id,
+                        fileName: item.fileName,
+                        pageNumber: item.pageIndex + 1,
+                        originalTerm: item.text,
+                        maskedTerm: '[DADO ANONIMIZADO LGPD]',
+                        entityType: item.category,
+                        detectionReason: item.reason || 'Regra de Conformidade LGPD',
+                        coordinates: `X: ${item.rect.x.toFixed(1)}, Y: ${item.rect.y.toFixed(1)}, L: ${item.rect.width.toFixed(1)}, A: ${item.rect.height.toFixed(1)}`,
+                        timestamp: new Date().toLocaleString('pt-BR'),
+                        status: 'REMOVIDO / TARJADO'
+                      }));
+                  PdfReportExporterService.exportLgpdAuditJson(recordsToExport, 'relatorio_tecnico_itens_removidos_lgpd.json');
                 }}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs flex items-center gap-1.5 border border-slate-700 transition-all"
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 shadow-sm transition-all"
+                title="Baixar Relatório Técnico estruturado em JSON"
               >
                 <Download className="w-3.5 h-3.5 text-purple-400" />
-                Auditoria (JSON)
+                <span>Relatório Técnico (JSON)</span>
               </button>
             </div>
           </div>

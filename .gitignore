@@ -24,3 +24,7 @@ Thumbs.db
 test_output/
 __pycache__/
 *.pyc
+# Modelos de reconhecimento e dados treinados (gerados via prepare:tessdata no build)
+*.traineddata
+!por.traineddata
+public/tessdata/

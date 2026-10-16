@@ -68,7 +68,7 @@ export interface ProcessStampOptions {
   padDigits?: number;
   stampShape?: 'rectangle' | 'round';
   opacity?: number; // 0.15 a 1.0 (marca d'água)
-  appendAuditPage?: boolean; // Termo de Registro PAdES
+  appendAuditPage?: boolean; // Termo de Encerramento e Integridade SHA-256
   signerName?: string;
   textMask?: string; // Ex: "FLS. {page}" ou "FL. {page} / PROC. {processNumber}"
 }
@@ -83,6 +83,7 @@ export interface RedactPatternOptions {
 
 export interface RedactionRectangle {
   pageIndex: number;
+  fileName?: string;
   x: number;
   y: number;
   width: number;
@@ -174,6 +175,7 @@ export interface AnonymizePdfOptions {
   profile?: RasterizationQualityProfile;
   onProgress?: (progress: { current: number; total: number; stage: string }) => void;
   onReport?: (report: RasterizationQualityReport) => void;
+  targetFileName?: string;
   /**
    * @deprecated sanitizeFlatten NÃO PODE ser desativado no método de anonimização.
    * A tentativa de passar `false` resultará em lançamento de exceção de segurança.
@@ -256,6 +258,84 @@ export class LocalPdfEngine {
   }
 
   /**
+   * Converte uma string de intervalos de páginas (ex: "1-3, 5, 8-10") em índices 0-indexed
+   */
+  static parsePageRanges(rangeStr: string, totalPages: number): number[] {
+    const indices = new Set<number>();
+    const parts = rangeStr.split(/[,;\s]+/).map(p => p.trim()).filter(Boolean);
+
+    for (const part of parts) {
+      if (part.includes('-')) {
+        const [startStr, endStr] = part.split('-');
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+        if (!isNaN(start) && !isNaN(end)) {
+          const min = Math.max(1, Math.min(start, end));
+          const max = Math.min(totalPages, Math.max(start, end));
+          for (let p = min; p <= max; p++) {
+            indices.add(p - 1);
+          }
+        }
+      } else {
+        const p = parseInt(part, 10);
+        if (!isNaN(p) && p >= 1 && p <= totalPages) {
+          indices.add(p - 1);
+        }
+      }
+    }
+
+    return Array.from(indices).sort((a, b) => a - b);
+  }
+
+  /**
+   * Extrair páginas por intervalo configurável (ex: "1-4, 7, 10-12") gerando um novo PDF
+   */
+  static async extractPagesByRange(pdfBuffer: ArrayBuffer | Uint8Array, rangeStr: string): Promise<Uint8Array> {
+    const doc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+    const totalPages = doc.getPageCount();
+    const selectedIndices = this.parsePageRanges(rangeStr, totalPages);
+
+    if (selectedIndices.length === 0) {
+      throw new Error(`Nenhuma página válida encontrada para o intervalo "${rangeStr}" (total de páginas: ${totalPages}).`);
+    }
+
+    const newDoc = await PDFDocument.create();
+    const copiedPages = await newDoc.copyPages(doc, selectedIndices);
+    copiedPages.forEach(p => newDoc.addPage(p));
+    return await newDoc.save();
+  }
+
+  /**
+   * Reorganizar, rotacionar e excluir páginas de um PDF
+   */
+  static async reorganizePdf(
+    pdfBuffer: ArrayBuffer | Uint8Array,
+    pagesConfig: { originalIndex: number; rotationDelta: number }[]
+  ): Promise<Uint8Array> {
+    if (pagesConfig.length === 0) {
+      throw new Error('O documento resultante não pode ficar sem nenhuma página.');
+    }
+
+    const doc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+    const newDoc = await PDFDocument.create();
+
+    const originalIndices = pagesConfig.map(p => p.originalIndex);
+    const copiedPages = await newDoc.copyPages(doc, originalIndices);
+
+    copiedPages.forEach((page, i) => {
+      const config = pagesConfig[i];
+      if (config.rotationDelta !== 0) {
+        const currentRotation = page.getRotation().angle;
+        const newAngle = (currentRotation + config.rotationDelta + 360) % 360;
+        page.setRotation(degrees(newAngle));
+      }
+      newDoc.addPage(page);
+    });
+
+    return await newDoc.save();
+  }
+
+  /**
    * Adicionar carimbo de Juntada e Numeração de Folhas (Prefeituras & Tribunais)
    */
   static async stampProcess(pdfBuffer: ArrayBuffer | Uint8Array, options: ProcessStampOptions): Promise<Uint8Array> {
@@ -303,11 +383,12 @@ export class LocalPdfEngine {
         ? currentPageNum.toString().padStart(padDigits, '0')
         : currentPageNum.toString();
 
-      let stampText = `${options.prefix} ${pageNumFormatted}`;
+      const effectivePrefix = options.prefix !== undefined ? options.prefix : 'Fl.';
+      let stampText = `${effectivePrefix} ${pageNumFormatted}`.trim();
       if (options.textMask) {
         stampText = options.textMask
           .replace('{page}', pageNumFormatted)
-          .replace('{prefix}', options.prefix || '')
+          .replace('{prefix}', effectivePrefix)
           .replace('{processNumber}', options.processNumber || '');
       }
       const procText = options.processNumber ? `Proc: ${options.processNumber}` : '';
@@ -401,7 +482,7 @@ export class LocalPdfEngine {
           });
         }
 
-        const timeText = options.showTimestamp ? timestamp : '100% Offline PAdES';
+        const timeText = options.showTimestamp ? timestamp : 'Chancela Oficial';
         const timeFontSize = 5.5;
         const timeWidth = fontSmall.widthOfTextAtSize(timeText, timeFontSize);
 
@@ -487,15 +568,15 @@ export class LocalPdfEngine {
         color: rgb(0.06, 0.15, 0.35)
       });
 
-      auditPage.drawText('TERMO DE REGISTRO & AUTENTICIDADE DIGITAL (PAdES)', {
+      auditPage.drawText('TERMO DE JUNTADA & REGISTRO DE INTEGRIDADE DOCUMENTAL', {
         x: 45,
         y: pHeight - 55,
-        size: 13,
+        size: 12,
         font: font,
         color: rgb(1, 1, 1)
       });
 
-      auditPage.drawText('Conformidade Processual — MP 2.200-2/2001 & Lei Federal nº 14.063/2020', {
+      auditPage.drawText('Numeração Oficial de Autos e Registro de Imutabilidade com Hash SHA-256', {
         x: 45,
         y: pHeight - 75,
         size: 9,
@@ -514,10 +595,11 @@ export class LocalPdfEngine {
       drawAuditRow('Número do Processo:', options.processNumber || 'Processo Não Informado');
       drawAuditRow('Órgão / Departamento:', options.departmentName || 'Prefeitura / Órgão Público');
       drawAuditRow('Signatário / Operador:', options.signerName || 'Operador Credenciado (Chancela Local)');
-      drawAuditRow('Data/Hora da Chancela:', `${timestamp} (Fuso Local)`);
-      drawAuditRow('Paginação Sequencial:', `${options.prefix} ${options.startPageNumber} até ${options.prefix} ${options.startPageNumber + pages.length - 1} (${pages.length} páginas)`);
+      const auditPrefix = options.prefix !== undefined ? options.prefix : 'Fl.';
+      drawAuditRow('Paginação Sequencial:', `${auditPrefix} ${options.startPageNumber} até ${auditPrefix} ${options.startPageNumber + pages.length - 1} (${pages.length} páginas)`);
       drawAuditRow('Estilo da Chancela:', options.stampShape === 'round' ? `Selo Redondo Oficial (Marca d'água ${(opacity * 100).toFixed(0)}%)` : `Retangular (Marca d'água ${(opacity * 100).toFixed(0)}%)`);
-      drawAuditRow('Nível de Assinatura:', 'Assinatura Eletrônica Avançada / Audit Log PAdES');
+      drawAuditRow('Natureza do Registro:', 'Chancela Administrativa de Juntada e Numeração com Hash SHA-256');
+      drawAuditRow('Aviso de Conformidade:', 'Chancela administrativa com hash SHA-256 (Não constitui assinatura digital PAdES/ICP-Brasil).');
 
       yCursor -= 10;
       auditPage.drawLine({
@@ -580,8 +662,8 @@ export class LocalPdfEngine {
         borderColor: borderColor,
         borderWidth: 0.75
       });
-      auditPage.drawText('PAdES', { x: 84, y: yCursor - 30, size: 10, font: font, color: textColor });
-      auditPage.drawText('AUTÊNTICO', { x: 74, y: yCursor - 42, size: 6.5, font: fontSmall, color: subTextColor });
+      auditPage.drawText('CHANCELA', { x: 74, y: yCursor - 30, size: 9, font: font, color: textColor });
+      auditPage.drawText('OFICIAL', { x: 78, y: yCursor - 42, size: 6.5, font: fontSmall, color: subTextColor });
 
       auditPage.drawRectangle({
         x: 155,
@@ -593,10 +675,10 @@ export class LocalPdfEngine {
         borderWidth: 1
       });
 
-      const legalNoticeLine1 = 'DECLARAÇÃO DE VALIDADE JURÍDICA E AUTENTICIDADE:';
-      const legalNoticeLine2 = 'Este termo e a chancela de juntada possuem amparo legal na MP nº 2.200-2/2001 (Art. 10, §2º)';
-      const legalNoticeLine3 = 'e na Lei nº 14.063/2020. O algoritmo SHA-256 garante a imutabilidade matemática e o';
-      const legalNoticeLine4 = 'não-repúdio do documento desde o momento da numeração das folhas e encerramento dos autos.';
+      const legalNoticeLine1 = 'DECLARAÇÃO DE REGISTRO ADMINISTRATIVO E INTEGRIDADE:';
+      const legalNoticeLine2 = 'Este termo e a chancela de juntada certificam a ordenação sequencial de folhas e a imutabilidade';
+      const legalNoticeLine3 = 'técnica do documento mediante o cálculo do hash criptográfico SHA-256 do arquivo original.';
+      const legalNoticeLine4 = 'NOTA: Este ato administrativo não substitui assinatura digital qualificada (ICP-Brasil) ou PAdES.';
 
       auditPage.drawText(legalNoticeLine1, { x: 165, y: yCursor - 15, size: 8, font: font, color: rgb(0.15, 0.3, 0.6) });
       auditPage.drawText(legalNoticeLine2, { x: 165, y: yCursor - 30, size: 7.5, font: fontSmall, color: rgb(0.3, 0.35, 0.45) });
@@ -605,7 +687,7 @@ export class LocalPdfEngine {
 
       yCursor -= 100;
 
-      auditPage.drawText(`KovaxFiles Desktop App • Processado em ${fullIsoTimestamp} • Documento 100% Autenticado Offline`, {
+      auditPage.drawText(`KovaxFiles Desktop App • Processado em ${fullIsoTimestamp} • Chancela Documental Offline com Hash SHA-256`, {
         x: 45,
         y: 35,
         size: 7.5,
@@ -613,6 +695,216 @@ export class LocalPdfEngine {
         color: rgb(0.5, 0.5, 0.6)
       });
     }
+
+    return await doc.save();
+  }
+
+  /**
+   * Gera uma Capa de Juntada e Índice Automático de Peças com Manifesto SHA-256
+   */
+  static async generateJuntadaCoverAndIndex(options: {
+    processNumber: string;
+    departmentName: string;
+    signerName: string;
+    prefix: string;
+    padDigits?: number;
+    pieces: {
+      pieceIndex: number;
+      title: string;
+      fileName: string;
+      startFolha: number;
+      endFolha: number;
+      pageCount: number;
+      sha256Hex: string;
+    }[];
+  }): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([595, 842]);
+    const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
+    const fontMono = await doc.embedFont(StandardFonts.Courier);
+
+    const { width, height } = page.getSize();
+    const pad = options.padDigits || 3;
+
+    // Header Box
+    page.drawRectangle({
+      x: 35,
+      y: height - 100,
+      width: width - 70,
+      height: 70,
+      color: rgb(0.06, 0.15, 0.35)
+    });
+
+    const deptStr = (options.departmentName || 'PODER JUDICIÁRIO / ADMINISTRAÇÃO PÚBLICA').toUpperCase();
+    page.drawText(deptStr, {
+      x: 50,
+      y: height - 55,
+      size: 11,
+      font: fontBold,
+      color: rgb(0.85, 0.9, 1)
+    });
+
+    page.drawText('TERMO DE JUNTADA, ÍNDICE DE PEÇAS & MANIFESTO CRIPTOGRÁFICO', {
+      x: 50,
+      y: height - 75,
+      size: 12.5,
+      font: fontBold,
+      color: rgb(1, 1, 1)
+    });
+
+    page.drawText('Numeração Sequencial Contínua e Imutabilidade com Hash SHA-256', {
+      x: 50,
+      y: height - 90,
+      size: 8.5,
+      font: fontRegular,
+      color: rgb(0.8, 0.88, 0.98)
+    });
+
+    // Metadata details
+    let y = height - 125;
+    const drawRow = (label: string, val: string) => {
+      page.drawText(label, { x: 40, y, size: 9.5, font: fontBold, color: rgb(0.2, 0.25, 0.35) });
+      page.drawText(val, { x: 170, y, size: 9.5, font: fontRegular, color: rgb(0.1, 0.1, 0.15) });
+      y -= 17;
+    };
+
+    drawRow('Autos do Processo nº:', options.processNumber || 'Processo Administrativo/Judicial');
+    drawRow('Responsável pela Juntada:', options.signerName || 'Servidor / Advogado Credenciado');
+    const totalFolhas = options.pieces.length > 0 
+      ? options.pieces[options.pieces.length - 1].endFolha 
+      : 0;
+    const firstFolha = options.pieces.length > 0 ? options.pieces[0].startFolha : 1;
+    drawRow('Extensão dos Autos:', `${options.prefix} ${String(firstFolha).padStart(pad, '0')} até ${options.prefix} ${String(totalFolhas).padStart(pad, '0')} (${totalFolhas - firstFolha + 1} folhas)`);
+    drawRow('Data e Hora de Registro:', new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR'));
+
+    y -= 10;
+    page.drawLine({
+      start: { x: 35, y },
+      end: { x: width - 35, y },
+      thickness: 1,
+      color: rgb(0.75, 0.82, 0.9)
+    });
+
+    y -= 25;
+    page.drawText('ÍNDICE SISTEMÁTICO DE PEÇAS E ANEXOS JUNTADOS', {
+      x: 40,
+      y,
+      size: 11,
+      font: fontBold,
+      color: rgb(0.08, 0.22, 0.5)
+    });
+
+    y -= 20;
+
+    // Table Header
+    page.drawRectangle({
+      x: 35,
+      y: y - 5,
+      width: width - 70,
+      height: 20,
+      color: rgb(0.92, 0.94, 0.98),
+      borderColor: rgb(0.8, 0.85, 0.9),
+      borderWidth: 1
+    });
+
+    page.drawText('Seq.', { x: 42, y: y, size: 8.5, font: fontBold, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText('Identificação da Peça / Arquivo', { x: 75, y: y, size: 8.5, font: fontBold, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText('Folhas', { x: 330, y: y, size: 8.5, font: fontBold, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText('Manifesto Hash SHA-256 (32 primeiros chars)', { x: 395, y: y, size: 8.5, font: fontBold, color: rgb(0.1, 0.2, 0.4) });
+
+    y -= 24;
+
+    options.pieces.forEach((piece, idx) => {
+      if (y < 90) return;
+
+      const isEven = idx % 2 === 0;
+      page.drawRectangle({
+        x: 35,
+        y: y - 4,
+        width: width - 70,
+        height: 20,
+        color: isEven ? rgb(0.98, 0.99, 1) : rgb(1, 1, 1),
+        borderColor: rgb(0.9, 0.92, 0.95),
+        borderWidth: 0.5
+      });
+
+      page.drawText(String(piece.pieceIndex).padStart(2, '0'), {
+        x: 45,
+        y: y + 2,
+        size: 8,
+        font: fontBold,
+        color: rgb(0.2, 0.2, 0.3)
+      });
+
+      const maxTitle = piece.title.length > 40 ? piece.title.substring(0, 38) + '...' : piece.title;
+      page.drawText(maxTitle, {
+        x: 75,
+        y: y + 2,
+        size: 8,
+        font: fontRegular,
+        color: rgb(0.1, 0.1, 0.15)
+      });
+
+      const folhasStr = `${options.prefix} ${String(piece.startFolha).padStart(pad, '0')}-${String(piece.endFolha).padStart(pad, '0')}`;
+      page.drawText(folhasStr, {
+        x: 330,
+        y: y + 2,
+        size: 8,
+        font: fontBold,
+        color: rgb(0.1, 0.3, 0.6)
+      });
+
+      const shortHash = piece.sha256Hex ? piece.sha256Hex.substring(0, 24) + '...' : 'Pendente';
+      page.drawText(shortHash, {
+        x: 395,
+        y: y + 2,
+        size: 7.5,
+        font: fontMono,
+        color: rgb(0.3, 0.3, 0.4)
+      });
+
+      y -= 22;
+    });
+
+    // Certidão de encerramento no rodapé da capa
+    y = Math.min(y - 15, 120);
+    page.drawRectangle({
+      x: 35,
+      y: y - 55,
+      width: width - 70,
+      height: 60,
+      color: rgb(0.96, 0.98, 1),
+      borderColor: rgb(0.7, 0.8, 0.95),
+      borderWidth: 1
+    });
+
+    page.drawText('CERTIDÃO DE JUNTADA & AUTENTICAÇÃO FORMAL', {
+      x: 45,
+      y: y - 10,
+      size: 9,
+      font: fontBold,
+      color: rgb(0.1, 0.25, 0.55)
+    });
+
+    const certText = 'Certifico e dou fé que nesta data procedi à juntada aos autos do processo supra das peças documentais indicadas neste índice, com numeração cronológica de folhas contínua e imutabilidade criptográfica assegurada por hash SHA-256.';
+    page.drawText(certText, {
+      x: 45,
+      y: y - 26,
+      size: 7.5,
+      font: fontRegular,
+      color: rgb(0.2, 0.25, 0.35),
+      maxWidth: width - 90,
+      lineHeight: 10
+    });
+
+    page.drawText(`Assinado digitalmente / chancelado por: ${options.signerName}`, {
+      x: 45,
+      y: y - 48,
+      size: 8,
+      font: fontBold,
+      color: rgb(0.1, 0.2, 0.4)
+    });
 
     return await doc.save();
   }
@@ -835,8 +1127,12 @@ export class LocalPdfEngine {
     const doc = await PDFDocument.load(pdfBuffer instanceof Uint8Array ? pdfBuffer : new Uint8Array(pdfBuffer));
     const pages = doc.getPages();
 
-    // 0. Trava preventiva
-    const validRects = rectangles.filter(r => this.validateRedactionSpan(r.text, r.category, r.reason));
+    // 0. Trava preventiva e isolamento por arquivo
+    let targetRects = rectangles;
+    if (options?.targetFileName) {
+      targetRects = targetRects.filter(r => !r.fileName || r.fileName === options.targetFileName);
+    }
+    const validRects = targetRects.filter(r => this.validateRedactionSpan(r.text, r.category, r.reason));
     const mergedRectsByPage = this.mergeSurgicalRectangles(validRects);
 
     // 1. Desenhar retângulos pretos sólidos rgb(0,0,0)

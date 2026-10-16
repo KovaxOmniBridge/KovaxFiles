@@ -40,7 +40,7 @@ O repositório inclui a página estática de apresentação e solicitação de p
   - **Sistemas Municipais de Prefeitura** (Máx 15.0 MB)
 
 ### 3. 🛡️ Tarjador & Anonimizador LGPD Local
-- Identificação de CPFs, CNPJs, RGs, e-mails e termos customizados via Regex e IA local.
+- Identificação determinística de CPFs, CNPJs, RGs, e-mails, telefones, dados bancários e termos customizados via expressões regulares e classificação heurística contextual estruturada.
 - Cobertura de termos com tarjas e opção de sanitização profunda por Achatamento Rasterizado (Flattening 300 DPI) para destruição física de camadas de texto, anotações e formulários.
 - Bateria de testes de segurança automatizada para validação contra extração de texto, inspeção de objetos e análise forense de pixels.
 
@@ -48,8 +48,9 @@ O repositório inclui a página estática de apresentação e solicitação de p
 - Chancela automática de numeração sequencial de folhas (`Fl. 001/2026`, `Fl. 002/2026`).
 - Adição de número de processo (`Proc. Nº 12.345/2026`) e carimbo institucional nos quatro cantos das páginas.
 
-### 5. 👁️ OCR Local & Scanner de Texto
+### 5. 👁️ OCR Local & Scanner de Texto (100% Offline Pré-Empacotado)
 - Leitura óptica offline via WebAssembly (Tesseract.js) para transformar cópias escaneadas antigas em texto pesquisável e selecionável.
+- Modelo treinado de Português (`por.traineddata`) e motores WASM embutidos localmente na distribuição, garantindo funcionamento imediato na primeira execução em máquinas sem acesso à internet (*air-gapped*).
 
 ### 6. 🧹 Sanitizador de Metadados PDF
 - Remoção completa de propriedades ocultas (autor, software de criação, tags EXIF e histórico de edições) antes de protocolar em juízo.
@@ -57,6 +58,12 @@ O repositório inclui a página estática de apresentação e solicitação de p
 ### 7. ✂️ Manipulador de PDF (Fusão & Divisão)
 - Mescla de petição inicial + procuração + comprovantes + guias em um único PDF otimizado.
 - Divisão de autos judiciais extensos em volumes ou páginas individuais.
+
+### 8. 🔒 Criptografia & Proteção de PDFs com Senha (ISO 32000 AES-256)
+- Proteção real por senha de abertura (User Password) e senha de gerenciamento de permissões (Owner Password) com criptografia padrão AES-256 (V=5, R=6).
+- Descriptografia e remoção autorizada de senhas de PDFs.
+- Cofre Forte AES-GCM 256 bits com chave derivada por PBKDF2 (100.000 iterações) para arquivos confidenciais em geral.
+- Validação defensiva pós-criptografia obrigatória, eliminando risco de exportação acidental de documentos desprotegidos.
 
 ---
 
@@ -107,17 +114,14 @@ O sistema de segurança do Electron implementa controle estrito baseado em capac
 * **Abertura e Revelação Seguras**: Arquivos recém-exportados podem ser abertos (`system:openPath`) ou revelados no explorador de arquivos (`system:showItemInFolder`) diretamente pela interface React sem qualquer bloqueio de permissão.
 * **Proteção Pós-Exportação e Isolamento**: Arquivos irmãos não selecionados no mesmo diretório permanecem inacessíveis e qualquer adulteração física no disco (tampering com binários PE/ELF) é imediatamente detectada e bloqueada por inspeção de cabeçalhos.
 
-### 🤖 Diagnóstico e Homologação de IA Local em 4 Níveis
+### 🛡️ Motor de Detecção LGPD e Regras Heurísticas Estruturadas
 
-Para certificar que a inteligência artificial local não apenas está respondendo na rede, mas é funcional e apta a processar documentos jurídicos, o sistema adota uma esteira de diagnóstico em 4 níveis (`npm run test:ai-diagnostics`):
+A identificação de dados sensíveis para anonimização opera de forma 100% determinística e client-side por meio de dois modos complementares (`RedactionDetectionService`):
 
-1. **Nível 1 — Disponibilidade do Servidor HTTP (`serverAvailable`)**: Checagem de socket em `/health` na porta local 18888.
-2. **Nível 2 — Modelo Carregado em Memória (`modelLoaded`)**: Consulta a `/v1/models` para confirmar que os pesos neurais estão alocados na memória RAM/VRAM.
-3. **Nível 3 — Inferência Funcional & Obediência a Instrução (`inferenceFunctional`)**: Envio de prompt de controle exigindo estritamente a palavra `PRONTO`. Rejeita qualquer resposta que não cumpra a restrição negativa/formato solicitado.
-4. **Nível 4 — Triagem Jurídica Preliminar / Smoke Test Básico (`basicLegalSmokeTestPassed`)**: Submissão de caso sintético sobre verbas rescisórias e jornada de trabalho, avaliando se a resposta do modelo identifica os termos elementares de domínio (**Direito Trabalhista** e **CLT**). A classificação formal *"qualidade jurídica validada"* permanece estritamente reservada para baterias extensivas de dezenas ou centenas de peças avaliadas por profissionais de Direito habilitados.
-
-#### ⏱️ Tolerância a Cold-Start e Aquecimento Inicial
-Modelos locais de 8B parâmetros em CPU/GPU podem apresentar latência elevada na primeira inferência (alocação de tensores mmap e compilação de cache KV). O diagnóstico agora detecta esse estado com janela estendida (8s) e classifica a máquina como `warming_up` (**Modelo em Aquecimento Inicial**), sem derrubar falsamente o status para "Servidor Offline".
+1. **Modo Somente Padrões Determinísticos (`pattern`)**: Execução instantânea e de máxima precisão via expressões regulares padronizadas para formatos estruturados objetivos (CPFs, CNPJs, RGs, E-mails, Telefones, Contas Bancárias, CID-10 e palavras-chave customizadas).
+2. **Modo Varredura Algorítmica Ampla (`comprehensive`)**: Combina os padrões determinísticos à classificação contextual de entidades (`DocumentEntityClassifier`), identificando nomes próprios de partes, representantes, médicos e logradouros residenciais a partir de âncoras sintáticas e termos precursores jurídicos.
+3. **Blindagem Geométrica OAB**: Varredura vertical em raio de tolerância (raio Y ≤ 45 pt) para reconhecer e preservar nomes profissionais de advogados e procuradores vinculados a registros da OAB, prevenindo hiper-tarjamento indevido.
+4. **Supervisão Humana Obrigatória (*Human-in-the-Loop*)**: Todas as ocorrências detectadas geram retângulos preliminares sinalizados para conferência visual e aprovação explícita do operador antes da gravação irreversível das tarjas.
 
 ## 📂 Estrutura do Repositório
 

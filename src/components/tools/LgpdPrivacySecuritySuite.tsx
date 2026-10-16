@@ -26,12 +26,17 @@ import {
 import { LocalPdfEngine, PdfMetadataReport, SanitizeOptions } from '../../services/pdfEngine';
 import { CompressionEngine } from '../../services/compressionEngine';
 import { PdfTextExtractor, PageTextData } from '../../services/pdfTextExtractor';
-import { AiRedactionService, AiEngineMode, DetectedRedactionItem, RedactionCategoryOptions } from '../../services/aiRedactionService';
-import { AiRigorLevel } from '../../services/universalAiClassifier';
+import {
+  RedactionDetectionService,
+  DetectionMode,
+  DetectedRedactionItem,
+  RedactionCategoryOptions
+} from '../../services/aiRedactionService';
+import { DetectionRigorLevel } from '../../services/universalAiClassifier';
 import { PdfReportExporterService, LgpdAuditRecord } from '../../services/pdfReportExporterService';
 import { EncryptionEngine } from '../../services/encryptionEngine';
 
-export type SecuritySuiteSubTab = 'redactor' | 'sanitizer' | 'encryption' | 'certificate';
+export type SecuritySuiteSubTab = 'redactor' | 'sanitizer' | 'pdf_protection' | 'vault_aes' | 'certificate' | 'encryption';
 
 interface LgpdPrivacySecuritySuiteProps {
   initialSubTab?: SecuritySuiteSubTab;
@@ -40,11 +45,16 @@ interface LgpdPrivacySecuritySuiteProps {
 export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> = ({
   initialSubTab = 'redactor'
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<SecuritySuiteSubTab>(initialSubTab);
+  const normalizeSubTab = (tab: SecuritySuiteSubTab): SecuritySuiteSubTab => {
+    if (tab === 'encryption') return 'pdf_protection';
+    return tab;
+  };
+
+  const [activeSubTab, setActiveSubTab] = useState<SecuritySuiteSubTab>(normalizeSubTab(initialSubTab));
 
   useEffect(() => {
     if (initialSubTab) {
-      setActiveSubTab(initialSubTab);
+      setActiveSubTab(normalizeSubTab(initialSubTab));
     }
   }, [initialSubTab]);
 
@@ -61,8 +71,8 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   // ==========================================
   // ESTADOS DA ABA 1: TARJAMENTO LGPD
   // ==========================================
-  const [aiMode] = useState<AiEngineMode>('pattern');
-  const [rigorLevel] = useState<AiRigorLevel>('broad');
+  const [scanMode] = useState<DetectionMode>('pattern');
+  const [rigorLevel] = useState<DetectionRigorLevel>('broad');
 
   const [categories, setCategories] = useState<RedactionCategoryOptions>({
     cpf: true,
@@ -104,19 +114,28 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   const [sanitizedResults, setSanitizedResults] = useState<{ fileName: string; data: Uint8Array; originalReport?: PdfMetadataReport }[] | null>(null);
 
   // ==========================================
-  // ESTADOS DA ABA 3: CRIPTOGRAFIA & SENHAS (NOVO)
+  // ESTADOS DA ABA 3: PROTEÇÃO DE PDF POR SENHA (ISO 32000)
   // ==========================================
-  const [encryptionMode, setEncryptionMode] = useState<'encrypt_pdf' | 'decrypt_pdf' | 'encrypt_vault'>('encrypt_pdf');
-  const [userPassword, setUserPassword] = useState<string>('');
-  const [ownerPassword, setOwnerPassword] = useState<string>('');
-  const [unlockPassword, setUnlockPassword] = useState<string>('');
+  const [pdfProtectionMode, setPdfProtectionMode] = useState<'encrypt_pdf' | 'decrypt_pdf'>('encrypt_pdf');
+  const [pdfUserPassword, setPdfUserPassword] = useState<string>('');
+  const [pdfOwnerPassword, setPdfOwnerPassword] = useState<string>('');
+  const [pdfUnlockPassword, setPdfUnlockPassword] = useState<string>('');
   const [allowPrinting, setAllowPrinting] = useState<boolean>(true);
   const [allowCopying, setAllowCopying] = useState<boolean>(false);
   const [allowModifying, setAllowModifying] = useState<boolean>(false);
   const [allowAnnotating, setAllowAnnotating] = useState<boolean>(false);
 
-  const [isEncrypting, setIsEncrypting] = useState<boolean>(false);
-  const [encryptionResults, setEncryptionResults] = useState<{ fileName: string; data: Uint8Array; modeName: string; hash: string }[] | null>(null);
+  const [isPdfProtecting, setIsPdfProtecting] = useState<boolean>(false);
+  const [pdfProtectionResults, setPdfProtectionResults] = useState<{ fileName: string; data: Uint8Array; modeName: string; hash: string }[] | null>(null);
+
+  // ==========================================
+  // ESTADOS DA ABA 4: COFRE CRIPTOGRÁFICO AES-256 (CUSTÓDIA)
+  // ==========================================
+  const [vaultMode, setVaultMode] = useState<'lock_vault' | 'unlock_vault'>('lock_vault');
+  const [vaultPassword, setVaultPassword] = useState<string>('');
+  const [vaultUnlockPassword, setVaultUnlockPassword] = useState<string>('');
+  const [isVaultProcessing, setIsVaultProcessing] = useState<boolean>(false);
+  const [vaultResults, setVaultResults] = useState<{ fileName: string; data: Uint8Array; modeName: string; hash: string }[] | null>(null);
 
   // ==========================================
   // GERENCIAMENTO DE ARQUIVOS
@@ -127,7 +146,8 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
       setSelectedFiles(prev => [...prev, ...newFiles]);
       setRedactedResults(null);
       setSanitizedResults(null);
-      setEncryptionResults(null);
+      setPdfProtectionResults(null);
+      setVaultResults(null);
       setHasAnalyzed(false);
       setErrorMessage(null);
       e.target.value = '';
@@ -146,7 +166,8 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
       setSelectedFiles(prev => [...prev, ...newFiles]);
       setRedactedResults(null);
       setSanitizedResults(null);
-      setEncryptionResults(null);
+      setPdfProtectionResults(null);
+      setVaultResults(null);
       setHasAnalyzed(false);
       setErrorMessage(null);
 
@@ -160,7 +181,8 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
     setRedactedResults(null);
     setSanitizedResults(null);
-    setEncryptionResults(null);
+    setPdfProtectionResults(null);
+    setVaultResults(null);
     setHasAnalyzed(false);
   };
 
@@ -168,7 +190,8 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
     setSelectedFiles([]);
     setRedactedResults(null);
     setSanitizedResults(null);
-    setEncryptionResults(null);
+    setPdfProtectionResults(null);
+    setVaultResults(null);
     setDetectedItems([]);
     setHasAnalyzed(false);
     setReports({});
@@ -236,15 +259,25 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
         const buffer = await file.arrayBuffer();
 
         if (file.name.toLowerCase().endsWith('.pdf')) {
-          const pagesData = await PdfTextExtractor.extractTextWithBounds(buffer);
+          const pagesData = await PdfTextExtractor.extractTextWithBounds(
+            buffer,
+            p => setAnalysisProgress(Math.round(((i + (p.percent / 100) * 0.5) / totalFiles) * 100))
+          );
           newPagesMap.set(file.name, pagesData);
 
-          const items = await AiRedactionService.analyzePdf(
+          const items = await RedactionDetectionService.analyzePdf(
             pagesData,
             categories,
-            { mode: aiMode, rigorLevel }
+            { mode: scanMode, rigorLevel },
+            p => setAnalysisProgress(Math.round(((i + 0.5 + (p.percent / 100) * 0.5) / totalFiles) * 100)),
+            file.name
           );
-          allDetections.push(...items);
+          const taggedItems = items.map(it => ({
+            ...it,
+            fileName: file.name,
+            rect: { ...it.rect, fileName: file.name }
+          }));
+          allDetections.push(...taggedItems);
         }
 
         setAnalysisProgress(Math.round(((i + 1) / totalFiles) * 100));
@@ -283,8 +316,10 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
         if (!file.name.toLowerCase().endsWith('.pdf')) continue;
         const buffer = await file.arrayBuffer();
         
-        const rectsToApply = selectedToRedact.map(i => i.rect);
-        const redactedBuffer = await LocalPdfEngine.anonymizePdf(buffer, rectsToApply);
+        // Filtra ESTRITAMENTE as tarjas aprovadas pertencentes a este arquivo específico
+        const fileItemsToRedact = selectedToRedact.filter(i => !i.fileName || i.fileName === file.name);
+        const rectsToApply = fileItemsToRedact.map(i => i.rect);
+        const redactedBuffer = await LocalPdfEngine.anonymizePdf(buffer, rectsToApply, { targetFileName: file.name });
 
         resultsList.push({
           fileName: file.name,
@@ -292,7 +327,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
           redactionCount: rectsToApply.length
         });
 
-        for (const item of selectedToRedact) {
+        for (const item of fileItemsToRedact) {
           newAuditRecords.push({
             id: item.id,
             originalTerm: item.text,
@@ -370,64 +405,54 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   };
 
   // ==========================================
-  // LÓGICA DA ABA 3: CRIPTOGRAFIA & SENHAS
+  // LÓGICA DA ABA 3: PROTEÇÃO DE PDF POR SENHA (ISO 32000)
   // ==========================================
-  const handleExecuteEncryption = async () => {
+  const handleExecutePdfProtection = async () => {
     if (selectedFiles.length === 0) {
-      setErrorMessage('Por favor, selecione ao menos um arquivo.');
+      setErrorMessage('Por favor, selecione ao menos um arquivo PDF.');
       return;
     }
 
-    if (encryptionMode === 'encrypt_pdf') {
-      if (!userPassword && !ownerPassword) {
+    if (pdfProtectionMode === 'encrypt_pdf') {
+      if (!pdfUserPassword && !pdfOwnerPassword) {
         setErrorMessage('Digite uma Senha de Leitura ou Senha de Proprietário para proteger o PDF.');
         return;
       }
-    } else if (encryptionMode === 'decrypt_pdf') {
-      if (!unlockPassword) {
+    } else {
+      if (!pdfUnlockPassword) {
         setErrorMessage('Digite a senha atual do documento PDF para remover a proteção.');
-        return;
-      }
-    } else if (encryptionMode === 'encrypt_vault') {
-      if (!userPassword) {
-        setErrorMessage('Digite uma senha forte para criptografar o arquivo no Cofre AES-256.');
         return;
       }
     }
 
-    setIsEncrypting(true);
+    setIsPdfProtecting(true);
     setErrorMessage(null);
     const resultsList: { fileName: string; data: Uint8Array; modeName: string; hash: string }[] = [];
     const newAuditRecords: LgpdAuditRecord[] = [];
 
     try {
       for (const file of selectedFiles) {
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+          throw new Error(`O arquivo "${file.name}" não é um documento PDF. A proteção por senha padrão leitor aplica-se exclusivamente a PDFs. Para outros arquivos (DOCX, ZIP, etc.), utilize a aba "Cofre Criptográfico AES-256".`);
+        }
+
         const buffer = await file.arrayBuffer();
         let processedData: Uint8Array;
         let modeName = '';
 
-        if (encryptionMode === 'encrypt_pdf') {
-          if (!file.name.toLowerCase().endsWith('.pdf')) {
-            throw new Error(`O arquivo ${file.name} não é um PDF. Use a modalidade Cofre AES-256 para outros arquivos.`);
-          }
+        if (pdfProtectionMode === 'encrypt_pdf') {
           processedData = await EncryptionEngine.encryptPdf(buffer, {
-            userPassword,
-            ownerPassword: ownerPassword || userPassword,
+            userPassword: pdfUserPassword,
+            ownerPassword: pdfOwnerPassword || pdfUserPassword,
             allowPrinting,
             allowCopying,
             allowModifying,
             allowAnnotating
           });
-          modeName = 'PDF Protegido por Senha';
-        } else if (encryptionMode === 'decrypt_pdf') {
-          if (!file.name.toLowerCase().endsWith('.pdf')) {
-            throw new Error(`O arquivo ${file.name} não é um PDF.`);
-          }
-          processedData = await EncryptionEngine.decryptPdf(buffer, unlockPassword);
-          modeName = 'PDF Descriptografado / Sem Senha';
+          modeName = 'PDF Protegido por Senha (ISO 32000)';
         } else {
-          processedData = await EncryptionEngine.encryptFileAesGcm(buffer, userPassword);
-          modeName = 'Cofre Forte AES-GCM 256 bits';
+          processedData = await EncryptionEngine.decryptPdf(buffer, pdfUnlockPassword);
+          modeName = 'PDF Descriptografado / Aberto';
         }
 
         const sha256 = await EncryptionEngine.computeSha256(processedData);
@@ -440,22 +465,102 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
         });
 
         newAuditRecords.push({
-          id: 'enc-' + Math.random().toString(36).substring(7),
+          id: 'pdf-enc-' + Math.random().toString(36).substring(7),
           originalTerm: file.name,
           maskedTerm: `[PROTEGIDO: ${modeName}]`,
-          entityType: 'Criptografia de Arquivo',
+          entityType: 'Proteção de Senha PDF',
           detectionReason: `Hash Auditável SHA-256: ${sha256.substring(0, 16)}...`,
           timestamp: new Date().toLocaleString('pt-BR')
         });
       }
 
-      setEncryptionResults(resultsList);
+      setPdfProtectionResults(resultsList);
       setAuditRecords(prev => [...prev, ...newAuditRecords]);
-      setSuccessMessage('Operação de Criptografia/Descriptografia executada com sucesso!');
+      setSuccessMessage('Operação de Proteção por Senha de PDF executada com sucesso!');
     } catch (err: any) {
-      setErrorMessage(`Erro ao processar criptografia: ${err.message || 'Falha de senha ou formato inválido.'}`);
+      setErrorMessage(`Erro ao processar proteção de PDF: ${err.message || 'Falha de senha ou formato inválido.'}`);
     } finally {
-      setIsEncrypting(false);
+      setIsPdfProtecting(false);
+    }
+  };
+
+  // ==========================================
+  // LÓGICA DA ABA 4: COFRE CRIPTOGRÁFICO AES-256 (CUSTÓDIA)
+  // ==========================================
+  const handleExecuteVault = async () => {
+    if (selectedFiles.length === 0) {
+      setErrorMessage('Por favor, selecione ao menos um arquivo para o Cofre.');
+      return;
+    }
+
+    if (vaultMode === 'lock_vault') {
+      if (!vaultPassword) {
+        setErrorMessage('Digite uma senha forte para trancar o arquivo no Cofre Militar AES-256.');
+        return;
+      }
+    } else {
+      if (!vaultUnlockPassword) {
+        setErrorMessage('Digite a senha do Cofre para destrancar e restaurar o arquivo.');
+        return;
+      }
+    }
+
+    setIsVaultProcessing(true);
+    setErrorMessage(null);
+    const resultsList: { fileName: string; data: Uint8Array; modeName: string; hash: string }[] = [];
+    const newAuditRecords: LgpdAuditRecord[] = [];
+
+    try {
+      for (const file of selectedFiles) {
+        const buffer = await file.arrayBuffer();
+        let processedData: Uint8Array;
+        let modeName = '';
+        let targetFileName = file.name;
+
+        if (vaultMode === 'lock_vault') {
+          processedData = await EncryptionEngine.encryptFileAesGcm(buffer, vaultPassword);
+          modeName = 'Envelope Cofre Forte AES-GCM (KVX1)';
+          if (!targetFileName.toLowerCase().endsWith('.kvx')) {
+            targetFileName = `${targetFileName}.kvx`;
+          }
+        } else {
+          processedData = await EncryptionEngine.decryptFileAesGcm(buffer, vaultUnlockPassword);
+          modeName = 'Arquivo Restaurado do Cofre';
+          if (targetFileName.toLowerCase().endsWith('.kvx')) {
+            targetFileName = targetFileName.slice(0, -4);
+          }
+        }
+
+        const sha256 = await EncryptionEngine.computeSha256(processedData);
+
+        resultsList.push({
+          fileName: targetFileName,
+          data: processedData,
+          modeName,
+          hash: sha256
+        });
+
+        newAuditRecords.push({
+          id: 'vault-' + Math.random().toString(36).substring(7),
+          originalTerm: file.name,
+          maskedTerm: `[COFRE: ${modeName}]`,
+          entityType: 'Cofre Forte AES-GCM 256',
+          detectionReason: `Hash Auditável SHA-256: ${sha256.substring(0, 16)}...`,
+          timestamp: new Date().toLocaleString('pt-BR')
+        });
+      }
+
+      setVaultResults(resultsList);
+      setAuditRecords(prev => [...prev, ...newAuditRecords]);
+      setSuccessMessage(
+        vaultMode === 'lock_vault'
+          ? 'Arquivo(s) trancado(s) no Cofre AES-256 com sucesso!'
+          : 'Arquivo(s) destrancado(s) e restaurado(s) com sucesso!'
+      );
+    } catch (err: any) {
+      setErrorMessage(`Erro ao processar Cofre AES-256: ${err.message || 'Senha incorreta ou dados corrompidos.'}`);
+    } finally {
+      setIsVaultProcessing(false);
     }
   };
 
@@ -539,10 +644,10 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
           </div>
 
           {/* BOTÕES DE NAVEGAÇÃO DAS ABAS */}
-          <div className="flex items-center bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+          <div className="flex flex-wrap items-center bg-slate-950 p-1.5 rounded-xl border border-slate-800 gap-1">
             <button
               onClick={() => setActiveSubTab('redactor')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeSubTab === 'redactor'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -553,7 +658,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
             </button>
             <button
               onClick={() => setActiveSubTab('sanitizer')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeSubTab === 'sanitizer'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -563,26 +668,37 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
               2. Higienizador Metadados
             </button>
             <button
-              onClick={() => setActiveSubTab('encryption')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                activeSubTab === 'encryption'
+              onClick={() => setActiveSubTab('pdf_protection')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeSubTab === 'pdf_protection' || activeSubTab === 'encryption'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
               }`}
             >
               <Lock className="w-3.5 h-3.5" />
-              3. Criptografia & Senhas
+              3. Senha PDF (ISO 32000)
+            </button>
+            <button
+              onClick={() => setActiveSubTab('vault_aes')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeSubTab === 'vault_aes'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              4. Cofre AES-256 (Custódia)
             </button>
             <button
               onClick={() => setActiveSubTab('certificate')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeSubTab === 'certificate'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
               }`}
             >
               <Award className="w-3.5 h-3.5" />
-              4. Laudo Auditável
+              5. Laudo Auditável
             </button>
           </div>
         </div>
@@ -821,7 +937,10 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
                           />
                           <div>
                             <span className="font-semibold text-blue-400 block">{item.text}</span>
-                            <span className="text-[10px] text-slate-500">Pág. {item.pageIndex + 1} • Tipo: {item.category.toUpperCase()}</span>
+                            <span className="text-[10px] text-slate-500">
+                              Pág. {item.pageIndex + 1} • Tipo: {item.category.toUpperCase()}
+                              {item.fileName && <> • Arquivo: <span className="text-slate-300 font-medium">{item.fileName}</span></>}
+                            </span>
                           </div>
                         </div>
                         <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
@@ -1082,40 +1201,49 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
       )}
 
       {/* ========================================================= */}
-      {/* CONTEÚDO DA ABA 3: CRIPTOGRAFIA & PROTEÇÃO POR SENHA (NOVO) */}
+      {/* CONTEÚDO DA ABA 3: PROTEÇÃO DE PDF POR SENHA (ISO 32000)   */}
       {/* ========================================================= */}
-      {activeSubTab === 'encryption' && (
+      {(activeSubTab === 'pdf_protection' || activeSubTab === 'encryption') && (
         <div className="space-y-5">
+          {/* BANNER INFORMATIVO ISO 32000 */}
+          <div className="p-4 rounded-xl bg-blue-950/40 border border-blue-500/30 flex items-start gap-3">
+            <Lock className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-slate-300">
+              <span className="font-semibold text-blue-300 block mb-0.5">Proteção Padrão para Leitores de Mercado (ISO 32000)</span>
+              Aplica criptografia AES-256 oficial do padrão PDF. O documento resultante continuará sendo um arquivo .pdf normal, porém leitores como Adobe Acrobat, Foxit, Chrome e sistemas dos tribunais (PJe/TJSP/TRF) exigirão a senha para exibição ou edição.
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* SELEÇÃO DO MODO DE CRIPTOGRAFIA */}
+            {/* SELEÇÃO DA OPERAÇÃO DE PDF */}
             <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
               <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
                 <Lock className="w-4 h-4 text-blue-400" />
-                Modalidade de Criptografia
+                Operação no PDF
               </h3>
 
               <div className="space-y-2">
                 <button
-                  onClick={() => setEncryptionMode('encrypt_pdf')}
+                  onClick={() => setPdfProtectionMode('encrypt_pdf')}
                   className={`w-full text-left p-3 rounded-xl border transition-all ${
-                    encryptionMode === 'encrypt_pdf'
+                    pdfProtectionMode === 'encrypt_pdf'
                       ? 'bg-blue-600/20 border-blue-500 text-blue-300'
                       : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900'
                   }`}
                 >
                   <div className="font-semibold text-xs flex items-center gap-2">
                     <Key className="w-3.5 h-3.5" />
-                    1. Proteger PDF com Senha de Abertura
+                    1. Proteger PDF com Senha
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    Exige senha para o juiz, cliente ou terceiro conseguir abrir o PDF.
+                    Exige senha para o destinatário conseguir visualizar o documento.
                   </div>
                 </button>
 
                 <button
-                  onClick={() => setEncryptionMode('decrypt_pdf')}
+                  onClick={() => setPdfProtectionMode('decrypt_pdf')}
                   className={`w-full text-left p-3 rounded-xl border transition-all ${
-                    encryptionMode === 'decrypt_pdf'
+                    pdfProtectionMode === 'decrypt_pdf'
                       ? 'bg-blue-600/20 border-blue-500 text-blue-300'
                       : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900'
                   }`}
@@ -1125,24 +1253,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
                     2. Desbloquear PDF (Remover Senha)
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    Remove a senha de um PDF sabendo a senha atual.
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setEncryptionMode('encrypt_vault')}
-                  className={`w-full text-left p-3 rounded-xl border transition-all ${
-                    encryptionMode === 'encrypt_vault'
-                      ? 'bg-blue-600/20 border-blue-500 text-blue-300'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900'
-                  }`}
-                >
-                  <div className="font-semibold text-xs flex items-center gap-2">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    3. Cofre Militar AES-256 (Qualquer Arquivo)
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">
-                    Criptografia forte para DOCX, TXT, imagens ou ZIPs.
+                    Remove a senha de um PDF protegido fornecendo a credencial atual.
                   </div>
                 </button>
               </div>
@@ -1153,54 +1264,52 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
                   <KeyRound className="w-4 h-4 text-emerald-400" />
-                  {encryptionMode === 'decrypt_pdf' ? 'Desbloqueio de Arquivo Protegido' : 'Definição de Chaves e Permissões de Acesso'}
+                  {pdfProtectionMode === 'decrypt_pdf' ? 'Desbloqueio de PDF Protegido' : 'Definição de Senhas e Restrições ISO 32000'}
                 </h3>
 
-                {encryptionMode === 'decrypt_pdf' ? (
+                {pdfProtectionMode === 'decrypt_pdf' ? (
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-400 block">Digite a Senha Atual do PDF</label>
                     <input
                       type="password"
-                      value={unlockPassword}
-                      onChange={(e) => setUnlockPassword(e.target.value)}
-                      placeholder="Sua senha de abertura..."
+                      value={pdfUnlockPassword}
+                      onChange={(e) => setPdfUnlockPassword(e.target.value)}
+                      placeholder="Senha de abertura do PDF..."
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
                     />
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-300 block">Senha de Usuário (Abertura do Documento)</label>
+                      <label className="text-xs font-bold text-slate-300 block">Senha de Leitura (Abertura)</label>
                       <input
                         type="password"
-                        value={userPassword}
-                        onChange={(e) => setUserPassword(e.target.value)}
+                        value={pdfUserPassword}
+                        onChange={(e) => setPdfUserPassword(e.target.value)}
                         placeholder="Senha exigida para abrir..."
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
                       />
-                      <span className="text-[10px] text-slate-500">Sem esta senha, ninguém consegue ler o arquivo.</span>
+                      <span className="text-[10px] text-slate-500">Exigida para visualizar o conteúdo.</span>
                     </div>
 
-                    {encryptionMode === 'encrypt_pdf' && (
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-300 block">Senha de Proprietário (Modificações)</label>
-                        <input
-                          type="password"
-                          value={ownerPassword}
-                          onChange={(e) => setOwnerPassword(e.target.value)}
-                          placeholder="Senha de administrador (opcional)..."
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
-                        />
-                        <span className="text-[10px] text-slate-500">Exigida para alterar permissões ou extrair páginas.</span>
-                      </div>
-                    )}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-300 block">Senha de Proprietário (Modificações)</label>
+                      <input
+                        type="password"
+                        value={pdfOwnerPassword}
+                        onChange={(e) => setPdfOwnerPassword(e.target.value)}
+                        placeholder="Senha administrativa (opcional)..."
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
+                      />
+                      <span className="text-[10px] text-slate-500">Exigida para alterar permissões ou extrair páginas.</span>
+                    </div>
                   </div>
                 )}
 
                 {/* OPÇÕES DE PERMISSÕES PARA PDF */}
-                {encryptionMode === 'encrypt_pdf' && (
+                {pdfProtectionMode === 'encrypt_pdf' && (
                   <div className="pt-3 border-t border-slate-800 space-y-2">
-                    <label className="text-xs font-bold text-slate-400 block mb-1">Restrições e Permissões Granulares do Documento</label>
+                    <label className="text-xs font-bold text-slate-400 block mb-1">Restrições Granulares do Documento</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <label className="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl cursor-pointer">
                         <span className="text-xs text-slate-300">Permitir Impressão em Alta Resolução</span>
@@ -1243,23 +1352,23 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
                 )}
               </div>
 
-              {/* BOTAO EXECUTAR CRIPTOGRAFIA */}
+              {/* BOTÃO EXECUTAR PROTEÇÃO DE PDF */}
               <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
-                <span className="text-xs text-slate-400">Processamento em memória via Web Crypto API local</span>
+                <span className="text-xs text-slate-400">Compatível 100% com Adobe Acrobat e Tribunais</span>
                 <button
-                  onClick={handleExecuteEncryption}
-                  disabled={isEncrypting || selectedFiles.length === 0}
+                  onClick={handleExecutePdfProtection}
+                  disabled={isPdfProtecting || selectedFiles.length === 0}
                   className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50"
                 >
-                  {isEncrypting ? (
+                  {isPdfProtecting ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      Criptografando...
+                      Processando PDF...
                     </>
                   ) : (
                     <>
                       <Lock className="w-4 h-4" />
-                      Aplicar Proteção Criptográfica
+                      {pdfProtectionMode === 'encrypt_pdf' ? 'Aplicar Senha no PDF' : 'Remover Proteção do PDF'}
                     </>
                   )}
                 </button>
@@ -1267,17 +1376,17 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
             </div>
           </div>
 
-          {/* RESULTADOS DA CRIPTOGRAFIA */}
-          {encryptionResults && encryptionResults.length > 0 && (
+          {/* RESULTADOS DA PROTEÇÃO DE PDF */}
+          {pdfProtectionResults && pdfProtectionResults.length > 0 && (
             <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-2xl p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-bold text-emerald-300 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  Arquivos Protegidos Prontos para Uso ({encryptionResults.length})
+                  PDFs Prontos ({pdfProtectionResults.length})
                 </h4>
-                {encryptionResults.length > 1 && (
+                {pdfProtectionResults.length > 1 && (
                   <button
-                    onClick={() => downloadZipResults(encryptionResults, 'protegido')}
+                    onClick={() => downloadZipResults(pdfProtectionResults, 'protegido')}
                     className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow"
                   >
                     <FolderArchive className="w-3.5 h-3.5" />
@@ -1287,7 +1396,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {encryptionResults.map((res, i) => (
+                {pdfProtectionResults.map((res, i) => (
                   <div key={i} className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between text-xs">
                     <div>
                       <div className="font-semibold text-slate-200">{res.fileName}</div>
@@ -1296,6 +1405,167 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
                     <button
                       onClick={() => downloadSingleResult(res.fileName, res.data, 'protegido')}
                       className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Baixar PDF
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* CONTEÚDO DA ABA 4: COFRE CRIPTOGRÁFICO AES-256 (CUSTÓDIA)   */}
+      {/* ========================================================= */}
+      {activeSubTab === 'vault_aes' && (
+        <div className="space-y-5">
+          {/* BANNER RIGOROSO DE SEGREGAÇÃO CRIPTOGRÁFICA */}
+          <div className="p-4 rounded-xl bg-purple-950/40 border border-purple-500/30 flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-slate-300">
+              <span className="font-semibold text-purple-300 block mb-0.5">Segregação de Segurança: Cofre Forte de Arquivos (AES-256-GCM)</span>
+              O Cofre Forte gera um invólucro criptografado (<code className="text-purple-300 font-mono">.kvx</code>) com chave derivada via PBKDF2 (100.000 iterações). <strong>Este formato destina-se a custódia e backup seguro</strong>, sendo 100% segregado da proteção por senha de PDFs comuns. Arquivos trancados no cofre não abrem diretamente em leitores de PDF ou editores de texto sem que sejam destrancados nesta ferramenta.
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* SELEÇÃO DO MODO DO COFRE */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-purple-400" />
+                Operação do Cofre
+              </h3>
+
+              <div className="space-y-2">
+                <button
+                  onClick={() => setVaultMode('lock_vault')}
+                  className={`w-full text-left p-3 rounded-xl border transition-all ${
+                    vaultMode === 'lock_vault'
+                      ? 'bg-purple-600/20 border-purple-500 text-purple-300'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900'
+                  }`}
+                >
+                  <div className="font-semibold text-xs flex items-center gap-2">
+                    <Lock className="w-3.5 h-3.5" />
+                    1. Trancar Arquivo no Cofre (.kvx)
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Gera invólucro AES-256-GCM para custódia segura de PDF, DOCX, ZIP, etc.
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setVaultMode('unlock_vault')}
+                  className={`w-full text-left p-3 rounded-xl border transition-all ${
+                    vaultMode === 'unlock_vault'
+                      ? 'bg-purple-600/20 border-purple-500 text-purple-300'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900'
+                  }`}
+                >
+                  <div className="font-semibold text-xs flex items-center gap-2">
+                    <Unlock className="w-3.5 h-3.5" />
+                    2. Destrancar / Restaurar Arquivo
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Restaura o arquivo original a partir de um envelope .kvx fornecendo a senha.
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* ENTRADA DE SENHAS DO COFRE */}
+            <div className="lg:col-span-2 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between space-y-4">
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-purple-400" />
+                  {vaultMode === 'lock_vault' ? 'Definição da Chave Mestra do Cofre' : 'Credencial de Desbloqueio do Cofre'}
+                </h3>
+
+                {vaultMode === 'lock_vault' ? (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-300 block">Senha Forte do Cofre AES-256</label>
+                    <input
+                      type="password"
+                      value={vaultPassword}
+                      onChange={(e) => setVaultPassword(e.target.value)}
+                      placeholder="Crie uma senha forte de custódia..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500 font-mono"
+                    />
+                    <span className="text-[10px] text-slate-500 block">
+                      A chave será derivada com algoritmo PBKDF2 e 100.000 iterações. Sem a senha, a recuperação é matematicamente impossível.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-300 block">Senha de Destrancamento do Arquivo .kvx</label>
+                    <input
+                      type="password"
+                      value={vaultUnlockPassword}
+                      onChange={(e) => setVaultUnlockPassword(e.target.value)}
+                      placeholder="Senha cadastrada ao trancar o cofre..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500 font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* BOTÃO EXECUTAR COFRE */}
+              <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
+                <span className="text-xs text-slate-400">Padrão militar AES-GCM com autenticação de integridade</span>
+                <button
+                  onClick={handleExecuteVault}
+                  disabled={isVaultProcessing || selectedFiles.length === 0}
+                  className="bg-purple-600 hover:bg-purple-500 text-white font-semibold px-5 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-600/20 disabled:opacity-50"
+                >
+                  {isVaultProcessing ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Processando Cofre...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      {vaultMode === 'lock_vault' ? 'Trancar no Cofre (.kvx)' : 'Destrancar Arquivo'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* RESULTADOS DO COFRE */}
+          {vaultResults && vaultResults.length > 0 && (
+            <div className="bg-purple-950/30 border border-purple-500/30 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-purple-300 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                  Arquivos Processados no Cofre ({vaultResults.length})
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {vaultResults.map((res, i) => (
+                  <div key={i} className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between text-xs">
+                    <div>
+                      <div className="font-semibold text-slate-200">{res.fileName}</div>
+                      <div className="text-[10px] text-purple-400 mt-0.5">{res.modeName} • Hash: {res.hash.substring(0, 12)}...</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const blob = new Blob([res.data as unknown as BlobPart], { type: 'application/octet-stream' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = res.fileName;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1"
                     >
                       <Download className="w-3.5 h-3.5" />
                       Baixar

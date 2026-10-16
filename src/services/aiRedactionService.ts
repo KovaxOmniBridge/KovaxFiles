@@ -1,8 +1,9 @@
 import { PageTextData, PdfTextExtractor } from './pdfTextExtractor';
-import { UniversalAiClassifier, AiRigorLevel, DetectionRigorLevel } from './universalAiClassifier';
+import { DocumentEntityClassifier, DetectionRigorLevel, AiRigorLevel } from './universalAiClassifier';
 
-export type RedactionScanMode = 'pattern' | 'comprehensive';
-export type AiEngineMode = 'pattern' | 'assisted_ner' | 'embedded' | 'comprehensive';
+export type DetectionMode = 'pattern' | 'comprehensive';
+export type RedactionScanMode = DetectionMode;
+export type AiEngineMode = DetectionMode;
 
 export interface RedactionCategoryOptions {
   cpf: boolean;
@@ -20,6 +21,7 @@ export interface RedactionCategoryOptions {
 export interface DetectedRedactionItem {
   id: string;
   pageIndex: number;
+  fileName?: string;
   text: string;
   category: 'CPF' | 'CNPJ' | 'RG' | 'E-mail' | 'Telefone' | 'Nome de Pessoa' | 'Endereço' | 'Financeiro' | 'Saúde' | 'Personalizado';
   reason: string;
@@ -27,6 +29,7 @@ export interface DetectedRedactionItem {
   selected: boolean;
   rect: {
     pageIndex: number;
+    fileName?: string;
     x: number;
     y: number;
     width: number;
@@ -37,37 +40,43 @@ export interface DetectedRedactionItem {
   };
 }
 
-export interface AiSettings {
-  mode: AiEngineMode;
-  rigorLevel?: AiRigorLevel | DetectionRigorLevel;
-  geminiApiKey?: string;
+export interface DetectionSettings {
+  mode: DetectionMode;
+  rigorLevel?: DetectionRigorLevel;
 }
+export type AiSettings = DetectionSettings;
 
-export class AiRedactionService {
+export class RedactionDetectionService {
   /**
    * Executa a análise documental determinística e algorítmica:
-   * 1. Varredura por Padrões / Regex (CPF, CNPJ, RG, E-mails, Telefones, etc.)
+   * 1. Varredura por Padrões / Regex (CPF, CNPJ, RG, E-mails, Telefones, etc.) - executada sempre.
    * 2. Varredura Heurística de Entidades Documentais (Nomes de partes, endereços, contas) com blindagem OAB
-   * 3. Cobertura da Margem Lateral Judicial (e-SAJ / PJe / TRF)
+   *    - executada EXCLUSIVAMENTE quando mode === 'comprehensive'.
+   * 3. Cobertura da Margem Lateral Judicial (e-SAJ / PJe / TRF).
    * 
    * AVISO METODOLÓGICO: Todas as sugestões produzidas são preliminares e auxiliares,
+   * baseadas em regras de reconhecimento determinístico e heurísticas contextuais,
    * exigindo verificação e aprovação humana explícita antes de qualquer operação de tarjamento.
    */
   static async analyzePdf(
     pagesData: PageTextData[],
     categories: RedactionCategoryOptions,
-    aiSettings: AiSettings,
-    onProgress?: (progress: { message: string; percent: number }) => void
+    settings: DetectionSettings,
+    onProgress?: (progress: { message: string; percent: number }) => void,
+    fileName?: string
   ): Promise<DetectedRedactionItem[]> {
     const results: DetectedRedactionItem[] = [];
     const totalPages = pagesData.length;
+    const isComprehensive = settings?.mode === 'comprehensive';
 
     // 1. Fase 1: Análise por Padrões / Regex em todas as páginas (Determinística e instantânea)
     for (let i = 0; i < totalPages; i++) {
       const page = pagesData[i];
       onProgress?.({
         message: `Analisando padrões e regras LGPD (Página ${i + 1}/${totalPages})...`,
-        percent: Math.round(((i + 1) / totalPages) * 50)
+        percent: isComprehensive
+          ? Math.round(((i + 1) / totalPages) * 50)
+          : Math.round(((i + 1) / totalPages) * 90)
       });
       await new Promise(r => setTimeout(r, 0));
 
@@ -75,31 +84,34 @@ export class AiRedactionService {
       results.push(...patternItems);
     }
 
-    // 2. Fase 2: Análise Heurística de Entidades Documentais (confidence >= 0.85)
-    for (let i = 0; i < totalPages; i++) {
-      const page = pagesData[i];
-      onProgress?.({
-        message: `Classificação de entidades documentais (Página ${i + 1}/${totalPages})...`,
-        percent: 50 + Math.round(((i + 1) / totalPages) * 45)
-      });
-      await new Promise(r => setTimeout(r, 0));
+    // 2. Fase 2: Análise Heurística de Entidades Documentais
+    // Executada EXCLUSIVAMENTE no modo 'comprehensive'. O modo 'pattern' é estritamente regex.
+    if (isComprehensive) {
+      for (let i = 0; i < totalPages; i++) {
+        const page = pagesData[i];
+        onProgress?.({
+          message: `Classificação heurística de entidades documentais (Página ${i + 1}/${totalPages})...`,
+          percent: 50 + Math.round(((i + 1) / totalPages) * 45)
+        });
+        await new Promise(r => setTimeout(r, 0));
 
-      if (!page.fullText || page.fullText.trim().length < 5) continue;
+        if (!page.fullText || page.fullText.trim().length < 5) continue;
 
-      const entityItems = UniversalAiClassifier.classifyPageTokens(
-        page,
-        categories,
-        aiSettings.rigorLevel || 'broad'
-      );
-      for (const item of entityItems) {
-        // Trava de Confiança Estrita 0.85
-        if (item.confidence < 0.85) continue;
-
-        const alreadyExists = results.some(
-          r => r.pageIndex === item.pageIndex && Math.abs(r.rect.x - item.rect.x) < 5 && Math.abs(r.rect.y - item.rect.y) < 5
+        const entityItems = DocumentEntityClassifier.classifyPageTokens(
+          page,
+          categories,
+          settings.rigorLevel || 'broad'
         );
-        if (!alreadyExists) {
-          results.push(item);
+        for (const item of entityItems) {
+          // Trava de Confiança Estrita 0.85
+          if (item.confidence < 0.85) continue;
+
+          const alreadyExists = results.some(
+            r => r.pageIndex === item.pageIndex && Math.abs(r.rect.x - item.rect.x) < 5 && Math.abs(r.rect.y - item.rect.y) < 5
+          );
+          if (!alreadyExists) {
+            results.push(item);
+          }
         }
       }
     }
@@ -127,6 +139,13 @@ export class AiRedactionService {
             reason: 'Proteção de Sigilo Judicial: Cobertura da Margem Lateral com Link e Código de Verificação e-SAJ/TJSP'
           }
         });
+      }
+    }
+
+    if (fileName) {
+      for (const item of results) {
+        item.fileName = fileName;
+        if (item.rect) item.rect.fileName = fileName;
       }
     }
 
@@ -320,4 +339,6 @@ export class AiRedactionService {
   }
 }
 
-export { AiRedactionService as RedactionService };
+// Aliases para manter compatibilidade com módulos e scripts existentes
+export const AiRedactionService = RedactionDetectionService;
+export const RedactionService = RedactionDetectionService;

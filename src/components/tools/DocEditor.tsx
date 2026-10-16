@@ -60,9 +60,16 @@ import {
   QrCode,
   BookOpenCheck,
   UserCheck,
-  ShieldAlert
+  ShieldAlert,
+  Table,
+  SeparatorHorizontal,
+  PanelTop,
+  SplitSquareVertical
 } from 'lucide-react';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { RichPdfExporterService } from '../../services/richPdfExporterService';
+import { DocxExporterService } from '../../services/docxExporterService';
+import { PdfTextExtractor } from '../../services/pdfTextExtractor';
 
 interface VersionSnapshot {
   id: string;
@@ -603,6 +610,25 @@ export const DocEditor: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState<boolean>(false);
   const [qrProofTitle, setQrProofTitle] = useState<string>('Vídeo de Prova Documental');
   const [qrProofUrl, setQrProofUrl] = useState<string>('https://pje.jus.br/');
+  const [isExportingDocx, setIsExportingDocx] = useState<boolean>(false);
+
+  // Paged Preview & Layout States
+  const [isPagedView, setIsPagedView] = useState<boolean>(true);
+  const [showHeaderFooterModal, setShowHeaderFooterModal] = useState<boolean>(false);
+  const [headerText, setHeaderText] = useState<string>('EXMO. SR. DR. JUIZ DE DIREITO DA 1ª VARA CÍVEL');
+  const [footerText, setFooterText] = useState<string>('KovaxFiles Advocacia • Documento Processual Auditado');
+  const [enableHeaderFooter, setEnableHeaderFooter] = useState<boolean>(true);
+  const [headerOnFirstPage, setHeaderOnFirstPage] = useState<boolean>(false);
+
+  // Table Insertion States
+  const [showTableModal, setShowTableModal] = useState<boolean>(false);
+  const [tableRows, setTableRows] = useState<number>(3);
+  const [tableCols, setTableCols] = useState<number>(3);
+  const [tablePreset, setTablePreset] = useState<string>('custom');
+
+  // Legal Styles & Import States
+  const [selectedLegalStyle, setSelectedLegalStyle] = useState<string>('corpo');
+  const [isImporting, setIsImporting] = useState<boolean>(false);
 
   // Dictation & Voice Handlers
   const toggleDictation = () => {
@@ -835,57 +861,22 @@ export const DocEditor: React.FC = () => {
     }
   };
 
-  const handleExportDOCX = () => {
-    if (!editorRef.current) return;
-    const htmlContent = editorRef.current.innerHTML;
-    
-    const docxTemplate = `<!DOCTYPE html>
-<html xmlns:o='urn:schemas-microsoft-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head>
-  <meta charset='utf-8'>
-  <title>${docTitle}</title>
-  <style>
-    @page WordSection1 {
-      size: 595.3pt 841.9pt;
-      margin: 70.85pt 85.05pt 70.85pt 85.05pt;
-      mso-header-margin: 35.4pt;
-      mso-footer-margin: 35.4pt;
-      mso-paper-source: 0;
+  const handleExportDOCX = async () => {
+    if (!editorRef.current || isExportingDocx) return;
+    try {
+      setIsExportingDocx(true);
+      const htmlContent = editorRef.current.innerHTML;
+      await DocxExporterService.exportHtmlToDocx(htmlContent, docTitle, {
+        headerText,
+        footerText,
+        enableHeaderFooter
+      });
+    } catch (err) {
+      console.error('Falha ao exportar DOCX autêntico:', err);
+      alert('Não foi possível gerar o arquivo Word (.docx). Verifique o conteúdo do documento.');
+    } finally {
+      setIsExportingDocx(false);
     }
-    div.WordSection1 { page: WordSection1; }
-    body {
-      font-family: 'Times New Roman', serif;
-      font-size: 12pt;
-      line-height: 1.5;
-      text-align: justify;
-      color: #000000;
-    }
-    p {
-      text-indent: 2cm;
-      margin-bottom: 12pt;
-      text-align: justify;
-      line-height: 1.5;
-    }
-    h1, h2, h3 {
-      font-family: 'Times New Roman', serif;
-      font-weight: bold;
-    }
-  </style>
-</head>
-<body>
-  <div class="WordSection1">
-    ${htmlContent}
-  </div>
-</body>
-</html>`;
-
-    const blob = new Blob(['\ufeff', docxTemplate], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = docTitle.replace(/\.[^/.]+$/, '') + '.docx';
-    link.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleApplyAbntFormatting = () => {
@@ -1340,64 +1331,26 @@ export const DocEditor: React.FC = () => {
     setIsExporting(true);
 
     try {
-      const pdfDoc = await PDFDocument.create();
-      let page = pdfDoc.addPage([595.28, 841.89]);
-      const { width, height } = page.getSize();
-      const margin = 50;
+      const htmlContent = editorRef.current.innerHTML || '';
+      const cleanTitle = docTitle.replace(/\.[^/.]+$/, '');
+      const pdfBytes = await RichPdfExporterService.exportHtmlToPdf(htmlContent, {
+        title: cleanTitle,
+        author: 'KovaxFiles Desktop',
+        headerTitle: headerText || cleanTitle,
+        footerTitle: footerText,
+        enableHeaderFooter,
+        headerOnFirstPage
+      });
 
-      const font = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-      const rawText = editorRef.current.innerText || '';
-      const lines = rawText.split('\n');
-
-      let yPos = height - margin;
-      const fontSizePt = 11;
-      const lineHeightPt = 16;
-
-      for (const line of lines) {
-        if (yPos < margin + lineHeightPt) {
-          page = pdfDoc.addPage([595.28, 841.89]);
-          yPos = height - margin;
-        }
-
-        const maxCharsPerLine = 75;
-        if (line.length > maxCharsPerLine) {
-          const chunks = line.match(new RegExp('.{1,' + maxCharsPerLine + '}', 'g')) || [line];
-          for (const chunk of chunks) {
-            if (yPos < margin + lineHeightPt) {
-              page = pdfDoc.addPage([595.28, 841.89]);
-              yPos = height - margin;
-            }
-            page.drawText(chunk, {
-              x: margin,
-              y: yPos,
-              size: fontSizePt,
-              font: font,
-              color: rgb(0.1, 0.1, 0.1)
-            });
-            yPos -= lineHeightPt;
-          }
-        } else {
-          page.drawText(line, {
-            x: margin,
-            y: yPos,
-            size: fontSizePt,
-            font: font,
-            color: rgb(0.1, 0.1, 0.1)
-          });
-          yPos -= lineHeightPt;
-        }
-      }
-
-      const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = docTitle.replace(/\.[^/.]+$/, '') + '_Exportado.pdf';
+      link.download = cleanTitle + '_Exportado.pdf';
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Erro ao gerar PDF:', err);
+      console.error('Erro ao gerar PDF com estilos preservados:', err);
       window.print();
     } finally {
       setIsExporting(false);
@@ -1411,28 +1364,267 @@ export const DocEditor: React.FC = () => {
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (editorRef.current) {
-        if (file.name.endsWith('.html') || file.name.endsWith('.htm')) {
-          editorRef.current.innerHTML = content;
-        } else {
-          const formatted = content
-            .split('\n\n')
-            .map(p => `<p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;">${p.replace(/\n/g, '<br>')}</p>`)
-            .join('');
-          editorRef.current.innerHTML = formatted;
+    setIsImporting(true);
+    try {
+      const lowerName = file.name.toLowerCase();
+
+      if (lowerName.endsWith('.docx')) {
+        const buffer = await file.arrayBuffer();
+        const importedHtml = await DocxExporterService.importDocxToHtml(buffer);
+        if (editorRef.current) {
+          editorRef.current.innerHTML = importedHtml;
+          setDocTitle(file.name);
+          updateMetrics();
         }
-        setDocTitle(file.name);
-        updateMetrics();
+      } else if (lowerName.endsWith('.pdf')) {
+        const buffer = await file.arrayBuffer();
+        const pages = await PdfTextExtractor.extractTextWithBounds(buffer);
+        let reconstructedHtml = '';
+        pages.forEach((pg, idx) => {
+          if (idx > 0) {
+            reconstructedHtml += '<hr class="page-break" style="page-break-after: always; break-after: page; border: none; border-top: 2px dashed #3b82f6; margin: 24px 0;" data-page-break="true" />';
+          }
+          const paras = pg.fullText
+            .split(/\n\s*\n/)
+            .map(p => p.trim())
+            .filter(p => p.length > 0)
+            .map(p => `<p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;">${p.replace(/\n/g, ' ')}</p>`)
+            .join('\n');
+          reconstructedHtml += paras;
+        });
+
+        if (editorRef.current) {
+          editorRef.current.innerHTML = reconstructedHtml || '<p>Nenhum texto extraível encontrado no PDF.</p>';
+          setDocTitle(file.name.replace(/\.pdf$/i, '.docx'));
+          updateMetrics();
+        }
+      } else if (lowerName.endsWith('.html') || lowerName.endsWith('.htm')) {
+        const text = await file.text();
+        if (editorRef.current) {
+          editorRef.current.innerHTML = text;
+          setDocTitle(file.name);
+          updateMetrics();
+        }
+      } else if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) {
+        const text = await file.text();
+        let mdHtml = text
+          .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+          .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+          .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.*?)\*/g, '<em>$1</em>')
+          .split('\n\n')
+          .map(p => `<p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;">${p.replace(/\n/g, '<br>')}</p>`)
+          .join('');
+        if (editorRef.current) {
+          editorRef.current.innerHTML = mdHtml;
+          setDocTitle(file.name);
+          updateMetrics();
+        }
+      } else {
+        const text = await file.text();
+        const formatted = text
+          .split('\n\n')
+          .map(p => `<p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;">${p.replace(/\n/g, '<br>')}</p>`)
+          .join('');
+        if (editorRef.current) {
+          editorRef.current.innerHTML = formatted;
+          setDocTitle(file.name);
+          updateMetrics();
+        }
       }
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      console.error('Falha ao importar documento:', err);
+      alert('Erro ao carregar o arquivo. Verifique o formato do documento.');
+    } finally {
+      setIsImporting(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleInsertPageBreak = () => {
+    if (!editorRef.current) return;
+    const pageBreakHtml = `
+      <hr class="page-break" style="page-break-after: always; break-after: page; border: none; border-top: 2px dashed #3b82f6; margin: 24px 0; height: 1px;" data-page-break="true" />
+      <p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;"><br></p>
+    `;
+    executeCommand('insertHTML', pageBreakHtml);
+    updateMetrics();
+  };
+
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Ctrl+Enter or Cmd+Enter for Page Break
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleInsertPageBreak();
+    }
+  };
+
+  const handleInsertTable = (preset?: string) => {
+    if (!editorRef.current) return;
+
+    let tableHtml = '';
+    const selected = preset || tablePreset;
+
+    if (selected === 'calculo') {
+      tableHtml = `
+        <table style="width: 100%; border-collapse: collapse; margin: 14pt 0; border: 1px solid #cbd5e1; font-size: 10pt;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: center;">Item</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: left;">Descrição da Obrigação</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: right;">Valor Histórico</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: right;">Correção (IPCA-E)</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: right;">Juros Moratórios (1%)</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #e2e8f0; font-weight: bold; text-align: right;">Total Devido</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: center;">01</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt;">Indébito ref. cobrança indevida</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right;">R$ 1.500,00</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right;">R$ 124,50</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right;">R$ 150,00</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right; font-weight: bold;">R$ 1.774,50</td>
+            </tr>
+            <tr>
+              <td colspan="5" style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right; font-weight: bold; background-color: #f8fafc;">TOTAL GERAL ATUALIZADO:</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right; font-weight: bold; background-color: #f1f5f9; color: #1e3a8a;">R$ 1.774,50</td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;"><br></p>
+      `;
+    } else if (selected === 'parcelas') {
+      tableHtml = `
+        <table style="width: 100%; border-collapse: collapse; margin: 14pt 0; border: 1px solid #cbd5e1; font-size: 10pt;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: center;">Parcela</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: center;">Vencimento</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: right;">Valor Nominal</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: right;">Valor Atualizado</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; text-align: center;">Situação</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: center;">01/12</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: center;">10/01/2026</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right;">R$ 1.000,00</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right;">R$ 1.000,00</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: center; color: #16a34a; font-weight: bold;">Liquidada</td>
+            </tr>
+            <tr>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: center;">02/12</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: center;">10/02/2026</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right;">R$ 1.000,00</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: right;">R$ 1.045,00</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; text-align: center; color: #dc2626; font-weight: bold;">Inadimplida</td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;"><br></p>
+      `;
+    } else if (selected === 'clausulas') {
+      tableHtml = `
+        <table style="width: 100%; border-collapse: collapse; margin: 14pt 0; border: 1px solid #cbd5e1; font-size: 10pt;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; width: 25%;">Cláusula Contratual</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; width: 40%;">Redação Original Abusiva</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6pt 8pt; background-color: #f1f5f9; font-weight: bold; width: 35%;">Adequação Proposta / Nulidade</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; font-weight: bold;">Cláusula 5ª, § 2º</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt;">"Em caso de rescisão, haverá retenção de 50% dos valores pagos."</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6pt 8pt; color: #dc2626;">Nulidade absoluta (CDC Art. 51, IV). Fixação em 10% a 20%.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;"><br></p>
+      `;
+    } else {
+      const rows = Math.min(Math.max(tableRows, 1), 20);
+      const cols = Math.min(Math.max(tableCols, 1), 10);
+      let headerTr = '<tr>';
+      for (let c = 1; c <= cols; c++) {
+        headerTr += `<th style="border: 1px solid #cbd5e1; padding: 6pt 10pt; background-color: #f1f5f9; font-weight: bold;">Coluna ${c}</th>`;
+      }
+      headerTr += '</tr>';
+
+      let bodyTrs = '';
+      for (let r = 1; r <= rows; r++) {
+        bodyTrs += '<tr>';
+        for (let c = 1; c <= cols; c++) {
+          bodyTrs += `<td style="border: 1px solid #cbd5e1; padding: 6pt 10pt;">Dado ${r}.${c}</td>`;
+        }
+        bodyTrs += '</tr>';
+      }
+
+      tableHtml = `
+        <table style="width: 100%; border-collapse: collapse; margin: 14pt 0; border: 1px solid #cbd5e1; font-size: 10.5pt;">
+          <thead>${headerTr}</thead>
+          <tbody>${bodyTrs}</tbody>
+        </table>
+        <p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;"><br></p>
+      `;
+    }
+
+    executeCommand('insertHTML', tableHtml);
+    setShowTableModal(false);
+    updateMetrics();
+  };
+
+  const handleApplyLegalStyle = (styleType: string) => {
+    setSelectedLegalStyle(styleType);
+    if (!editorRef.current) return;
+
+    switch (styleType) {
+      case 'enderecamento': {
+        const html = `<p style="text-align: left; font-weight: bold; margin-bottom: 24pt; font-family: 'Times New Roman', serif; line-height: 1.5; text-transform: uppercase;">EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO DA [NÚMERO]ª VARA CÍVEL DA COMARCA DE [CIDADE/UF]</p><p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;"><br></p>`;
+        executeCommand('insertHTML', html);
+        break;
+      }
+      case 'epigrafe': {
+        const html = `<h1 style="text-align: center; font-size: 13pt; font-weight: bold; margin-top: 18pt; margin-bottom: 18pt; text-transform: uppercase; font-family: 'Times New Roman', serif;">AÇÃO DECLARATÓRIA C/C PEDIDO DE TUTELA DE URGÊNCIA</h1><p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;"><br></p>`;
+        executeCommand('insertHTML', html);
+        break;
+      }
+      case 'fatos': {
+        const html = `<h2 style="font-size: 12pt; font-weight: bold; margin-top: 14pt; margin-bottom: 6pt; font-family: 'Times New Roman', serif;">I. DOS FATOS</h2><p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;">O Requerente celebrou com a Requerida o negócio jurídico em testilha, restando incontroverso que...</p>`;
+        executeCommand('insertHTML', html);
+        break;
+      }
+      case 'direito': {
+        const html = `<h2 style="font-size: 12pt; font-weight: bold; margin-top: 14pt; margin-bottom: 6pt; font-family: 'Times New Roman', serif;">II. DO DIREITO E DA FUNDAMENTAÇÃO JURÍDICA</h2><p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;">O ordenamento pátrio consagra a proteção substancial pleiteada, nos termos do Art. 186 e 927 do Código Civil...</p>`;
+        executeCommand('insertHTML', html);
+        break;
+      }
+      case 'citacao': {
+        const html = `<blockquote style="margin-left: 4cm; font-size: 10pt; line-height: 1.0; font-family: 'Times New Roman', serif; text-align: justify; margin-top: 12pt; margin-bottom: 12pt; color: #1e293b; font-style: italic;">“A reparabilidade do dano moral e material decorre de mandamento constitucional irretratável, competindo ao magistrado restabelecer a ordem jurídica vulnerada.” (STJ, REsp nº 1.234.567)</blockquote><p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;"><br></p>`;
+        executeCommand('insertHTML', html);
+        break;
+      }
+      case 'pedidos': {
+        const html = `<h2 style="font-size: 12pt; font-weight: bold; margin-top: 14pt; margin-bottom: 6pt; font-family: 'Times New Roman', serif;">III. DOS PEDIDOS E REQUERIMENTOS</h2><p style="text-indent: 2cm; margin-bottom: 8pt; text-align: justify; line-height: 1.5;">Ante o exposto, requer a Vossa Excelência:</p><ol style="margin-left: 2cm; margin-bottom: 12pt; line-height: 1.5;"><li>A concessão da <strong>Tutela de Urgência</strong> inaudita altera parte;</li><li>A citação da Requerida para, querendo, contestar a presente;</li><li>A procedência total dos pedidos para condenar a Requerida;</li><li>A condenação em honorários advocatícios sucumbenciais na ordem de 20%.</li></ol><p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;"><br></p>`;
+        executeCommand('insertHTML', html);
+        break;
+      }
+      case 'fecho': {
+        const html = `<p style="text-align: center; margin-top: 24pt; margin-bottom: 12pt; line-height: 1.5;">Nestes termos,<br>Pede e espera deferimento.</p><p style="text-align: center; margin-top: 24pt;">[CIDADE/UF], ${new Date().toLocaleDateString('pt-BR')}.</p><p style="text-align: center; margin-top: 36pt;">________________________________________<br><strong>[NOME DO ADVOGADO(A)]</strong><br>OAB/[UF] nº [NÚMERO]</p>`;
+        executeCommand('insertHTML', html);
+        break;
+      }
+    }
+    updateMetrics();
   };
 
   return (
@@ -1565,9 +1757,19 @@ export const DocEditor: React.FC = () => {
           </button>
 
           <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium cursor-pointer border border-slate-700 transition-all">
-            <FileUp className="w-3.5 h-3.5 text-slate-400" />
-            <span>Abrir</span>
-            <input type="file" accept=".txt,.html,.htm,.md" onChange={handleFileUpload} className="hidden" />
+            {isImporting ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-400" />
+            ) : (
+              <FileUp className="w-3.5 h-3.5 text-slate-400" />
+            )}
+            <span>{isImporting ? 'Importando...' : 'Abrir'}</span>
+            <input
+              type="file"
+              accept=".docx,.pdf,.html,.htm,.txt,.md"
+              onChange={handleFileUpload}
+              disabled={isImporting}
+              className="hidden"
+            />
           </label>
 
           <button
@@ -1582,11 +1784,16 @@ export const DocEditor: React.FC = () => {
 
           <button
             onClick={handleExportDOCX}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold transition-all"
-            title="Baixar Arquivo Microsoft Word (.docx)"
+            disabled={isExportingDocx}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold transition-all disabled:opacity-50"
+            title="Baixar Arquivo Microsoft Word Oficial (.docx - Office Open XML)"
           >
-            <FileDown className="w-3.5 h-3.5" />
-            <span>DOCX</span>
+            {isExportingDocx ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileDown className="w-3.5 h-3.5" />
+            )}
+            <span>{isExportingDocx ? 'Gerando...' : 'DOCX'}</span>
           </button>
 
           <button
@@ -1723,7 +1930,7 @@ export const DocEditor: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 pr-2 border-r border-slate-800">
           <button
             onClick={() => executeCommand('insertUnorderedList')}
             className="p-1.5 rounded hover:bg-slate-800 text-slate-300 hover:text-white"
@@ -1739,6 +1946,73 @@ export const DocEditor: React.FC = () => {
             <ListOrdered className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Legal Styles Dropdown */}
+        <div className="pr-2 border-r border-slate-800">
+          <select
+            value={selectedLegalStyle}
+            onChange={(e) => handleApplyLegalStyle(e.target.value)}
+            className="bg-slate-800 text-slate-200 text-xs px-2 py-1 rounded border border-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer"
+            title="Aplicar Estilo Jurídico Padronizado"
+          >
+            <option value="corpo">Estilo: Corpo de Petição (ABNT 2cm)</option>
+            <option value="enderecamento">Estilo: Endereçamento Judicial</option>
+            <option value="epigrafe">Estilo: Epígrafe / Título da Ação</option>
+            <option value="fatos">Estilo: Seção dos Fatos</option>
+            <option value="direito">Estilo: Fundamentação Jurídica</option>
+            <option value="citacao">Estilo: Citação Recuada (4cm)</option>
+            <option value="pedidos">Estilo: Rol de Pedidos</option>
+            <option value="fecho">Estilo: Fecho e Assinatura</option>
+          </select>
+        </div>
+
+        {/* Page Break Control */}
+        <button
+          onClick={handleInsertPageBreak}
+          className="flex items-center gap-1 px-2.5 py-1 rounded hover:bg-slate-800 text-blue-400 hover:text-blue-300 border border-slate-800 hover:border-slate-700 transition-all text-xs font-medium"
+          title="Inserir Quebra de Página (Ctrl+Enter)"
+        >
+          <SeparatorHorizontal className="w-3.5 h-3.5 text-blue-400" />
+          <span>Quebra de Página</span>
+        </button>
+
+        {/* Legal Table Control */}
+        <button
+          onClick={() => setShowTableModal(true)}
+          className="flex items-center gap-1 px-2.5 py-1 rounded hover:bg-slate-800 text-teal-400 hover:text-teal-300 border border-slate-800 hover:border-slate-700 transition-all text-xs font-medium"
+          title="Inserir Tabela Jurídica (Cálculos, Parcelas, Cláusulas)"
+        >
+          <Table className="w-3.5 h-3.5 text-teal-400" />
+          <span>Tabela</span>
+        </button>
+
+        {/* Headers and Footers Modal Control */}
+        <button
+          onClick={() => setShowHeaderFooterModal(true)}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs transition-all border font-medium ${
+            enableHeaderFooter
+              ? 'bg-purple-600/20 text-purple-300 border-purple-500/40 hover:bg-purple-600/30'
+              : 'hover:bg-slate-800 text-slate-400 border-slate-800 hover:border-slate-700'
+          }`}
+          title="Configurar Cabeçalho e Rodapé Oficial"
+        >
+          <PanelTop className="w-3.5 h-3.5 text-purple-400" />
+          <span>Cabeçalho & Rodapé</span>
+        </button>
+
+        {/* Paged View Mode Toggle */}
+        <button
+          onClick={() => setIsPagedView(!isPagedView)}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs transition-all border font-medium ${
+            isPagedView
+              ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-600/30'
+              : 'hover:bg-slate-800 text-slate-400 border-slate-800 hover:border-slate-700'
+          }`}
+          title="Alternar entre Visualização Paginada A4 e Fluxo Contínuo"
+        >
+          <SplitSquareVertical className="w-3.5 h-3.5 text-emerald-400" />
+          <span>{isPagedView ? 'Modo Paginado (A4)' : 'Modo Contínuo'}</span>
+        </button>
       </div>
 
       {/* Main Workspace: Left Building Blocks Sidebar + Centered Canvas */}
@@ -2112,15 +2386,33 @@ export const DocEditor: React.FC = () => {
           </aside>
         )}
 
-        {/* Main Canvas Viewport (Google Docs Paper Canvas) */}
-        <div className="flex-1 bg-slate-950 overflow-y-auto p-4 md:p-8 flex justify-center items-start">
-          <div className="w-full max-w-[816px] min-h-[1056px] bg-white text-slate-900 shadow-2xl rounded-sm p-8 md:p-12 relative border border-slate-300 focus:outline-none transition-all">
+        {/* Main Canvas Viewport (Google Docs / PJe Paper Canvas) */}
+        <div className="flex-1 bg-slate-950 overflow-y-auto p-4 md:p-8 flex flex-col items-center">
+          <div
+            className={`w-full max-w-[816px] bg-white text-slate-900 shadow-2xl rounded-sm transition-all duration-300 relative border border-slate-300 ${
+              isPagedView ? 'p-8 md:p-12 min-h-[1123px] my-2' : 'p-6 md:p-10 min-h-[950px]'
+            }`}
+          >
+            {/* Visual Sheet Header (when Paged View & Header is enabled) */}
+            {isPagedView && enableHeaderFooter && (
+              <div className="border-b border-slate-200 pb-3 mb-6 flex items-center justify-between text-[11px] text-slate-500 font-serif select-none">
+                <span className="truncate max-w-[70%] font-medium text-slate-700">
+                  {headerText || docTitle}
+                </span>
+                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200 font-sans">
+                  Folha A4 Oficial
+                </span>
+              </div>
+            )}
+
+            {/* Editable Content */}
             <div
               ref={editorRef}
               contentEditable
               onInput={updateMetrics}
               onKeyUp={updateMetrics}
-              className="w-full min-h-[950px] outline-none text-slate-900 leading-relaxed selection:bg-blue-200"
+              onKeyDown={handleEditorKeyDown}
+              className="w-full min-h-[920px] outline-none text-slate-900 leading-relaxed selection:bg-blue-200"
               style={{
                 fontFamily: fontFamily,
                 fontSize: fontSize,
@@ -2128,6 +2420,18 @@ export const DocEditor: React.FC = () => {
                 textAlign: 'justify'
               }}
             />
+
+            {/* Visual Sheet Footer (when Paged View & Footer is enabled) */}
+            {isPagedView && enableHeaderFooter && (
+              <div className="border-t border-slate-200 pt-3 mt-8 flex items-center justify-between text-[11px] text-slate-500 font-serif select-none">
+                <span className="truncate max-w-[70%] text-slate-600">
+                  {footerText || 'KovaxFiles Desktop • Documento Processual Auditado'}
+                </span>
+                <span className="text-slate-600 font-medium">
+                  Página 1 de {Math.max(1, Math.ceil(wordCount / 280) + (editorRef.current?.querySelectorAll?.('.page-break')?.length || 0))}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2721,6 +3025,201 @@ export const DocEditor: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Header and Footer Configuration Modal */}
+      {showHeaderFooterModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-purple-400">
+                <PanelTop className="w-5 h-5" />
+                <h3 className="font-semibold text-slate-100 text-base">Cabeçalho & Rodapé da Petição</h3>
+              </div>
+              <button onClick={() => setShowHeaderFooterModal(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-slate-300 font-medium block mb-1.5">
+                  Texto do Cabeçalho Superior (Vara, Tribunal ou Timbre):
+                </label>
+                <input
+                  type="text"
+                  value={headerText}
+                  onChange={(e) => setHeaderText(e.target.value)}
+                  placeholder="Ex: EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO - 1ª VARA CÍVEL"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 font-sans"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">Aparece alinhado à direita no topo de cada folha A4 e no DOCX/PDF exportado.</span>
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-300 font-medium block mb-1.5">
+                  Texto do Rodapé Inferior (Escritório, OAB, Contato):
+                </label>
+                <input
+                  type="text"
+                  value={footerText}
+                  onChange={(e) => setFooterText(e.target.value)}
+                  placeholder="Ex: Escritório Kovax Advocacia • OAB/SP 450.892 • (11) 99999-9999"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 font-sans"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">Aparece alinhado à esquerda na base da folha, seguido da paginação automática.</span>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300 select-none">
+                  <input
+                    type="checkbox"
+                    checked={enableHeaderFooter}
+                    onChange={(e) => setEnableHeaderFooter(e.target.checked)}
+                    className="rounded bg-slate-800 border-slate-700 text-purple-600 focus:ring-purple-500 w-4 h-4"
+                  />
+                  <span>Habilitar cabeçalho e rodapé em todas as páginas</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300 select-none">
+                  <input
+                    type="checkbox"
+                    checked={headerOnFirstPage}
+                    onChange={(e) => setHeaderOnFirstPage(e.target.checked)}
+                    className="rounded bg-slate-800 border-slate-700 text-purple-600 focus:ring-purple-500 w-4 h-4"
+                  />
+                  <span>Exibir cabeçalho já na primeira página (desmarcado por padrão em petições)</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
+              <button
+                onClick={() => setShowHeaderFooterModal(false)}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-md shadow-purple-900/30"
+              >
+                Salvar Configurações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legal Table Insertion Modal */}
+      {showTableModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-teal-400">
+                <Table className="w-5 h-5" />
+                <h3 className="font-semibold text-slate-100 text-base">Inserir Tabela Jurídica</h3>
+              </div>
+              <button onClick={() => setShowTableModal(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-slate-300 font-medium block mb-2">
+                  Escolha um Modelo Pré-Formatado ou Tabela Personalizada:
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTablePreset('calculo')}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      tablePreset === 'calculo'
+                        ? 'bg-teal-600/20 border-teal-500/50 text-white'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs text-teal-300">📊 Demonstrativo de Débito / Liquidação de Sentença</div>
+                    <div className="text-[11px] text-slate-400 mt-1">Colunas: Item, Obrigação, Valor Histórico, Correção IPCA-E, Juros 1%, Total Geral</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTablePreset('parcelas')}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      tablePreset === 'parcelas'
+                        ? 'bg-teal-600/20 border-teal-500/50 text-white'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs text-teal-300">📅 Cronograma de Parcelas e Vencimentos</div>
+                    <div className="text-[11px] text-slate-400 mt-1">Colunas: Parcela, Vencimento, Valor Nominal, Encargos, Atualizado, Situação</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTablePreset('clausulas')}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      tablePreset === 'clausulas'
+                        ? 'bg-teal-600/20 border-teal-500/50 text-white'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs text-teal-300">⚖️ Quadro Comparativo de Cláusulas Abusivas (CDC)</div>
+                    <div className="text-[11px] text-slate-400 mt-1">Colunas: Cláusula, Redação Original Contratual, Adequação Proposta / Nulidade</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTablePreset('custom')}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      tablePreset === 'custom'
+                        ? 'bg-teal-600/20 border-teal-500/50 text-white'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs text-teal-300">📐 Tabela Personalizada (Linhas x Colunas)</div>
+                    <div className="text-[11px] text-slate-400 mt-1">Configure o número exato de linhas e colunas conforme sua necessidade</div>
+                  </button>
+                </div>
+              </div>
+
+              {tablePreset === 'custom' && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">Número de Linhas:</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={tableRows}
+                      onChange={(e) => setTableRows(parseInt(e.target.value) || 1)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">Número de Colunas:</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={8}
+                      value={tableCols}
+                      onChange={(e) => setTableCols(parseInt(e.target.value) || 1)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
+              <button
+                onClick={() => setShowTableModal(false)}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleInsertTable()}
+                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-md shadow-teal-900/30"
+              >
+                Inserir Tabela
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
