@@ -18,6 +18,8 @@ async function testOcrPipeline() {
 
   // Testar geração de Searchable PDF diretamente do OcrDocumentService
   console.log('\n[1/3] Testando geração de Searchable PDF (Sandwich PDF)...');
+  const dummyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+
   const processedPages = [
     {
       pageNumber: 1,
@@ -28,7 +30,7 @@ async function testOcrPipeline() {
       confidence: 94,
       status: 'complete' as const,
       issues: [],
-      previewImageUrl: '',
+      previewImageUrl: dummyPng,
       lines: [
         {
           text: 'EXCELENTISSIMO SENHOR JUIZ DE DIREITO DA 1a VARA CIVEL',
@@ -57,7 +59,7 @@ async function testOcrPipeline() {
       confidence: 58,
       status: 'incomplete' as const,
       issues: ['Confiança média muito baixa (58%). Texto com provável degradação visual.'],
-      previewImageUrl: '',
+      previewImageUrl: dummyPng,
       lines: [],
       words: [],
       isRevised: true // Teste de página revisada

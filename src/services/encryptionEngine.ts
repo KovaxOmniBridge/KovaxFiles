@@ -176,11 +176,13 @@ export class EncryptionEngine {
       ['encrypt']
     );
 
-    const rawBuffer = fileBuffer instanceof Uint8Array ? fileBuffer.buffer : fileBuffer;
+    const rawBytes = fileBuffer instanceof Uint8Array
+      ? new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength)
+      : new Uint8Array(fileBuffer);
     const ciphertext = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv },
       key,
-      rawBuffer as ArrayBuffer
+      rawBytes as any
     );
 
     const magic = enc.encode('KVX1');
@@ -243,11 +245,12 @@ export class EncryptionEngine {
       ['decrypt']
     );
 
+    const cipherBytes = new Uint8Array(bytes.buffer, bytes.byteOffset + 32, bytes.byteLength - 32);
     try {
       const decrypted = await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv },
         key,
-        ciphertext.buffer as ArrayBuffer
+        cipherBytes as any
       );
       return new Uint8Array(decrypted);
     } catch {

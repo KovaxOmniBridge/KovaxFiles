@@ -11,6 +11,16 @@ import {
 } from 'docx';
 import { htmlToContent } from 'docx/html';
 import * as fflate from 'fflate';
+import {
+  safeUnzipDocx,
+  parseXml,
+  XmlNode,
+  DocxSecurityError,
+  MalformedDocxError
+} from './ooxmlParser';
+import { HtmlSanitizer } from './htmlSanitizer';
+
+export { DocxSecurityError, MalformedDocxError };
 
 export interface DocxFormattingOptions {
   headerText?: string;
@@ -308,95 +318,308 @@ export class DocxExporterService {
 
   /**
    * Importa e converte um arquivo .docx (Office Open XML) em HTML formatado para o editor
-   * Preserva parágrafos, cabeçalhos, negrito, itálico, tabelas e quebras de página.
+   * Utiliza parser XML/OOXML robusto com validação estrita, limites de descompressão contra zip bombs,
+   * e preserva elementos essenciais: imagens embutidas, tabelas, listas numeradas e com marcadores,
+   * cabeçalhos, rodapés, quebras de página e estilos tipográficos.
    */
   static async importDocxToHtml(docxData: Uint8Array | ArrayBuffer): Promise<string> {
     const bytes = docxData instanceof Uint8Array ? docxData : new Uint8Array(docxData);
-    const unzipped = fflate.unzipSync(bytes);
-    
-    // Localizar o arquivo XML principal
+
+    // 1. Descompressão segura com validação contra Zip Bombs
+    const unzipped = safeUnzipDocx(bytes);
+
+    // 2. Localizar o arquivo XML principal do documento
     const docXmlEntry = unzipped['word/document.xml'] || unzipped['word/document2.xml'];
     if (!docXmlEntry) {
-      throw new Error('Arquivo DOCX inválido: não contém word/document.xml');
+      throw new MalformedDocxError('Arquivo DOCX inválido: não contém word/document.xml');
     }
 
+    // 3. Mapear relacionamentos de mídia (word/_rels/document.xml.rels)
+    const mediaRels: Record<string, string> = {};
+    const relsEntry = unzipped['word/_rels/document.xml.rels'];
+    if (relsEntry) {
+      try {
+        const relsStr = fflate.strFromU8(relsEntry);
+        const relsXml = parseXml(relsStr);
+        const relNodes = relsXml.findDescendants('Relationship');
+        for (const rel of relNodes) {
+          const id = rel.getAttribute('Id');
+          const target = rel.getAttribute('Target');
+          if (id && target) {
+            mediaRels[id] = target;
+          }
+        }
+      } catch (err) {
+        console.warn('[DocxExporterService] Aviso ao ler relacionamentos .rels:', err);
+      }
+    }
+
+    // 4. Mapear tipos de numeração (word/numbering.xml) para identificar ol vs ul
+    const numberingTypes: Record<string, 'ol' | 'ul'> = {};
+    const numberingEntry = unzipped['word/numbering.xml'];
+    if (numberingEntry) {
+      try {
+        const numStr = fflate.strFromU8(numberingEntry);
+        const numXml = parseXml(numStr);
+        const numNodes = numXml.findDescendants('w:num');
+        const abstractNums: Record<string, 'ol' | 'ul'> = {};
+
+        const abstractNumNodes = numXml.findDescendants('w:abstractNum');
+        for (const abs of abstractNumNodes) {
+          const absId = abs.getAttribute('w:abstractNumId') || abs.getAttribute('abstractNumId');
+          const numFmt = abs.findFirstDescendant('w:numFmt')?.getAttribute('w:val');
+          if (absId) {
+            abstractNums[absId] = numFmt === 'bullet' ? 'ul' : 'ol';
+          }
+        }
+
+        for (const num of numNodes) {
+          const numId = num.getAttribute('w:numId') || num.getAttribute('numId');
+          const absRef = num.findFirstDescendant('w:abstractNumId')?.getAttribute('w:val');
+          if (numId && absRef && abstractNums[absRef]) {
+            numberingTypes[numId] = abstractNums[absRef];
+          }
+        }
+      } catch (err) {
+        console.warn('[DocxExporterService] Aviso ao ler numbering.xml:', err);
+      }
+    }
+
+    // 5. Extrair cabeçalhos e rodapés oficiais
+    let docHeaderHtml = '';
+    let docFooterHtml = '';
+    for (const key of Object.keys(unzipped)) {
+      if (/^word\/header\d*\.xml$/i.test(key)) {
+        try {
+          const hStr = fflate.strFromU8(unzipped[key]);
+          const hXml = parseXml(hStr);
+          const text = hXml.getTextContent().trim();
+          if (text && !docHeaderHtml) {
+            docHeaderHtml = `<header class="document-header" style="text-align: right; font-size: 9pt; color: #64748b; margin-bottom: 18pt; border-bottom: 1px solid #e2e8f0; padding-bottom: 6pt;">${text}</header>`;
+          }
+        } catch {}
+      } else if (/^word\/footer\d*\.xml$/i.test(key)) {
+        try {
+          const fStr = fflate.strFromU8(unzipped[key]);
+          const fXml = parseXml(fStr);
+          const text = fXml.getTextContent().trim();
+          if (text && !docFooterHtml) {
+            docFooterHtml = `<footer class="document-footer" style="text-align: center; font-size: 9pt; color: #64748b; margin-top: 24pt; border-top: 1px solid #e2e8f0; padding-top: 6pt;">${text}</footer>`;
+          }
+        } catch {}
+      }
+    }
+
+    // 6. Fazer parse estrito de word/document.xml
     const docXmlStr = fflate.strFromU8(docXmlEntry);
-    const bodyMatch = docXmlStr.match(/<w:body>([\s\S]*?)<\/w:body>/);
-    const bodyContent = bodyMatch ? bodyMatch[1] : docXmlStr;
+    const docXml = parseXml(docXmlStr);
 
-    // Encontrar elementos sequenciais (<w:p> e <w:tbl>)
-    const elementRegex = /<(w:p|w:tbl)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
-    const elements = bodyContent.match(elementRegex) || [];
+    const bodyNode = docXml.findFirstDescendant('w:body');
+    if (!bodyNode) {
+      throw new MalformedDocxError('Estrutura DOCX inválida: elemento <w:body> não localizado.');
+    }
+
     const htmlBlocks: string[] = [];
+    if (docHeaderHtml) htmlBlocks.push(docHeaderHtml);
 
-    for (const elXml of elements) {
-      if (elXml.startsWith('<w:tbl')) {
-        let tblHtml = '<table style="width: 100%; border-collapse: collapse; margin: 14pt 0; border: 1px solid #cbd5e1;"><tbody>';
-        const trMatches = elXml.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [];
-        for (let rIdx = 0; rIdx < trMatches.length; rIdx++) {
-          tblHtml += '<tr>';
-          const tcMatches = trMatches[rIdx].match(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g) || [];
-          for (const tcXml of tcMatches) {
-            const tMatches = tcXml.match(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g) || [];
-            const cellText = tMatches
-              .map(t => t.replace(/<w:t(?:\s[^>]*)?>|<\/w:t>/g, ''))
-              .join(' ')
-              .trim();
-            const tag = rIdx === 0 ? 'th' : 'td';
-            const bg = rIdx === 0 ? 'background-color: #f1f5f9; font-weight: bold;' : '';
-            tblHtml += `<${tag} style="border: 1px solid #cbd5e1; padding: 6pt 10pt; ${bg}">${cellText}</${tag}>`;
+    let activeList: { type: 'ol' | 'ul'; items: string[] } | null = null;
+
+    const flushActiveList = () => {
+      if (activeList && activeList.items.length > 0) {
+        const tag = activeList.type;
+        const listItemsHtml = activeList.items.map(it => `<li style="margin-bottom: 6pt;">${it}</li>`).join('');
+        htmlBlocks.push(`<${tag} style="margin-left: 2cm; margin-bottom: 12pt; line-height: 1.5;">${listItemsHtml}</${tag}>`);
+        activeList = null;
+      }
+    };
+
+    for (const child of bodyNode.children) {
+      if (typeof child === 'string') continue;
+
+      const nodeName = child.name;
+
+      if (nodeName === 'w:tbl') {
+        flushActiveList();
+        const tblHtml = this.convertXmlTableToHtml(child);
+        if (tblHtml) htmlBlocks.push(tblHtml);
+      } else if (nodeName === 'w:p') {
+        // Verifica quebra de página
+        const hasPageBreak = child.findFirstDescendant('w:br')?.getAttribute('w:type') === 'page' ||
+          child.findFirstDescendant('w:lastRenderedPageBreak') !== null;
+        if (hasPageBreak) {
+          flushActiveList();
+          htmlBlocks.push('<hr class="page-break" style="page-break-after: always; break-after: page; border: none; border-top: 2px dashed #3b82f6; margin: 24px 0;" data-page-break="true" />');
+        }
+
+        // Verifica imagens embutidas no parágrafo
+        const drawingNodes = child.findDescendants('w:drawing').concat(child.findDescendants('w:pict'));
+        if (drawingNodes.length > 0) {
+          flushActiveList();
+          for (const dNode of drawingNodes) {
+            const blip = dNode.findFirstDescendant('a:blip') || dNode.findFirstDescendant('v:imagedata');
+            const rId = blip?.getAttribute('r:embed') || blip?.getAttribute('r:id');
+            if (rId && mediaRels[rId]) {
+              const target = mediaRels[rId];
+              const normalizedPath = target.startsWith('word/') ? target : `word/${target}`;
+              const imgBytes = unzipped[normalizedPath];
+              if (imgBytes && imgBytes.byteLength > 0) {
+                const mime = normalizedPath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+                const base64 = this.uint8ArrayToBase64(imgBytes);
+                const imgHtml = `<img src="data:${mime};base64,${base64}" style="max-width: 100%; height: auto; margin: 12pt auto; display: block; border-radius: 4px;" alt="Imagem do documento" />`;
+                htmlBlocks.push(imgHtml);
+              }
+            }
           }
-          tblHtml += '</tr>';
-        }
-        tblHtml += '</tbody></table>';
-        htmlBlocks.push(tblHtml);
-      } else if (elXml.startsWith('<w:p')) {
-        if (elXml.includes('<w:br w:type="page"/>') || elXml.includes('<w:lastRenderedPageBreak/>')) {
-          htmlBlocks.push('<hr class="page-break" style="page-break-after: always; border: none; border-top: 2px dashed #3b82f6; margin: 24px 0;" />');
         }
 
-        const isHeading1 = elXml.includes('Heading1') || elXml.includes('Titulo1');
-        const isHeading2 = elXml.includes('Heading2') || elXml.includes('Titulo2');
-        const isHeading3 = elXml.includes('Heading3') || elXml.includes('Titulo3');
+        // Verifica listas
+        const numPr = child.findFirstDescendant('w:numPr');
+        if (numPr) {
+          const numId = numPr.findFirstDescendant('w:numId')?.getAttribute('w:val') || '1';
+          const listType = numberingTypes[numId] || 'ul';
+          const pText = this.extractParagraphRunsHtml(child);
+          if (pText.trim()) {
+            if (activeList && activeList.type === listType) {
+              activeList.items.push(pText);
+            } else {
+              flushActiveList();
+              activeList = { type: listType, items: [pText] };
+            }
+          }
+          continue;
+        } else {
+          flushActiveList();
+        }
 
-        // Extrair alinhamento
+        // Verifica títulos
+        const pStyle = child.findFirstDescendant('w:pStyle')?.getAttribute('w:val') || '';
+        const isHeading1 = /Heading1|Titulo1/i.test(pStyle);
+        const isHeading2 = /Heading2|Titulo2/i.test(pStyle);
+        const isHeading3 = /Heading3|Titulo3/i.test(pStyle);
+
+        // Alinhamento
+        const jcVal = child.findFirstDescendant('w:jc')?.getAttribute('w:val');
         let align = 'justify';
-        if (elXml.includes('<w:jc w:val="center"/>')) align = 'center';
-        else if (elXml.includes('<w:jc w:val="right"/>')) align = 'right';
-        else if (elXml.includes('<w:jc w:val="left"/>')) align = 'left';
+        if (jcVal === 'center') align = 'center';
+        else if (jcVal === 'right') align = 'right';
+        else if (jcVal === 'left') align = 'left';
 
-        const rMatches = elXml.match(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g) || [];
-        let pText = '';
-        for (const rXml of rMatches) {
-          const isBold = rXml.includes('<w:b/>') || rXml.includes('<w:b ');
-          const isItalic = rXml.includes('<w:i/>') || rXml.includes('<w:i ');
-          const isUnderline = rXml.includes('<w:u/>') || rXml.includes('<w:u ');
-          const tMatches = rXml.match(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g) || [];
-          for (const t of tMatches) {
-            let text = t.replace(/<w:t(?:\s[^>]*)?>|<\/w:t>/g, '');
-            if (isBold) text = `<strong>${text}</strong>`;
-            if (isItalic) text = `<em>${text}</em>`;
-            if (isUnderline) text = `<u>${text}</u>`;
-            pText += text;
-          }
-        }
+        // Citação recuada (4cm)
+        const indNode = child.findFirstDescendant('w:ind');
+        const leftInd = indNode?.getAttribute('w:left');
+        const isQuote = leftInd && (parseInt(leftInd, 10) >= 2000 || leftInd.includes('cm'));
 
-        if (pText.trim()) {
+        const pContent = this.extractParagraphRunsHtml(child);
+        if (pContent.trim()) {
           if (isHeading1) {
-            htmlBlocks.push(`<h1 style="text-align: ${align}; font-weight: bold; margin-top: 16pt; margin-bottom: 8pt;">${pText}</h1>`);
+            htmlBlocks.push(`<h1 style="text-align: ${align}; font-weight: bold; margin-top: 16pt; margin-bottom: 8pt;">${pContent}</h1>`);
           } else if (isHeading2) {
-            htmlBlocks.push(`<h2 style="text-align: ${align}; font-weight: bold; margin-top: 14pt; margin-bottom: 6pt;">${pText}</h2>`);
+            htmlBlocks.push(`<h2 style="text-align: ${align}; font-weight: bold; margin-top: 14pt; margin-bottom: 6pt;">${pContent}</h2>`);
           } else if (isHeading3) {
-            htmlBlocks.push(`<h3 style="text-align: ${align}; font-weight: bold; margin-top: 12pt; margin-bottom: 4pt;">${pText}</h3>`);
+            htmlBlocks.push(`<h3 style="text-align: ${align}; font-weight: bold; margin-top: 12pt; margin-bottom: 4pt;">${pContent}</h3>`);
+          } else if (isQuote) {
+            htmlBlocks.push(`<blockquote style="margin-left: 4cm; font-size: 10pt; line-height: 1.2; text-align: justify; font-style: italic; margin-top: 12pt; margin-bottom: 12pt; border-left: 2px solid #cbd5e1; padding-left: 8px;">${pContent}</blockquote>`);
           } else {
             const indent = align === 'justify' ? 'text-indent: 2cm; ' : '';
-            htmlBlocks.push(`<p style="${indent}margin-bottom: 12pt; text-align: ${align}; line-height: 1.5;">${pText}</p>`);
+            htmlBlocks.push(`<p style="${indent}margin-bottom: 12pt; text-align: ${align}; line-height: 1.5;">${pContent}</p>`);
           }
         }
       }
     }
 
-    return htmlBlocks.length > 0 ? htmlBlocks.join('\n') : '<p>Documento vazio.</p>';
+    flushActiveList();
+    if (docFooterHtml) htmlBlocks.push(docFooterHtml);
+
+    const rawResult = htmlBlocks.length > 0 ? htmlBlocks.join('\n') : '<p>Documento vazio.</p>';
+
+    // 7. Sanitização estrita do HTML antes da entrega ao editor
+    return HtmlSanitizer.sanitize(rawResult);
+  }
+
+  private static convertXmlTableToHtml(tblNode: XmlNode): string {
+    let tblHtml = '<table style="width: 100%; border-collapse: collapse; margin: 14pt 0; border: 1px solid #cbd5e1;"><tbody>';
+    const trNodes = tblNode.findChildren('w:tr');
+
+    for (let rIdx = 0; rIdx < trNodes.length; rIdx++) {
+      const tr = trNodes[rIdx];
+      const isHeader = rIdx === 0 || tr.findFirstDescendant('w:tblHeader') !== null;
+      tblHtml += '<tr>';
+
+      const tcNodes = tr.findChildren('w:tc');
+      for (const tc of tcNodes) {
+        const shd = tc.findFirstDescendant('w:shd')?.getAttribute('w:fill');
+        const bg = shd && shd !== 'auto' ? `background-color: #${shd}; ` : (isHeader ? 'background-color: #f1f5f9; ' : '');
+        const fw = isHeader ? 'font-weight: bold; ' : '';
+        const tag = isHeader ? 'th' : 'td';
+
+        const pNodes = tc.findChildren('w:p');
+        const cellParts: string[] = [];
+        for (const p of pNodes) {
+          const pt = this.extractParagraphRunsHtml(p);
+          if (pt.trim()) cellParts.push(pt);
+        }
+        const cellContent = cellParts.join('<br>') || '&nbsp;';
+        tblHtml += `<${tag} style="border: 1px solid #cbd5e1; padding: 6pt 10pt; ${bg}${fw}">${cellContent}</${tag}>`;
+      }
+      tblHtml += '</tr>';
+    }
+
+    tblHtml += '</tbody></table>';
+    return tblHtml;
+  }
+
+  private static extractParagraphRunsHtml(pNode: XmlNode): string {
+    const runs = pNode.findDescendants('w:r');
+    let pText = '';
+
+    for (const r of runs) {
+      const rPr = r.findFirstDescendant('w:rPr');
+      const isBold = rPr?.findFirstDescendant('w:b') !== null;
+      const isItalic = rPr?.findFirstDescendant('w:i') !== null;
+      const isUnderline = rPr?.findFirstDescendant('w:u') !== null;
+      const isStrike = rPr?.findFirstDescendant('w:strike') !== null;
+      const isSub = rPr?.findFirstDescendant('w:vertAlign')?.getAttribute('w:val') === 'subscript';
+      const isSup = rPr?.findFirstDescendant('w:vertAlign')?.getAttribute('w:val') === 'superscript';
+      const highlight = rPr?.findFirstDescendant('w:highlight')?.getAttribute('w:val');
+      const color = rPr?.findFirstDescendant('w:color')?.getAttribute('w:val');
+
+      const tNodes = r.findChildren('w:t');
+      for (const t of tNodes) {
+        let text = t.getTextContent();
+        if (!text) continue;
+
+        // Escapa caracteres HTML
+        text = text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+
+        if (isBold) text = `<strong>${text}</strong>`;
+        if (isItalic) text = `<em>${text}</em>`;
+        if (isUnderline) text = `<u>${text}</u>`;
+        if (isStrike) text = `<s>${text}</s>`;
+        if (isSub) text = `<sub>${text}</sub>`;
+        if (isSup) text = `<sup>${text}</sup>`;
+        if (highlight) text = `<mark style="background-color: ${highlight}">${text}</mark>`;
+        if (color && color !== 'auto') text = `<span style="color: #${color}">${text}</span>`;
+
+        pText += text;
+      }
+    }
+
+    return pText;
+  }
+
+  private static uint8ArrayToBase64(bytes: Uint8Array): string {
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(bytes).toString('base64');
+    }
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
   }
 
   /**

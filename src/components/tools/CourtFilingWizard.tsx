@@ -65,8 +65,17 @@ export const CourtFilingWizard: React.FC = () => {
         id: 'custom',
         name: `Limite Personalizado (${customLimitMb} MB)`,
         shortLabel: `${customLimitMb} MB`,
+        systemName: 'Personalizado',
+        courtScope: 'Conforme Despacho Judicial / Edital Específico',
+        maxSizeMB: customLimitMb,
         maxVolumeSizeBytes: Math.max(1, customLimitMb) * 1024 * 1024,
-        description: 'Limite definido manualmente pelo operador dos autos.'
+        versionOrDate: 'Conforme Processo',
+        normativeReference: 'Determinação Judicial da Causa',
+        description: 'Limite definido manualmente pelo operador dos autos.',
+        notes: 'Verifique com a secretaria da vara se houver dúvidas sobre a cota de envio.',
+        targetPortal: 'Personalizado',
+        recommendedResolutionDpi: 200,
+        isUniversalRule: false
       };
     }
     return found;
@@ -592,6 +601,15 @@ export const CourtFilingWizard: React.FC = () => {
                             <span className="font-mono text-slate-500 text-[10px]" title={piece.sha256Hex}>
                               SHA: {piece.sha256Hex.substring(0, 8)}...
                             </span>
+                            {piece.signatureInfo?.hasSignatures && (
+                              <span 
+                                className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1"
+                                title="Assinatura digital ICP-Brasil / PAdES detectada. A alteração de páginas invalida o selo original."
+                              >
+                                <ShieldCheck className="w-3 h-3 text-amber-400" />
+                                Assinado Digitalmente ({piece.signatureInfo.signatureCount})
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -730,6 +748,16 @@ export const CourtFilingWizard: React.FC = () => {
                     </div>
                   </div>
 
+                  {activePieceForPages.signatureInfo?.hasSignatures && (
+                    <div className="mt-3 p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                      <span>
+                        <strong>Aviso Jurídico:</strong> Este documento possui {activePieceForPages.signatureInfo.signatureCount} assinatura(s) digital(is) (ICP-Brasil / PAdES).
+                        A rotação ou exclusão de páginas alterará a integridade binária do arquivo e invalidará a assinatura originária no volume consolidado.
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex-1 overflow-y-auto pt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                     {Array.from({ length: activePieceForPages.originalPageCount }).map((_, pIdx) => {
                       const mod = (activePieceForPages.modifications || []).find(m => m.pageIndex === pIdx);
@@ -838,6 +866,12 @@ export const CourtFilingWizard: React.FC = () => {
             <p className="text-xs text-slate-400">
               Selecione o tribunal de destino dos autos. O sistema calculará preventivamente a divisão exata em volumes para evitar rejeição no upload.
             </p>
+            <div className="mt-2.5 p-3 rounded-xl bg-blue-950/20 border border-blue-500/20 text-[11px] text-blue-300 leading-relaxed flex items-start gap-2">
+              <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+              <span>
+                <strong>Vinculação Normativa e Regra Contextual:</strong> Cada preset está vinculado a uma norma regulamentar (CNJ, CSJT, TJSP, TRF) e a um escopo jurisdicional específico. Os limites representam os parâmetros vigentes e <em>não constituem regras universais imutáveis</em>, podendo variar conforme despacho do juízo ou capacidade do portal.
+              </span>
+            </div>
           </div>
 
           {/* SELETOR DE PRESETS DO TRIBUNAL */}
@@ -859,15 +893,36 @@ export const CourtFilingWizard: React.FC = () => {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-xs font-bold text-white">{preset.name}</span>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
                         isSelected ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-300'
                       }`}>
                         {limitMb} MB
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-3">
+
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 font-semibold">
+                        {preset.systemName}
+                      </span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                        {preset.versionOrDate}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-400 leading-relaxed mb-2.5">
                       {preset.description}
                     </p>
+
+                    <div className="text-[10.5px] text-slate-400 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80 mb-2 space-y-1 leading-relaxed">
+                      <div><strong className="text-slate-300">Escopo:</strong> {preset.courtScope}</div>
+                      <div><strong className="text-slate-300">Norma:</strong> {preset.normativeReference}</div>
+                    </div>
+
+                    {preset.notes && (
+                      <p className="text-[10px] text-slate-500 italic leading-snug">
+                        Nota: {preset.notes}
+                      </p>
+                    )}
                   </div>
 
                   {preset.id === 'custom' && isSelected && (
@@ -1249,53 +1304,102 @@ export const CourtFilingWizard: React.FC = () => {
           {/* Resultado Pronto */}
           {!isProcessing && filingResult && (
             <div className="space-y-6">
-              {/* Card de Sucesso e Ação Principal */}
-              <div className="p-6 bg-gradient-to-r from-blue-950/60 via-slate-900 to-emerald-950/40 rounded-2xl border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
-                <div>
-                  <div className="flex items-center space-x-2 text-emerald-400 mb-1">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span className="font-bold text-sm tracking-wide uppercase">
-                      Pacote Consolidado com Sucesso!
-                    </span>
+              {/* Card de Sucesso ou Reprovação */}
+              {filingResult.summary.reproved ? (
+                <div className="p-6 bg-gradient-to-r from-red-950/80 via-slate-900 to-rose-950/50 rounded-2xl border border-red-500/50 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
+                  <div>
+                    <div className="flex items-center space-x-2 text-rose-400 mb-1">
+                      <AlertTriangle className="w-5 h-5 text-rose-400" />
+                      <span className="font-bold text-sm tracking-wide uppercase">
+                        Pacote Reprovado: Volume Excede o Limite do Tribunal
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-bold text-white">
+                      Incompatibilidade de Tamanho com {filingResult.summary.targetCourt}
+                    </h3>
+                    <p className="text-xs text-rose-200/90 mt-1 max-w-xl leading-relaxed">
+                      {filingResult.summary.reprovedReason}
+                    </p>
+                    <div className="mt-3 p-3 bg-red-950/60 rounded-xl border border-red-800/40 text-[11px] text-rose-300 space-y-1">
+                      <strong>Orientações Técnicas para Desbloqueio:</strong>
+                      <ul className="list-disc list-inside space-y-0.5 text-rose-200/80">
+                        <li>Volte à Etapa 1 e verifique se anexos densos ou digitalizações de alta resolução podem ser fracionados.</li>
+                        <li>Se o tribunal autorizou cota ampliada em despacho ou edital, selecione o preset correspondente ou "Customizado".</li>
+                        <li>Na Etapa 2, revise e marque para exclusão eventuais páginas em branco ou duplicadas.</li>
+                      </ul>
+                    </div>
                   </div>
-                  <h3 className="text-lg font-bold text-white">
-                    Autos Prontos para Protocolo: {filingResult.summary.processNumber || 'Processo'}
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1 max-w-xl leading-relaxed">
-                    Foram compilados {filingResult.summary.totalVolumes} volume(s) respeitando a cota do {filingResult.summary.targetCourt}, 
-                    com chancela sequencial contínua e manifesto criptográfico SHA-256.
-                  </p>
-                </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
-                  <button
-                    onClick={downloadZipPackage}
-                    className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition"
-                  >
-                    <FolderDown className="w-4 h-4" />
-                    <span>Baixar Pacote Completo (.ZIP)</span>
-                  </button>
-                  <button
-                    onClick={() => setCurrentStep(1)}
-                    className="w-full sm:w-auto px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
-                  >
-                    Novo Protocolo
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                    <button
+                      onClick={() => setCurrentStep(1)}
+                      className="w-full sm:w-auto px-5 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-600/30 flex items-center justify-center space-x-2 transition"
+                    >
+                      <RotateCw className="w-4 h-4" />
+                      <span>Revisar Peças</span>
+                    </button>
+                    <button
+                      onClick={downloadZipPackage}
+                      className="w-full sm:w-auto px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+                      title="Baixar para auditoria interna"
+                    >
+                      <span>Baixar p/ Auditoria</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="p-6 bg-gradient-to-r from-blue-950/60 via-slate-900 to-emerald-950/40 rounded-2xl border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
+                  <div>
+                    <div className="flex items-center space-x-2 text-emerald-400 mb-1">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="font-bold text-sm tracking-wide uppercase">
+                        Pacote Preparado para Protocolo (Não Protocolado Automaticamente)
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-bold text-white">
+                      Autos Preparados para Juntada: {filingResult.summary.processNumber || 'Processo'}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1 max-w-xl leading-relaxed">
+                      Foram compilados e validados {filingResult.summary.totalVolumes} volume(s) rigorosamente dentro do limite do {filingResult.summary.targetCourt}, 
+                      com chancela sequencial contínua e manifesto auditável SHA-256.
+                    </p>
+                    <div className="mt-2.5 text-[10.5px] text-slate-400 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 leading-relaxed">
+                      ⚠️ <strong>Delimitação Técnica:</strong> Este software prepara e pagina os autos. Ele <em>NÃO comprova protocolo perante o Poder Judiciário</em> nem atesta que o tribunal recebeu ou aceitou os documentos. O peticionamento e protocolo efetivo devem ser realizados diretamente no portal do tribunal pelo advogado.
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                    <button
+                      onClick={downloadZipPackage}
+                      className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition"
+                    >
+                      <FolderDown className="w-4 h-4" />
+                      <span>Baixar Pacote Preparado (.ZIP)</span>
+                    </button>
+                    <button
+                      onClick={() => setCurrentStep(1)}
+                      className="w-full sm:w-auto px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+                    >
+                      Novo Protocolo
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* LISTA DE VOLUMES GERADOS */}
               <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-5 space-y-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <FileArchive className="w-4 h-4 text-blue-400" />
-                  Volumes em PDF Prontos para Juntada no PJe / Tribunal
+                  Volumes em PDF Compilados e Medidos Efetivamente
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {filingResult.volumes.map(vol => (
                     <div
                       key={vol.volumeIndex}
-                      className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 flex items-center justify-between gap-3"
+                      className={`p-4 bg-slate-950/80 rounded-xl border flex items-center justify-between gap-3 ${
+                        vol.exceedsEffectiveLimit ? 'border-red-500/60 bg-red-950/20' : 'border-slate-800'
+                      }`}
                     >
                       <div className="min-w-0 flex-1">
                         <span className="text-xs font-bold text-slate-200 block truncate">
@@ -1308,9 +1412,19 @@ export const CourtFilingWizard: React.FC = () => {
                           <span>•</span>
                           <span>{vol.pageCount} págs</span>
                           <span>•</span>
-                          <span className="font-semibold text-emerald-400">
+                          <span className={`font-semibold ${vol.exceedsEffectiveLimit ? 'text-rose-400' : 'text-emerald-400'}`}>
                             {(vol.sizeBytes / (1024 * 1024)).toFixed(2)} MB
                           </span>
+                          {vol.autoCorrected && (
+                            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold border border-blue-500/30">
+                              Autocorrigido
+                            </span>
+                          )}
+                          {vol.exceedsEffectiveLimit && (
+                            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 font-semibold border border-red-500/30">
+                              Excede Limite
+                            </span>
+                          )}
                         </div>
                         <span className="font-mono text-[10px] text-slate-500 block truncate mt-1">
                           SHA-256: {vol.sha256Hex}

@@ -106,8 +106,14 @@ export const DigitalSignatureTool: React.FC = () => {
 
     try {
       const buffer = await certFile.arrayBuffer();
-      const { certInfo: info } = PadesSignatureService.parseCertificate(buffer, certPassword);
-      setCertInfo(info);
+      const electronApi = (window as any).electronAPI;
+      if (electronApi?.padesParseCertificate) {
+        const { certInfo: info } = await electronApi.padesParseCertificate({ p12Buffer: buffer, password: certPassword });
+        setCertInfo(info);
+      } else {
+        const { certInfo: info } = PadesSignatureService.parseCertificate(buffer, certPassword);
+        setCertInfo(info);
+      }
     } catch (err: any) {
       setCertInfo(null);
       setCertError(err.message || 'Falha ao autenticar certificado. Verifique a senha informada.');
@@ -146,7 +152,18 @@ export const DigitalSignatureTool: React.FC = () => {
         }
       };
 
-      const signedBytes = await PadesSignatureService.signPdf(pdfBuffer, certBuffer, certPassword, options);
+      const electronApi = (window as any).electronAPI;
+      let signedBytes: Uint8Array;
+      if (electronApi?.padesSignPdf) {
+        signedBytes = await electronApi.padesSignPdf({
+          pdfBuffer,
+          p12Buffer: certBuffer,
+          password: certPassword,
+          signOptions: options
+        });
+      } else {
+        signedBytes = await PadesSignatureService.signPdf(pdfBuffer, certBuffer, certPassword, options);
+      }
 
       // Calcular hash SHA-256 do documento gerado
       const hashBuffer = await crypto.subtle.digest('SHA-256', signedBytes.buffer as ArrayBuffer);
@@ -206,7 +223,13 @@ export const DigitalSignatureTool: React.FC = () => {
 
     try {
       const buffer = await verifyFile.arrayBuffer();
-      const result = PadesSignatureService.verifyPdf(buffer);
+      const electronApi = (window as any).electronAPI;
+      let result: PadesSignatureValidationResult;
+      if (electronApi?.padesVerifyPdf) {
+        result = await electronApi.padesVerifyPdf(buffer);
+      } else {
+        result = PadesSignatureService.verifyPdf(buffer);
+      }
       setValidationResult(result);
     } catch (err: any) {
       setVerifyError(`Erro na validação do documento: ${err.message || String(err)}`);
@@ -219,11 +242,13 @@ export const DigitalSignatureTool: React.FC = () => {
     if (!validationResult || !verifyFile) return;
 
     const reportObj = {
-      titulo: 'Laudo de Auditoria Criptográfica PAdES (Kovax Desktop)',
+      titulo: 'Laudo de Auditoria Criptográfica e Confiança Jurídica PAdES (Kovax Desktop)',
       arquivoAuditado: verifyFile.name,
       tamanhoBytes: verifyFile.size,
       dataAuditoria: new Date().toISOString(),
-      resumo: validationResult.summaryText,
+      resumoGeral: validationResult.summaryText,
+      integridadeTecnicaGeral: validationResult.technicalSummaryText,
+      validadeJuridicaGeral: validationResult.legalSummaryText,
       totalAssinaturas: validationResult.signatureCount,
       plenamenteIntegro: validationResult.allValid,
       assinaturas: validationResult.signatures
@@ -253,14 +278,17 @@ export const DigitalSignatureTool: React.FC = () => {
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold text-slate-100">Assinador & Validador Digital PAdES</h1>
                 <span className="px-2.5 py-0.5 text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-full">
-                  Padrão ISO 32000 / ICP-Brasil
+                  Padrão ISO 32000
+                </span>
+                <span className="px-2.5 py-0.5 text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full">
+                  Marco Legal: Lei 14.063/2020
                 </span>
                 <span className="px-2.5 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">
                   100% Offline
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                Assinatura digital qualificada com certificado X.509 A1 (.pfx/.p12), contêiner PKCS#7 destacado e verificação matemática rigorosa contra adulteração.
+                Assinatura e validação digital com discriminação transparente entre integridade técnica (criptografia de bytes) e validade jurídica (ICP-Brasil vs. Assinatura Avançada).
               </p>
             </div>
           </div>
@@ -548,6 +576,24 @@ export const DigitalSignatureTool: React.FC = () => {
                     <div><strong>Serial:</strong> {certInfo.serialNumber}</div>
                     <div className="truncate"><strong>Fingerprint SHA-256:</strong> <span className="font-mono">{certInfo.fingerprintSha256}</span></div>
                   </div>
+
+                  <div className="pt-2 border-t border-slate-800/80">
+                    <div className="text-[10px] text-slate-500 uppercase font-semibold">Classificação Jurídica Nacional</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        certInfo.isIcpBrasil
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                      }`}>
+                        {certInfo.legalClassificationText}
+                      </span>
+                    </div>
+                    {certInfo.juridicalWarning && (
+                      <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] text-amber-300/90 leading-relaxed">
+                        ⚠️ {certInfo.juridicalWarning}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="p-6 text-center text-slate-500 bg-slate-950/40 rounded-xl border border-slate-800/50 space-y-2">
@@ -656,7 +702,7 @@ export const DigitalSignatureTool: React.FC = () => {
           {validationResult && (
             <div className="space-y-4">
               {/* BANNER DE STATUS GERAL */}
-              <div className={`p-5 rounded-2xl border flex items-start justify-between gap-4 shadow-xl ${
+              <div className={`p-5 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl ${
                 validationResult.hasSignatures && validationResult.allValid
                   ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
                   : validationResult.hasSignatures && !validationResult.allValid
@@ -674,7 +720,7 @@ export const DigitalSignatureTool: React.FC = () => {
                   <div>
                     <h4 className="text-sm font-bold">
                       {validationResult.hasSignatures && validationResult.allValid
-                        ? 'Assinaturas Digitais Autênticas e Íntegras'
+                        ? 'Auditoria PAdES Concluída: Integridade Técnica Confirmada'
                         : validationResult.hasSignatures
                         ? 'Assinaturas com Alerta de Invalidação ou Adulteração'
                         : 'Nenhuma Assinatura Digital Detectada'}
@@ -682,19 +728,57 @@ export const DigitalSignatureTool: React.FC = () => {
                     <p className="text-xs mt-1 text-slate-300">
                       {validationResult.summaryText}
                     </p>
+                    <div className="mt-2.5 flex flex-wrap gap-2 text-[11px]">
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700 text-slate-300">
+                        {validationResult.technicalSummaryText}
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700 text-slate-300">
+                        {validationResult.trustSummaryText}
+                      </span>
+                      {validationResult.incrementalRevisionsSummaryText && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700 text-slate-300">
+                          {validationResult.incrementalRevisionsSummaryText}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {validationResult.hasSignatures && (
-                  <button
-                    onClick={handleExportValidationReport}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-200 flex items-center gap-1.5 shadow"
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <a
+                    href="https://validar.iti.gov.br"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600/20 border border-emerald-500/40 hover:bg-emerald-600/30 text-emerald-200 flex items-center gap-1.5 transition-all shadow"
+                    title="Aferir no serviço oficial do ITI (Governo Federal)"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    Exportar Laudo JSON
-                  </button>
-                )}
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Conferir no VALIDAR (ITI)
+                  </a>
+                  {validationResult.hasSignatures && (
+                    <button
+                      onClick={handleExportValidationReport}
+                      className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-200 flex items-center gap-1.5 transition-all shadow"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Exportar Laudo JSON
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* AVISO DO VALIDAR DO ITI */}
+              {validationResult.hasSignatures && (
+                <div className="p-3.5 bg-blue-950/20 border border-blue-500/30 rounded-xl text-xs text-blue-300/90 flex items-start gap-2.5">
+                  <ExternalLink className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-blue-200 block">Homologação Oficial e Interoperabilidade:</span>
+                    <p className="text-[11px] text-blue-300/80 mt-0.5 leading-relaxed">
+                      {validationResult.validarItiGuidance}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* LISTA INDIVIDUAL DE ASSINATURAS */}
               {validationResult.signatures.map((sig, idx) => (
@@ -712,23 +796,39 @@ export const DigitalSignatureTool: React.FC = () => {
                       </div>
                     </div>
 
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
-                      sig.status === 'VALIDA'
-                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                        : sig.status === 'EXPIRADA'
-                        ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                        : 'bg-red-500/20 text-red-400 border-red-500/30'
-                    }`}>
-                      {sig.status === 'VALIDA' ? '✓ ASSINATURA ÍNTEGRA' : sig.status === 'EXPIRADA' ? '⚠️ CERTIFICADO EXPIRADO' : '✕ ADULTERADA / INVÁLIDA'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                        sig.trustStatus === 'RECONHECIDO_ICP_BRASIL'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : sig.trustStatus === 'AUTOASSINADO'
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                      }`}>
+                        {sig.legalClassificationText}
+                      </span>
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                        sig.technicalIntegrity === 'INTEGRO'
+                          ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                          : 'bg-red-500/20 text-red-400 border-red-500/30'
+                      }`}>
+                        {sig.technicalIntegrity === 'INTEGRO' ? '✓ BYTES ÍNTEGROS' : '✕ ADULTERADA / INVÁLIDA'}
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-400">
+                        Revisão {sig.revisionIndex}/{sig.totalRevisions}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* CRITÉRIOS DE AUDITORIA CRIPTOGRÁFICA */}
+                  {/* CRITÉRIOS DE AUDITORIA CRIPTOGRÁFICA E REVISÃO */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                     <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
                       <span className="text-[10px] text-slate-500 block">Cobertura ByteRange</span>
-                      <span className={`font-semibold ${sig.byteRangeCoversEntireFile ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {sig.byteRangeCoversEntireFile ? '✓ 100% Coberto' : '✕ Incompleto / Adições'}
+                      <span className={`font-semibold ${sig.byteRangeCoversEntireFile ? 'text-emerald-400' : sig.byteRangeCoversRevision ? 'text-blue-400' : 'text-red-400'}`}>
+                        {sig.byteRangeCoversEntireFile
+                          ? '✓ 100% do Arquivo'
+                          : sig.byteRangeCoversRevision
+                          ? `✓ Revisão ${sig.revisionIndex} (${Math.round(sig.revisionBytes / 1024)} KB)`
+                          : '✕ ByteRange Fora do Limite'}
                       </span>
                     </div>
 
@@ -747,18 +847,28 @@ export const DigitalSignatureTool: React.FC = () => {
                     </div>
 
                     <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 block">Vigência Temporal</span>
-                      <span className={`font-semibold ${sig.certValidTemporal ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        {sig.certValidTemporal ? '✓ Certificado Vigente' : '⚠️ Fora da Vigência'}
+                      <span className="text-[10px] text-slate-500 block">Carimbo & Tempo</span>
+                      <span className={`font-semibold ${sig.hasTrustedTimestamp ? 'text-emerald-400' : 'text-blue-400'}`}>
+                        {sig.hasTrustedTimestamp ? '✓ Carimbo RFC 3161' : 'ℹ️ Horário Declarado'}
                       </span>
                     </div>
                   </div>
 
-                  <div className="text-[11px] text-slate-400 space-y-1 bg-slate-950/40 p-3 rounded-xl border border-slate-800/60">
+                  <div className="text-[11px] text-slate-400 space-y-1.5 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
                     <div><strong>Autoridade Emissora:</strong> {sig.issuer}</div>
+                    <div><strong>Base Legal:</strong> <span className="text-slate-300 font-medium">{sig.legalBasis}</span></div>
                     <div><strong>SubFiltro:</strong> <span className="font-mono">{sig.subFilter}</span></div>
                     {sig.reason && <div><strong>Motivo Declarado:</strong> {sig.reason}</div>}
-                    <div><strong>Parecer Técnico:</strong> {sig.statusDescription}</div>
+                    <div><strong>Parecer Criptográfico:</strong> {sig.statusDescription}</div>
+                    <div><strong>Cadeia de Certificação:</strong> {sig.chainValidationDescription}</div>
+                    <div><strong>Auditoria Temporal:</strong> {sig.timeValidationDescription}</div>
+                    <div><strong>Verificação de Revogação:</strong> {sig.revocationDescription}</div>
+
+                    {sig.juridicalWarning && (
+                      <div className="mt-2.5 p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[10px] text-amber-300/95 leading-relaxed">
+                        ⚠️ <strong>Princípio da Separação de Integridade e Confiança:</strong> {sig.juridicalWarning}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

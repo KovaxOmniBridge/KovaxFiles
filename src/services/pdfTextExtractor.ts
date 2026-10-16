@@ -182,24 +182,27 @@ export class PdfTextExtractor {
               const tmpPng = path.join(os.tmpdir(), `kovax_ocr_out_${Date.now()}_${Math.random().toString(36).substring(7)}.png`);
               fs.writeFileSync(tmpPdf, initialPdfBytes);
 
-              const venvPython = path.resolve('.venv/Scripts/python.exe');
-              const pythonExe = fs.existsSync(venvPython) ? venvPython : 'python';
-
+              // Em ambiente de produção desktop, a renderização ocorre via Canvas nativo do Chromium acima.
+              // Em ambiente headless Node (ex: testes de linha de comando sem DOM), tenta utilitário do sistema se presente.
+              const pythonExe = process.env.KOVAX_PYTHON_PATH || 'python';
               const renderPy = `
 import pymupdf, sys
-doc = pymupdf.open(sys.argv[1])
-p = doc.load_page(int(sys.argv[2]))
-pix = p.get_pixmap(dpi=144)
-pix.save(sys.argv[3])
+try:
+    doc = pymupdf.open(sys.argv[1])
+    p = doc.load_page(int(sys.argv[2]))
+    pix = p.get_pixmap(dpi=144)
+    pix.save(sys.argv[3])
+except Exception:
+    sys.exit(1)
 `;
               const res = spawnSync(pythonExe, ['-c', renderPy, tmpPdf, String(i - 1), tmpPng]);
-              if (res.status === 0 && fs.existsSync(tmpPng)) {
+              if (res && res.status === 0 && fs.existsSync(tmpPng)) {
                 imageSource = tmpPng;
                 ocrScale = 2.0;
               }
               try { if (fs.existsSync(tmpPdf)) fs.unlinkSync(tmpPdf); } catch {}
             } catch (nodeErr) {
-              console.warn(`[PdfTextExtractor] Falha ao renderizar página headless no Node:`, nodeErr);
+              // Não bloqueia a extração: em computadores limpos sem Python no modo headless, o fluxo segue normalmente
             }
           }
 

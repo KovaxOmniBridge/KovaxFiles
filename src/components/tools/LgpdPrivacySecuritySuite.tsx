@@ -38,6 +38,13 @@ import { EncryptionEngine } from '../../services/encryptionEngine';
 
 export type SecuritySuiteSubTab = 'redactor' | 'sanitizer' | 'pdf_protection' | 'vault_aes' | 'certificate' | 'encryption';
 
+interface ManagedSecurityFile {
+  fileId: string;
+  file: File;
+  name: string;
+  size: number;
+}
+
 interface LgpdPrivacySecuritySuiteProps {
   initialSubTab?: SecuritySuiteSubTab;
 }
@@ -61,7 +68,8 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   // ==========================================
   // ESTADOS COMPARTILHADOS / ARQUIVOS
   // ==========================================
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [managedFiles, setManagedFiles] = useState<ManagedSecurityFile[]>([]);
+  const selectedFiles = managedFiles.map(m => m.file);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -143,7 +151,13 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   const handleFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files);
-      setSelectedFiles(prev => [...prev, ...newFiles]);
+      const newDocs: ManagedSecurityFile[] = newFiles.map((file, idx) => ({
+        fileId: `sec_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
+        file,
+        name: file.name,
+        size: file.size
+      }));
+      setManagedFiles(prev => [...prev, ...newDocs]);
       setRedactedResults(null);
       setSanitizedResults(null);
       setPdfProtectionResults(null);
@@ -163,7 +177,13 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
     e.stopPropagation();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const newFiles = Array.from(e.dataTransfer.files);
-      setSelectedFiles(prev => [...prev, ...newFiles]);
+      const newDocs: ManagedSecurityFile[] = newFiles.map((file, idx) => ({
+        fileId: `sec_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
+        file,
+        name: file.name,
+        size: file.size
+      }));
+      setManagedFiles(prev => [...prev, ...newDocs]);
       setRedactedResults(null);
       setSanitizedResults(null);
       setPdfProtectionResults(null);
@@ -178,7 +198,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   };
 
   const removeFile = (index: number) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setManagedFiles(prev => prev.filter((_, i) => i !== index));
     setRedactedResults(null);
     setSanitizedResults(null);
     setPdfProtectionResults(null);
@@ -187,7 +207,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   };
 
   const clearAllFiles = () => {
-    setSelectedFiles([]);
+    setManagedFiles([]);
     setRedactedResults(null);
     setSanitizedResults(null);
     setPdfProtectionResults(null);
@@ -240,7 +260,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   };
 
   const handleStartAnalysis = async () => {
-    if (selectedFiles.length === 0) {
+    if (managedFiles.length === 0) {
       setErrorMessage('Por favor, adicione ao menos um arquivo para analisar.');
       return;
     }
@@ -253,31 +273,27 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
     const allDetections: DetectedRedactionItem[] = [];
 
     try {
-      const totalFiles = selectedFiles.length;
+      const totalFiles = managedFiles.length;
       for (let i = 0; i < totalFiles; i++) {
-        const file = selectedFiles[i];
-        const buffer = await file.arrayBuffer();
+        const doc = managedFiles[i];
+        const buffer = await doc.file.arrayBuffer();
 
-        if (file.name.toLowerCase().endsWith('.pdf')) {
+        if (doc.name.toLowerCase().endsWith('.pdf')) {
           const pagesData = await PdfTextExtractor.extractTextWithBounds(
             buffer,
             p => setAnalysisProgress(Math.round(((i + (p.percent / 100) * 0.5) / totalFiles) * 100))
           );
-          newPagesMap.set(file.name, pagesData);
+          newPagesMap.set(doc.fileId, pagesData);
 
           const items = await RedactionDetectionService.analyzePdf(
             pagesData,
             categories,
             { mode: scanMode, rigorLevel },
             p => setAnalysisProgress(Math.round(((i + 0.5 + (p.percent / 100) * 0.5) / totalFiles) * 100)),
-            file.name
+            doc.name,
+            doc.fileId
           );
-          const taggedItems = items.map(it => ({
-            ...it,
-            fileName: file.name,
-            rect: { ...it.rect, fileName: file.name }
-          }));
-          allDetections.push(...taggedItems);
+          allDetections.push(...items);
         }
 
         setAnalysisProgress(Math.round(((i + 1) / totalFiles) * 100));
@@ -300,6 +316,11 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
   };
 
   const handleExecuteRedaction = async () => {
+    if (!hasAnalyzed) {
+      setErrorMessage('Fluxo Obrigatório: A análise e validação prévias são obrigatórias antes da anonimização definitiva. A anonimização cega sem revisão foi descontinuada.');
+      return;
+    }
+
     const selectedToRedact = detectedItems.filter(i => i.selected);
     if (selectedToRedact.length === 0 && categories.customKeywords.length === 0) {
       setErrorMessage('Nenhum item foi selecionado para tarjamento.');
@@ -312,29 +333,45 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
     const newAuditRecords: LgpdAuditRecord[] = [];
 
     try {
-      for (const file of selectedFiles) {
-        if (!file.name.toLowerCase().endsWith('.pdf')) continue;
-        const buffer = await file.arrayBuffer();
+      for (const doc of managedFiles) {
+        if (!doc.name.toLowerCase().endsWith('.pdf')) continue;
+        const buffer = await doc.file.arrayBuffer();
         
-        // Filtra ESTRITAMENTE as tarjas aprovadas pertencentes a este arquivo específico
-        const fileItemsToRedact = selectedToRedact.filter(i => !i.fileName || i.fileName === file.name);
-        const rectsToApply = fileItemsToRedact.map(i => i.rect);
-        const redactedBuffer = await LocalPdfEngine.anonymizePdf(buffer, rectsToApply, { targetFileName: file.name });
+        // Filtra ESTRITAMENTE as tarjas aprovadas pertencentes a este fileId específico
+        const fileItemsToRedact = selectedToRedact.filter(i => i.fileId === doc.fileId);
+        const rectsToApply = fileItemsToRedact.map(i => ({
+          ...i.rect,
+          fileId: doc.fileId,
+          fileName: doc.name
+        }));
+        const redactedBuffer = await LocalPdfEngine.anonymizePdf(buffer, rectsToApply, {
+          targetFileId: doc.fileId,
+          targetFileName: doc.name
+        });
+
+        const transformedFileName = doc.name.replace(/\.pdf$/i, '') + '_anonimizado_LGPD.pdf';
 
         resultsList.push({
-          fileName: file.name,
+          fileName: transformedFileName,
           data: redactedBuffer,
           redactionCount: rectsToApply.length
         });
 
         for (const item of fileItemsToRedact) {
+          const termHash = PdfReportExporterService.computeTermHash(item.text);
           newAuditRecords.push({
             id: item.id,
+            fileId: doc.fileId,
+            fileName: doc.name,
+            pageNumber: item.pageIndex + 1,
             originalTerm: item.text,
+            termHash,
             maskedTerm: '[TARJADO LGPD]',
             entityType: item.category,
             detectionReason: item.reason || 'Conformidade LGPD',
-            timestamp: new Date().toLocaleString('pt-BR')
+            coordinates: `X: ${item.rect.x.toFixed(1)}, Y: ${item.rect.y.toFixed(1)}, L: ${item.rect.width.toFixed(1)}, A: ${item.rect.height.toFixed(1)}`,
+            timestamp: new Date().toLocaleString('pt-BR'),
+            status: 'REMOVIDO / TARJADO'
           });
         }
       }
@@ -610,7 +647,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
       setErrorMessage('Ainda não há registros de auditoria nesta sessão para exportar.');
       return;
     }
-    PdfReportExporterService.exportLgpdAuditCsv(auditRecords, `laudo_auditoria_lgpd_${Date.now()}.csv`);
+    PdfReportExporterService.exportLgpdAuditCsv(auditRecords, `laudo_auditoria_lgpd_${Date.now()}.csv`, { minimizePersonalData: true });
   };
 
   const handleExportJson = () => {
@@ -618,7 +655,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
       setErrorMessage('Ainda não há registros de auditoria nesta sessão para exportar.');
       return;
     }
-    PdfReportExporterService.exportLgpdAuditJson(auditRecords, `laudo_auditoria_lgpd_${Date.now()}.json`);
+    PdfReportExporterService.exportLgpdAuditJson(auditRecords, `laudo_auditoria_lgpd_${Date.now()}.json`, { minimizePersonalData: true });
   };
 
   return (
@@ -1354,7 +1391,7 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
 
               {/* BOTÃO EXECUTAR PROTEÇÃO DE PDF */}
               <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
-                <span className="text-xs text-slate-400">Compatível 100% com Adobe Acrobat e Tribunais</span>
+                <span className="text-xs text-slate-400">Conforme à norma ISO 32000 (Acrobat e Tribunais)</span>
                 <button
                   onClick={handleExecutePdfProtection}
                   disabled={isPdfProtecting || selectedFiles.length === 0}
@@ -1628,12 +1665,19 @@ export const LgpdPrivacySecuritySuite: React.FC<LgpdPrivacySecuritySuiteProps> =
                 {auditRecords.map((rec, i) => (
                   <div key={i} className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs flex items-center justify-between">
                     <div>
-                      <div className="font-bold text-slate-200 flex items-center gap-2">
+                      <div className="font-bold text-slate-200 flex items-center gap-2 flex-wrap">
                         <span className="text-blue-400">{rec.entityType}</span>
-                        <span className="text-slate-500">• {rec.originalTerm}</span>
+                        {rec.fileName && <span className="text-slate-400 font-mono text-[11px]">• {rec.fileName}</span>}
+                        {rec.termHash ? (
+                          <span className="text-slate-500 font-mono text-[10px]" title={`Hash SHA-256: ${rec.termHash}`}>
+                            (Hash: #{rec.termHash.slice(0, 16)}...)
+                          </span>
+                        ) : (
+                          <span className="text-slate-500">• {rec.maskedTerm}</span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-400 mt-1">{rec.detectionReason}</div>
-                      <div className="text-[10px] text-emerald-400 font-mono mt-1">Status: {rec.maskedTerm}</div>
+                      <div className="text-[10px] text-emerald-400 font-mono mt-1">Status: {rec.maskedTerm || rec.status}</div>
                     </div>
                     <div className="text-right">
                       <span className="text-[10px] text-slate-500 block mt-1">{rec.timestamp}</span>

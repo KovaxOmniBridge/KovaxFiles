@@ -1,6 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { createOfflineWorker } from './tesseractOfflineConfig';
 
 // Configuração do Worker 100% Local e Offline do PDF.js via Vite
@@ -13,6 +13,7 @@ export interface DocumentPageMeta {
   pageNumber: number; // 1-indexed
   width: number;
   height: number;
+  rotation?: number; // 0, 90, 180, 270 graus
   thumbnailUrl?: string;
   sourceFile?: File;
   selected: boolean;
@@ -49,6 +50,7 @@ export interface OcrProcessedPage {
   pageNumber: number;
   width: number;
   height: number;
+  rotation?: number;
   fullText: string; // Editável pelo usuário durante a revisão
   rawOcrText: string;
   confidence: number; // Média da página (0 a 100)
@@ -58,6 +60,78 @@ export interface OcrProcessedPage {
   lines: OcrLineBounds[];
   words: OcrWordBounds[];
   isRevised?: boolean;
+}
+
+/**
+ * Erro lançado quando a imagem original escaneada não pode ser preservada,
+ * impedindo a substituição silenciosa por fundo neutro ou exportação de páginas em branco.
+ */
+export class ImagePreservationError extends Error {
+  public readonly pageNumber: number;
+
+  constructor(pageNumber: number, reason: string) {
+    super(
+      `Falha crítica de preservação visual na página ${pageNumber}: ${reason}. ` +
+      `A geração do PDF pesquisável foi interrompida para impedir a perda do conteúdo visual original ou exportação de página em branco.`
+    );
+    this.name = 'ImagePreservationError';
+    this.pageNumber = pageNumber;
+  }
+}
+
+export interface GenerateSearchablePdfOptions {
+  documentTitle?: string;
+  onProgress?: (percent: number) => void;
+  /**
+   * Se true (padrão), lança ImagePreservationError caso qualquer página não consiga
+   * incorporar sua imagem visual original autêntica, impedindo substituição silenciosa por fundo neutro.
+   */
+  strictImagePreservation?: boolean;
+  /**
+   * Buffer opcional do documento original intacto para permitir recuperação ou download
+   * sem prometer geração de camada pesquisável degradada.
+   */
+  originalDocumentBuffer?: ArrayBuffer | Uint8Array;
+}
+
+/**
+ * Sanitiza o texto para codificação compatível com WinAnsi (StandardFonts.Helvetica do PDF-Lib),
+ * preservando integralmente todas as letras acentuadas da língua portuguesa (á, é, í, ó, ú, ç, ã, õ, etc.),
+ * símbolos monetários, pontuação, e convertendo símbolos tipográficos especiais para seus equivalentes.
+ */
+export function sanitizeTextForPdfLayer(text: string): string {
+  if (!text) return '';
+  return text
+    // Aspas tipográficas
+    .replace(/[“”«»]/g, '"')
+    .replace(/[‘’‚‛]/g, "'")
+    // Travessões e hífens tipográficos
+    .replace(/[—–―]/g, '-')
+    // Símbolos numéricos e marcadores comuns em autos judiciais
+    .replace(/№/g, 'No.')
+    .replace(/•/g, '*')
+    .replace(/…/g, '...')
+    .replace(/†|‡/g, '+')
+    .replace(/§/g, '§')
+    .replace(/º/g, 'º')
+    .replace(/ª/g, 'ª')
+    // Remove qualquer caractere fora da faixa 0x00 - 0xFF (Latin-1 / WinAnsi)
+    .replace(/[^\x00-\xFF]/g, ' ');
+}
+
+/**
+ * Desenha texto no PDF com proteção contra caracteres incompatíveis com a fonte
+ */
+function safeDrawPdfText(page: any, text: string, options: any) {
+  try {
+    page.drawText(text, options);
+  } catch {
+    try {
+      // Fallback sem acentos se o caractere específico for rejeitado pelo subsistema de fontes
+      const asciiText = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, ' ');
+      page.drawText(asciiText, options);
+    } catch {}
+  }
 }
 
 export interface OcrProgressState {
@@ -100,6 +174,7 @@ export class OcrDocumentService {
       for (let i = 1; i <= totalPages; i++) {
         const page = await pdfDoc.getPage(i);
         const mediaBox = (page as any).mediaBox || (page as any).view;
+        const pageRotate = (page as any).rotate || 0;
         const viewport = page.getViewport({ scale: 1.0, viewBox: mediaBox });
 
         let thumbnailUrl: string | undefined;
@@ -124,6 +199,7 @@ export class OcrDocumentService {
           pageNumber: i,
           width: Math.round(viewport.width),
           height: Math.round(viewport.height),
+          rotation: pageRotate,
           thumbnailUrl,
           selected: true // Por padrão, todas as páginas vêm selecionadas
         });
@@ -233,6 +309,7 @@ export class OcrDocumentService {
           await new Promise(r => setTimeout(r, 0));
           const page = await pdfDoc.getPage(pageNum);
           const mediaBox = (page as any).mediaBox || (page as any).view;
+          const pageRotate = (page as any).rotate || 0;
           const origViewport = page.getViewport({ scale: 1.0, viewBox: mediaBox });
 
           // Escala 2.0x (144-200 DPI) para nitidez de OCR
@@ -259,6 +336,7 @@ export class OcrDocumentService {
               pageNumber: pageNum,
               width: Math.round(origViewport.width),
               height: Math.round(origViewport.height),
+              rotation: pageRotate,
               fullText: '',
               rawOcrText: '',
               confidence: 0,
@@ -285,7 +363,8 @@ export class OcrDocumentService {
             origViewport.width,
             origViewport.height,
             pageNum,
-            previewDataUrl
+            previewDataUrl,
+            pageRotate
           );
 
           results.push(pageResult);
@@ -343,7 +422,8 @@ export class OcrDocumentService {
     pageWidth: number,
     pageHeight: number,
     pageNumber: number,
-    previewImageUrl: string
+    previewImageUrl: string,
+    rotation: number = 0
   ): Promise<OcrProcessedPage> {
     try {
       const ocrResult = await worker.recognize(imageSource);
@@ -434,6 +514,7 @@ export class OcrDocumentService {
         pageNumber,
         width: Math.round(pageWidth),
         height: Math.round(pageHeight),
+        rotation,
         fullText,
         rawOcrText: fullText,
         confidence: meanConfidence,
@@ -448,6 +529,7 @@ export class OcrDocumentService {
         pageNumber,
         width: Math.round(pageWidth),
         height: Math.round(pageHeight),
+        rotation,
         fullText: '',
         rawOcrText: '',
         confidence: 0,
@@ -508,9 +590,23 @@ export class OcrDocumentService {
    */
   static async generateSearchablePdf(
     pages: OcrProcessedPage[],
-    documentTitle: string = 'Documento Digitalizado Pesquisável',
-    onProgress?: (percent: number) => void
+    titleOrOptions: string | GenerateSearchablePdfOptions = 'Documento Digitalizado Pesquisável',
+    legacyOnProgress?: (percent: number) => void
   ): Promise<Uint8Array> {
+    let documentTitle = 'Documento Digitalizado Pesquisável';
+    let onProgress: ((percent: number) => void) | undefined = legacyOnProgress;
+    let strictImagePreservation = true;
+
+    if (typeof titleOrOptions === 'string') {
+      documentTitle = titleOrOptions;
+    } else if (titleOrOptions && typeof titleOrOptions === 'object') {
+      documentTitle = titleOrOptions.documentTitle || documentTitle;
+      onProgress = titleOrOptions.onProgress || onProgress;
+      if (typeof titleOrOptions.strictImagePreservation === 'boolean') {
+        strictImagePreservation = titleOrOptions.strictImagePreservation;
+      }
+    }
+
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
 
@@ -528,11 +624,28 @@ export class OcrDocumentService {
       const pData = pages[i];
       const page = doc.addPage([pData.width, pData.height]);
 
+      if (pData.rotation) {
+        page.setRotation(degrees(pData.rotation));
+      }
+
       // 1. Embutir a imagem da página escaneada
-      if (pData.previewImageUrl && pData.previewImageUrl.startsWith('data:image/')) {
+      // REGRA DE SEGURANÇA: Proíbe substituição silenciosa por fundo neutro.
+      // Se a imagem não puder ser preservada, a rotina interrompe a exportação
+      // para evitar perda de conteúdo visual original ou páginas em branco.
+      if (!pData.previewImageUrl || !pData.previewImageUrl.startsWith('data:image/')) {
+        if (strictImagePreservation) {
+          throw new ImagePreservationError(
+            pData.pageNumber,
+            'A imagem original escaneada da página não está disponível ou possui formato inválido'
+          );
+        }
+      } else {
         try {
           const isPng = pData.previewImageUrl.startsWith('data:image/png');
           const base64Data = pData.previewImageUrl.split(',')[1];
+          if (!base64Data) {
+            throw new Error('Dados de imagem base64 vazios');
+          }
           const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
           const embeddedImage = isPng
@@ -545,9 +658,15 @@ export class OcrDocumentService {
             width: pData.width,
             height: pData.height
           });
-        } catch (imgErr) {
+        } catch (imgErr: any) {
+          if (strictImagePreservation) {
+            throw new ImagePreservationError(
+              pData.pageNumber,
+              `Falha ao decodificar/incorporar a imagem original (${imgErr?.message || 'erro de leitura'})`
+            );
+          }
           console.warn(`[OcrDocumentService] Falha ao embutir imagem na página ${pData.pageNumber}:`, imgErr);
-          // Fundo de fallback neutro
+          // Fundo de fallback neutro apenas se strictImagePreservation for explicitamente desativado
           page.drawRectangle({
             x: 0,
             y: 0,
@@ -567,49 +686,60 @@ export class OcrDocumentService {
 
         for (let lIdx = 0; lIdx < textLines.length; lIdx++) {
           const lineY = Math.max(20, startY - (lIdx * lineSpacing));
-          const sanitizedLine = textLines[lIdx].replace(/[^\x00-\xFF]/g, ' ');
+          const sanitizedLine = sanitizeTextForPdfLayer(textLines[lIdx]).trim();
+          if (!sanitizedLine) continue;
 
-          try {
-            page.drawText(sanitizedLine, {
-              x: 40,
-              y: lineY,
-              size: 10,
-              font,
-              opacity: 0 // Camada invisível pesquisável
-            });
-          } catch {}
+          safeDrawPdfText(page, sanitizedLine, {
+            x: 40,
+            y: lineY,
+            size: 10,
+            font,
+            opacity: 0 // Camada invisível pesquisável
+          });
         }
       } else {
         // Usa as coordenadas milimétricas extraídas pelo OCR para cada palavra ou linha
         for (const line of pData.lines) {
           if (line.words && line.words.length > 0) {
             for (const word of line.words) {
-              const sanitizedWord = word.text.replace(/[^\x00-\xFF]/g, ' ');
-              const fontSize = Math.max(6, Math.min(18, word.height * 0.85));
+              const sanitizedWord = sanitizeTextForPdfLayer(word.text).trim();
+              if (!sanitizedWord) continue;
 
+              let fontSize = Math.max(6, Math.min(24, word.height * 0.85));
+
+              // Correspondência entre posição visual e camada invisível:
+              // Se a largura calculada da palavra ultrapassar o bounding box visual,
+              // reduz a fonte proporcionalmente para não invadir colunas ou palavras vizinhas.
               try {
-                page.drawText(sanitizedWord, {
-                  x: word.x,
-                  y: word.y,
-                  size: fontSize,
-                  font,
-                  opacity: 0 // Camada invisível pesquisável (Ctrl+F)
-                });
+                const naturalWidth = font.widthOfTextAtSize(sanitizedWord, fontSize);
+                if (naturalWidth > 0 && word.width > 0) {
+                  const widthRatio = word.width / naturalWidth;
+                  if (widthRatio < 0.85) {
+                    fontSize = Math.max(5, fontSize * widthRatio);
+                  }
+                }
               } catch {}
-            }
-          } else {
-            const sanitizedLine = line.text.replace(/[^\x00-\xFF]/g, ' ');
-            const fontSize = Math.max(6, Math.min(18, line.height * 0.85));
 
-            try {
-              page.drawText(sanitizedLine, {
-                x: line.x,
-                y: line.y,
+              safeDrawPdfText(page, sanitizedWord, {
+                x: word.x,
+                y: word.y,
                 size: fontSize,
                 font,
-                opacity: 0
+                opacity: 0 // Camada invisível pesquisável (Ctrl+F)
               });
-            } catch {}
+            }
+          } else {
+            const sanitizedLine = sanitizeTextForPdfLayer(line.text).trim();
+            if (!sanitizedLine) continue;
+            const fontSize = Math.max(6, Math.min(18, line.height * 0.85));
+
+            safeDrawPdfText(page, sanitizedLine, {
+              x: line.x,
+              y: line.y,
+              size: fontSize,
+              font,
+              opacity: 0
+            });
           }
         }
       }

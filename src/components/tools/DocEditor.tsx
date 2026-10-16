@@ -70,6 +70,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { RichPdfExporterService } from '../../services/richPdfExporterService';
 import { DocxExporterService } from '../../services/docxExporterService';
 import { PdfTextExtractor } from '../../services/pdfTextExtractor';
+import { HtmlSanitizer } from '../../services/htmlSanitizer';
 
 interface VersionSnapshot {
   id: string;
@@ -727,7 +728,7 @@ export const DocEditor: React.FC = () => {
       <h2 style="font-size: 12pt; font-weight: bold; margin-top: 14pt; margin-bottom: 6pt;">III - DOS PEDIDOS E REQUERIMENTOS</h2>
       <p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;">Diante do exposto, requer a Vossa Excelência a citação do Réu e o julgamento de procedência dos pedidos.</p>
     `;
-    editorRef.current.innerHTML = html;
+    editorRef.current.innerHTML = HtmlSanitizer.sanitize(html);
     updateMetrics();
     setShowQualificationModal(false);
   };
@@ -798,7 +799,7 @@ export const DocEditor: React.FC = () => {
   // Initial Content Load
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML.trim() === '') {
-      editorRef.current.innerHTML = LEGAL_TEMPLATES[0].content;
+      editorRef.current.innerHTML = HtmlSanitizer.sanitize(LEGAL_TEMPLATES[0].content);
       updateMetrics();
     }
   }, []);
@@ -831,7 +832,7 @@ export const DocEditor: React.FC = () => {
     let html = editorRef.current.innerHTML;
     const regex = new RegExp(`\\[${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'g');
     html = html.replace(regex, `<strong>${val.trim()}</strong>`);
-    editorRef.current.innerHTML = html;
+    editorRef.current.innerHTML = HtmlSanitizer.sanitize(html);
 
     setPlaceholderValues(prev => {
       const copy = { ...prev };
@@ -855,7 +856,7 @@ export const DocEditor: React.FC = () => {
     });
 
     if (count > 0) {
-      editorRef.current.innerHTML = html;
+      editorRef.current.innerHTML = HtmlSanitizer.sanitize(html);
       setPlaceholderValues({});
       updateMetrics();
     }
@@ -925,7 +926,7 @@ export const DocEditor: React.FC = () => {
 
   const handleRestoreSnapshot = (snap: VersionSnapshot) => {
     if (editorRef.current && window.confirm(`Restaurar a versão salva às ${snap.timestamp}?`)) {
-      editorRef.current.innerHTML = snap.content;
+      editorRef.current.innerHTML = HtmlSanitizer.sanitize(snap.content);
       updateMetrics();
       setShowVersionHistoryModal(false);
     }
@@ -1295,7 +1296,7 @@ export const DocEditor: React.FC = () => {
 
   const loadTemplate = (template: LegalTemplate) => {
     if (editorRef.current) {
-      editorRef.current.innerHTML = template.content;
+      editorRef.current.innerHTML = HtmlSanitizer.sanitize(template.content);
       setDocTitle(`${template.title.replace(/[^a-zA-Z0-9_]/g, '_')}.docx`);
       updateMetrics();
       setShowTemplatesModal(false);
@@ -1376,7 +1377,7 @@ export const DocEditor: React.FC = () => {
         const buffer = await file.arrayBuffer();
         const importedHtml = await DocxExporterService.importDocxToHtml(buffer);
         if (editorRef.current) {
-          editorRef.current.innerHTML = importedHtml;
+          editorRef.current.innerHTML = HtmlSanitizer.sanitize(importedHtml);
           setDocTitle(file.name);
           updateMetrics();
         }
@@ -1398,14 +1399,14 @@ export const DocEditor: React.FC = () => {
         });
 
         if (editorRef.current) {
-          editorRef.current.innerHTML = reconstructedHtml || '<p>Nenhum texto extraível encontrado no PDF.</p>';
+          editorRef.current.innerHTML = HtmlSanitizer.sanitize(reconstructedHtml || '<p>Nenhum texto extraível encontrado no PDF.</p>');
           setDocTitle(file.name.replace(/\.pdf$/i, '.docx'));
           updateMetrics();
         }
       } else if (lowerName.endsWith('.html') || lowerName.endsWith('.htm')) {
         const text = await file.text();
         if (editorRef.current) {
-          editorRef.current.innerHTML = text;
+          editorRef.current.innerHTML = HtmlSanitizer.sanitize(text);
           setDocTitle(file.name);
           updateMetrics();
         }
@@ -1421,7 +1422,7 @@ export const DocEditor: React.FC = () => {
           .map(p => `<p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;">${p.replace(/\n/g, '<br>')}</p>`)
           .join('');
         if (editorRef.current) {
-          editorRef.current.innerHTML = mdHtml;
+          editorRef.current.innerHTML = HtmlSanitizer.sanitize(mdHtml);
           setDocTitle(file.name);
           updateMetrics();
         }
@@ -1432,7 +1433,7 @@ export const DocEditor: React.FC = () => {
           .map(p => `<p style="text-indent: 2cm; margin-bottom: 12pt; text-align: justify; line-height: 1.5;">${p.replace(/\n/g, '<br>')}</p>`)
           .join('');
         if (editorRef.current) {
-          editorRef.current.innerHTML = formatted;
+          editorRef.current.innerHTML = HtmlSanitizer.sanitize(formatted);
           setDocTitle(file.name);
           updateMetrics();
         }

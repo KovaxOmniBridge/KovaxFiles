@@ -887,6 +887,57 @@ export const LexmlSearchTool: React.FC = () => {
     }
   };
 
+  // Helper para renderizar badge de autenticidade e proveniência auditada
+  const renderAuthenticityBadge = (art: LegalArticle) => {
+    const isSuspended = 
+      art.statusVigencia === 'SUSPENSA_NAO_COMPROVADA' || 
+      art.authenticityStatus === 'SUSPENSO_PREVENTIVAMENTE' || 
+      art.authenticityStatus === 'SUSPENSO_NAO_COMPROVADO';
+
+    if (isSuspended) {
+      return (
+        <span className="px-2 py-0.5 bg-rose-950 text-rose-300 border border-rose-500/40 font-bold rounded flex items-center space-x-1 text-[10px]" title="Processo suspenso pelo Tribunal - Não publicado no DJe">
+          <ShieldAlert className="w-3 h-3 text-rose-400" />
+          <span>Publicação Suspensa (DJe)</span>
+        </span>
+      );
+    }
+
+    if (art.authenticityStatus === 'DIVERGENCIA_DETECTADA') {
+      return (
+        <span className="px-2 py-0.5 bg-red-950 text-red-300 border border-red-500/40 font-bold rounded flex items-center space-x-1 text-[10px]" title="Divergência entre o texto armazenado e a fonte oficial">
+          <AlertTriangle className="w-3 h-3 text-red-400" />
+          <span>Divergência Textual</span>
+        </span>
+      );
+    }
+
+    if (art.authenticityStatus === 'ORIGEM_NAO_COMPROVADA') {
+      return (
+        <span className="px-2 py-0.5 bg-orange-950 text-orange-300 border border-orange-500/40 font-bold rounded flex items-center space-x-1 text-[10px]" title="A fonte indicada não pertence a domínio governamental oficial">
+          <AlertCircle className="w-3 h-3 text-orange-400" />
+          <span>Origem Não Comprovada</span>
+        </span>
+      );
+    }
+
+    if (art.authenticityStatus === 'COMPROVADO_COM_EVIDENCIA') {
+      return (
+        <span className="px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-medium rounded flex items-center space-x-1 text-[10px]" title="Cadeia de proveniência completa: publicação identificada, captura verificável em domínio oficial com hash independente coincidente">
+          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+          <span>Proveniência Comprovada</span>
+        </span>
+      );
+    }
+
+    return (
+      <span className="px-2 py-0.5 bg-slate-900 text-slate-400 border border-slate-700/60 font-medium rounded flex items-center space-x-1 text-[10px]" title="Registro documental interno. Captura externa independente pendente de homologação">
+        <Info className="w-3 h-3 text-slate-400" />
+        <span>Acervo Local (Captura Pendente)</span>
+      </span>
+    );
+  };
+
   // Helper para renderizar badge de Esfera Legislativa
   const renderEsferaBadge = (art: LegalArticle) => {
     const esfera = art.lawType || (
@@ -1478,11 +1529,13 @@ export const LexmlSearchTool: React.FC = () => {
                           </div>
                         )}
 
-                        {/* RODAPÉ AUDITÁVEL DO DISPOSITIVO COM URN LEXML, FONTE, DATA E SHA-256 */}
+                        {/* RODAPÉ AUDITÁVEL DO DISPOSITIVO COM URN LEXML, FONTE, DATA E PROVENIÊNCIA */}
                         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60 text-[10px] text-slate-400">
                           <div className="flex flex-wrap items-center gap-3">
                             <span className="font-mono text-slate-300 bg-slate-950 px-2 py-0.5 rounded border border-slate-800 flex items-center space-x-1">
-                              <span className="text-slate-500">URN:</span>
+                              <span className="text-slate-500">
+                                {(art.isOfficialUrnVerified || art.provenance?.publication?.isOfficialUrnVerified) ? 'LexML Oficial:' : 'URN Provisória:'}
+                              </span>
                               <span className="truncate max-w-[200px]" title={art.officialId || LegalCorpusAuditorService.generateLexmlUrn(art)}>
                                 {art.officialId || LegalCorpusAuditorService.generateLexmlUrn(art)}
                               </span>
@@ -1504,17 +1557,7 @@ export const LexmlSearchTool: React.FC = () => {
                           </div>
 
                           <div className="flex items-center space-x-1.5">
-                            {art.statusVigencia === 'SUSPENSA_NAO_COMPROVADA' ? (
-                              <span className="px-2 py-0.5 bg-rose-950 text-rose-300 border border-rose-500/40 font-bold rounded flex items-center space-x-1">
-                                <ShieldAlert className="w-3 h-3 text-rose-400" />
-                                <span>Suspensa (Sem Prova Oficial)</span>
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-medium rounded flex items-center space-x-1 text-[10px]">
-                                <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                                <span>SHA-256 Verificado</span>
-                              </span>
-                            )}
+                            {renderAuthenticityBadge(art)}
                           </div>
                         </div>
                       </div>
@@ -2296,52 +2339,108 @@ export const LexmlSearchTool: React.FC = () => {
               <div className="p-4 bg-slate-900 rounded-xl border border-slate-800 space-y-3 text-xs">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                   <span className="font-bold text-slate-200 flex items-center space-x-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Registro Oficial de Autenticidade & Auditoria</span>
+                    <ShieldCheck className="w-4 h-4 text-indigo-400" />
+                    <span>Cadeia de Proveniência & Evidências de Autenticidade</span>
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono">Padrão LexML / DJe</span>
+                  <div className="flex items-center space-x-2">
+                    {renderAuthenticityBadge(viewingDetailArticle)}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <span className="text-slate-500 text-[10px] uppercase font-bold block">Identificador Oficial (URN LexML):</span>
-                    <div className="flex items-center space-x-1.5 mt-0.5">
-                      <span className="text-slate-200 font-mono text-[11px] bg-slate-950 px-2 py-1 rounded border border-slate-800 flex-1 truncate select-all">
+                  {/* 1. Publicação Oficial Identificada */}
+                  <div className="p-3 bg-slate-950/80 rounded-lg border border-slate-800 space-y-1">
+                    <span className="text-indigo-400 text-[10px] uppercase font-bold block flex items-center space-x-1">
+                      <Landmark className="w-3 h-3" />
+                      <span>1. Publicação Oficial Identificada:</span>
+                    </span>
+                    <span className="text-slate-200 block font-medium">
+                      {viewingDetailArticle.provenance?.publication?.authority || viewingDetailArticle.officialPublisher || 'Imprensa Oficial / STF / Planalto'}
+                    </span>
+                    <span className="text-slate-400 text-[11px] block">
+                      Veículo: {viewingDetailArticle.provenance?.publication?.officialJournal || viewingDetailArticle.officialRef || 'DJe / Diário Oficial'}
+                    </span>
+                    <span className="text-slate-400 text-[11px] block">
+                      Data da Publicação: {viewingDetailArticle.provenance?.publication?.publicationDate || viewingDetailArticle.queryDate || '2026-10-15'}
+                    </span>
+                    <div className="text-[11px] text-slate-400 flex items-center space-x-1 pt-1">
+                      <span className="text-slate-500 font-mono">
+                        {(viewingDetailArticle.isOfficialUrnVerified || viewingDetailArticle.provenance?.publication?.isOfficialUrnVerified) ? 'URN Oficial LexML:' : 'URN Provisória do Sistema:'}
+                      </span>
+                      <span className="truncate flex-1 font-mono text-slate-300">
                         {viewingDetailArticle.officialId || LegalCorpusAuditorService.generateLexmlUrn(viewingDetailArticle)}
                       </span>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(viewingDetailArticle.officialId || LegalCorpusAuditorService.generateLexmlUrn(viewingDetailArticle));
-                          showToast('URN LexML copiada!');
-                        }}
-                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition-colors"
-                        title="Copiar URN LexML"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   </div>
 
-                  <div>
-                    <span className="text-slate-500 text-[10px] uppercase font-bold block">Fonte Oficial Específica:</span>
-                    <span className="text-slate-200 block mt-1 font-medium">{viewingDetailArticle.officialPublisher || 'Imprensa Oficial / STF / Planalto'}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-500 text-[10px] uppercase font-bold block">Data da Última Auditoria / Consulta:</span>
-                    <span className="text-slate-200 block mt-1">{viewingDetailArticle.queryDate || '2026-10-15'}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-500 text-[10px] uppercase font-bold block">Versão Normativa:</span>
-                    <span className="text-slate-200 block mt-1">{viewingDetailArticle.version || 'Publicação Oficial Consolidada'}</span>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <span className="text-slate-500 text-[10px] uppercase font-bold block">Hash SHA-256 Canônico de Publicação:</span>
-                    <span className="text-emerald-400 font-mono text-[10px] block mt-0.5 bg-slate-950 p-2 rounded border border-slate-800 break-all select-all">
-                      {viewingDetailArticle.officialContentSha256 || LegalCorpusAuditorService.computeCanonicalSha256(viewingDetailArticle.content)}
+                  {/* 2. Cópia ou Captura Verificável da Fonte */}
+                  <div className="p-3 bg-slate-950/80 rounded-lg border border-slate-800 space-y-1">
+                    <span className="text-indigo-400 text-[10px] uppercase font-bold block flex items-center space-x-1">
+                      <Globe className="w-3 h-3" />
+                      <span>2. Captura Verificável da Fonte:</span>
                     </span>
+                    <div className="flex items-center space-x-1">
+                      <span className="text-slate-400 text-[11px]">URL Oficial:</span>
+                      {viewingDetailArticle.sourceUrl ? (
+                        <a 
+                          href={viewingDetailArticle.sourceUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-indigo-400 hover:text-indigo-300 truncate flex-1 font-mono text-[11px] flex items-center space-x-0.5"
+                        >
+                          <span className="truncate">{viewingDetailArticle.sourceUrl}</span>
+                          <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
+                        </a>
+                      ) : (
+                        <span className="text-slate-500 text-[11px]">Não informada</span>
+                      )}
+                    </div>
+                    <span className="text-slate-400 text-[11px] block">
+                      Domínio Auditado: <span className="font-mono text-slate-300">{viewingDetailArticle.provenance?.sourceCapture?.verifiedHostname || 'Não certificado'}</span> {viewingDetailArticle.provenance?.sourceCapture?.isDomainVerified ? '✅ (.jus.br/.gov.br)' : '⚠️ (Pendente)'}
+                    </span>
+                    <span className="text-slate-400 text-[11px] block">
+                      Método de Captura: {viewingDetailArticle.provenance?.sourceCapture?.captureMethod || 'Acervo Local'}
+                    </span>
+                    <div className="pt-1">
+                      <span className="text-slate-500 text-[10px] uppercase font-bold block">Hash SHA-256 da Fonte Externa (Captura):</span>
+                      <span className="text-indigo-300 font-mono text-[10px] block bg-slate-900 p-1.5 rounded border border-slate-800 break-all select-all">
+                        {viewingDetailArticle.provenance?.sourceCapture?.externalSourceHash || viewingDetailArticle.externalSourceHash || 'Pendente de homologação de snapshot externo'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3. Comparação de Texto & Controle de Versão */}
+                  <div className="md:col-span-2 p-3 bg-slate-950/80 rounded-lg border border-slate-800 space-y-1.5">
+                    <span className="text-indigo-400 text-[10px] uppercase font-bold block flex items-center space-x-1">
+                      <GitCompare className="w-3 h-3" />
+                      <span>3. Comparação de Texto & Integridade do Conteúdo Armazenado:</span>
+                    </span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span className="text-slate-500 block">Hash SHA-256 Canônico Local:</span>
+                        <span className="text-emerald-400 font-mono text-[10px] block bg-slate-900 p-1.5 rounded border border-slate-800 break-all select-all">
+                          {LegalCorpusAuditorService.computeCanonicalSha256(viewingDetailArticle.content)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">Status da Comparação:</span>
+                        <span className="block mt-1 font-semibold text-slate-200">
+                          {viewingDetailArticle.provenance?.versionControl?.contentMatch
+                            ? '✅ Coincidência literal exata com a extração da fonte oficial.'
+                            : (viewingDetailArticle.provenance?.sourceCapture?.externalSourceHash || viewingDetailArticle.externalSourceHash)
+                              ? '❌ Discrepância detectada entre texto local e captura oficial.'
+                              : 'ℹ️ Captura externa independente pendente (hash local não reutilizado).'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Parecer Técnico de Autenticidade */}
+                  <div className="md:col-span-2 p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 text-[11px] text-slate-300 space-y-1">
+                    <span className="text-slate-400 font-bold block uppercase text-[10px]">Parecer Técnico da Auditoria:</span>
+                    <p className="leading-relaxed text-slate-300">
+                      {viewingDetailArticle.auditNotes || viewingDetailArticle.provenance?.evidence?.auditNotes || 'Dispositivo sob governança editorial KovaxFiles.'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -2549,7 +2648,7 @@ export const LexmlSearchTool: React.FC = () => {
                             <span className="text-slate-200 font-bold text-sm">{auditSummary.totalAudited.toLocaleString('pt-BR')}</span>
                           </div>
                           <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40">
-                            <span className="text-emerald-400 text-[10px] block font-bold">Autênticos Comprovados:</span>
+                            <span className="text-emerald-400 text-[10px] block font-bold">Verificados com Fonte Oficial:</span>
                             <span className="text-emerald-300 font-bold text-sm">{auditSummary.totalAuthentic.toLocaleString('pt-BR')}</span>
                           </div>
                           <div className="p-2.5 rounded-lg bg-rose-950/50 border border-rose-500/50">

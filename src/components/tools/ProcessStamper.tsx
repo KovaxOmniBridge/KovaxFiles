@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Stamp, 
   Upload, 
@@ -19,10 +19,11 @@ import {
   Sliders,
   UserCheck,
   Info,
-  BookOpen
+  BookOpen,
+  AlertTriangle
 } from 'lucide-react';
 import { LocalPdfEngine, ProcessStampOptions, computeSha256Hex } from '../../services/pdfEngine';
-import { CompressionEngine } from '../../services/compressionEngine';
+import { CompressionEngine, SignatureDetectionResult } from '../../services/compressionEngine';
 import { PDFDocument } from 'pdf-lib';
 
 export interface StampedResultItem {
@@ -52,6 +53,37 @@ export const ProcessStamper: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [results, setResults] = useState<StampedResultItem[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fileSignatures, setFileSignatures] = useState<Map<string, SignatureDetectionResult>>(new Map());
+
+  // Detecção preventiva de assinaturas digitais nos arquivos carregados
+  useEffect(() => {
+    let isCancelled = false;
+    const inspectSignatures = async () => {
+      const sigMap = new Map<string, SignatureDetectionResult>();
+      for (const file of selectedFiles) {
+        try {
+          const buf = await file.arrayBuffer();
+          const sig = CompressionEngine.detectDigitalSignatures(buf);
+          if (sig.hasSignatures) {
+            sigMap.set(file.name + '_' + file.size, sig);
+          }
+        } catch (e) {
+          console.warn('Erro ao inspecionar assinaturas digitais:', e);
+        }
+      }
+      if (!isCancelled) {
+        setFileSignatures(sigMap);
+      }
+    };
+
+    if (selectedFiles.length > 0) {
+      inspectSignatures();
+    } else {
+      setFileSignatures(new Map());
+    }
+
+    return () => { isCancelled = true; };
+  }, [selectedFiles]);
 
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -684,6 +716,15 @@ export const ProcessStamper: React.FC = () => {
                   </span>
                   <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
                   <span className="text-slate-200 font-medium truncate">{file.name}</span>
+                  {fileSignatures.has(file.name + '_' + file.size) && (
+                    <span 
+                      className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 flex items-center gap-1"
+                      title="Assinatura Digital ICP-Brasil / PAdES detectada. Carimbar alterará os bytes e invalidará a assinatura originária."
+                    >
+                      <ShieldCheck className="w-3 h-3 text-amber-400" />
+                      Assinado ({fileSignatures.get(file.name + '_' + file.size)?.signatureCount})
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -712,6 +753,21 @@ export const ProcessStamper: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Alerta de Assinatura Digital Detectada */}
+      {fileSignatures.size > 0 && selectedFiles.length > 0 && (
+        <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-xs text-amber-300 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-bold text-amber-200">
+              ⚠️ Assinatura Digital Originária Detectada em {fileSignatures.size} arquivo(s)
+            </div>
+            <div className="leading-relaxed text-amber-300/90 text-[11.5px]">
+              A aplicação de chancela mecânica (carimbo) e renumeração de páginas alteram a estrutura binária do PDF, o que <strong>invalida a assinatura digital ICP-Brasil/PAdES existente</strong> perante os tribunais. Recomenda-se juntar o arquivo original assinado de forma avulsa ou certificar a autenticidade por meio de termo separado.
+            </div>
           </div>
         </div>
       )}

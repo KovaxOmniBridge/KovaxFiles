@@ -227,11 +227,26 @@ export const OcrScanner: React.FC = () => {
     handleUpdateActivePageText(processedPages[activePageIndex].rawOcrText);
   };
 
-  // 5. Geração de PDF Pesquisável (Searchable PDF / Sandwich PDF)
+  // 5. Download do Documento Original Intacto (quando não for possível gerar o pesquisável)
+  const handleDownloadOriginalDocument = () => {
+    if (!selectedFiles || selectedFiles.length === 0) return;
+    const file = selectedFiles[0];
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // 6. Geração de PDF Pesquisável (Searchable PDF / Sandwich PDF)
   const handleDownloadSearchablePdf = async () => {
     if (!processedPages || processedPages.length === 0) return;
 
     setIsGeneratingPdf(true);
+    setErrorMessage(null);
     try {
       const docName = docInspection?.documentName || 'Documento';
       const cleanName = docName.replace(/\.[^/.]+$/, '');
@@ -239,9 +254,12 @@ export const OcrScanner: React.FC = () => {
 
       const pdfBytes = await OcrDocumentService.generateSearchablePdf(
         processedPages,
-        title,
-        (percent) => {
-          setProgressState({ message: `Compilando PDF Pesquisável... (${percent}%)`, percent });
+        {
+          documentTitle: title,
+          strictImagePreservation: true,
+          onProgress: (percent) => {
+            setProgressState({ message: `Compilando PDF Pesquisável... (${percent}%)`, percent });
+          }
         }
       );
 
@@ -256,7 +274,14 @@ export const OcrScanner: React.FC = () => {
       URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('[OcrScanner] Erro ao gerar PDF pesquisável:', err);
-      setErrorMessage(`Erro ao gerar PDF pesquisável: ${err?.message || 'Falha na compilação'}`);
+      const isPreservation = err?.name === 'ImagePreservationError' || err?.message?.includes('preservação visual');
+      if (isPreservation) {
+        setErrorMessage(
+          `Geração cancelada por segurança: ${err.message}. O documento original permanece intacto sem perda visual.`
+        );
+      } else {
+        setErrorMessage(`Erro ao gerar PDF pesquisável: ${err?.message || 'Falha na compilação'}`);
+      }
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -614,6 +639,50 @@ export const OcrScanner: React.FC = () => {
       {/* ETAPA 3: REVISÃO INTEGRADA EM PAINEL DIVIDIDO (SPLIT VIEW) & GERAÇÃO DE PDF PESQUISÁVEL */}
       {processedPages && activePage && (
         <div className="space-y-4">
+          {/* Banner de Segurança / Falha de Preservação Visual na Geração do PDF Pesquisável */}
+          {errorMessage && (
+            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs text-red-300">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <strong className="block font-bold text-red-200 mb-0.5">
+                    [SEGURANÇA DOCUMENTAL] A geração do PDF pesquisável foi interrompida
+                  </strong>
+                  <span>{errorMessage}</span>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Para garantir que nenhuma página seja gerada em branco ou sem a imagem original, você pode baixar o documento intacto ou exportar o texto reconhecido.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                {selectedFiles.length > 0 && (
+                  <button
+                    onClick={handleDownloadOriginalDocument}
+                    className="px-3.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-200 border border-blue-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                    title="Baixar o arquivo original intacto sem camada pesquisável"
+                  >
+                    <Download className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Baixar Original Intacto</span>
+                  </button>
+                )}
+                <button
+                  onClick={handleDownloadAllText}
+                  className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                  title="Exportar transcrição textual em arquivo .TXT"
+                >
+                  <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Exportar TXT</span>
+                </button>
+                <button
+                  onClick={() => setErrorMessage(null)}
+                  className="text-red-400 hover:text-red-200 font-bold px-2 py-1 text-sm"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Card de Resumo e Ações Globais */}
           <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xl">
             <div className="flex items-center gap-3">
@@ -636,7 +705,7 @@ export const OcrScanner: React.FC = () => {
                   ) : (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                      Legibilidade 100% Validada
+                      Reconhecimento Óptico de Texto Concluído
                     </span>
                   )}
                 </div>

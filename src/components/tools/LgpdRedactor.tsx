@@ -57,7 +57,16 @@ import {
 import { DocumentEntityClassifier, DetectionRigorLevel } from '../../services/universalAiClassifier';
 import { PdfReportExporterService, LgpdAuditRecord } from '../../services/pdfReportExporterService';
 
+export interface ManagedRedactionDocument {
+  fileId: string;
+  file: File;
+  name: string;
+  size: number;
+}
+
 export interface RedactResultItem {
+  fileId?: string;
+  originalFileName?: string;
   fileName: string;
   data: Uint8Array;
   redactionCount: number;
@@ -66,6 +75,7 @@ export interface RedactResultItem {
 }
 
 export interface FileRedactionStatus {
+  fileId: string;
   fileName: string;
   fileSize: number;
   totalPages: number;
@@ -76,9 +86,12 @@ export interface FileRedactionStatus {
 }
 
 export const LgpdRedactor: React.FC = () => {
-  // Configuração dos Arquivos Selecionados
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  // Configuração dos Documentos Selecionados (Gerenciados por fileId único e imutável)
+  const [selectedDocs, setSelectedDocs] = useState<ManagedRedactionDocument[]>([]);
   const [fileStatuses, setFileStatuses] = useState<FileRedactionStatus[]>([]);
+  
+  // Derivação para compatibilidade com APIs externas
+  const selectedFiles = selectedDocs.map(d => d.file);
   
   // Configuração de Modo de Varredura - Padrão: Varredura por Padrões Determinísticos
   const [scanMode, setScanMode] = useState<DetectionMode>('pattern');
@@ -153,7 +166,7 @@ export const LgpdRedactor: React.FC = () => {
     }));
   };
 
-  // Upload de arquivos
+  // Upload de arquivos com geração de fileId único e imutável por documento
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const pdfs = Array.from(e.target.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
@@ -162,7 +175,13 @@ export const LgpdRedactor: React.FC = () => {
         e.target.value = '';
         return;
       }
-      setSelectedFiles(prev => [...prev, ...pdfs]);
+      const newDocs: ManagedRedactionDocument[] = pdfs.map((file, idx) => ({
+        fileId: `doc_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
+        file,
+        name: file.name,
+        size: file.size
+      }));
+      setSelectedDocs(prev => [...prev, ...newDocs]);
       setResults(null);
       setDetectedItems([]);
       setHasAnalyzed(false);
@@ -171,13 +190,15 @@ export const LgpdRedactor: React.FC = () => {
     }
   };
 
-  const removeFile = (index: number) => {
-    const fileToRemove = selectedFiles[index];
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-    if (fileToRemove) {
-      setFileStatuses(prev => prev.filter(f => f.fileName !== fileToRemove.name));
-      setDetectedItems(prev => prev.filter(item => item.fileName !== fileToRemove.name));
-    }
+  const removeDocument = (fileId: string) => {
+    setSelectedDocs(prev => prev.filter(d => d.fileId !== fileId));
+    setFileStatuses(prev => prev.filter(f => f.fileId !== fileId));
+    setDetectedItems(prev => prev.filter(item => item.fileId !== fileId));
+    setPagesDataMap(prev => {
+      const next = new Map(prev);
+      next.delete(fileId);
+      return next;
+    });
     setActivePreviewFileIndex(0);
     setActivePreviewPageIndex(0);
     setResults(null);
@@ -185,8 +206,13 @@ export const LgpdRedactor: React.FC = () => {
     setHasAnalyzed(false);
   };
 
+  const removeFile = (index: number) => {
+    const doc = selectedDocs[index];
+    if (doc) removeDocument(doc.fileId);
+  };
+
   const clearAll = () => {
-    setSelectedFiles([]);
+    setSelectedDocs([]);
     setFileStatuses([]);
     setActivePreviewFileIndex(0);
     setActivePreviewPageIndex(0);
@@ -200,21 +226,21 @@ export const LgpdRedactor: React.FC = () => {
     setConfirmUnderstood(false);
   };
 
-  // Alternar permissão manual para arquivo escaneado reprovado
-  const toggleFileManualOverride = (fileName: string) => {
-    setFileStatuses(prev => prev.map(f => f.fileName === fileName ? { ...f, manualOverride: !f.manualOverride } : f));
+  // Alternar permissão manual para arquivo escaneado reprovado por fileId
+  const toggleFileManualOverride = (fileId: string) => {
+    setFileStatuses(prev => prev.map(f => f.fileId === fileId ? { ...f, manualOverride: !f.manualOverride } : f));
   };
 
-  // Selecionar/desmarcar itens exclusivamente do arquivo informado
-  const setFileItemsSelection = (fileName: string, selected: boolean) => {
+  // Selecionar/desmarcar itens exclusivamente do arquivo informado (estrito por fileId)
+  const setFileItemsSelection = (fileId: string, selected: boolean) => {
     setDetectedItems(prev => prev.map(item =>
-      (!item.fileName || item.fileName === fileName) ? { ...item, selected } : item
+      item.fileId === fileId ? { ...item, selected } : item
     ));
   };
 
   // Executar Análise Inteligente com Diagnóstico de Reprovação Óptica
   const handleRunAiAnalysis = async () => {
-    if (selectedFiles.length === 0) return;
+    if (selectedDocs.length === 0) return;
 
     setIsAnalyzing(true);
     setAnalysisProgress(10);
@@ -233,16 +259,16 @@ export const LgpdRedactor: React.FC = () => {
       const newPagesMap = new Map<string, PageTextData[]>();
       const newStatuses: FileRedactionStatus[] = [];
 
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
-        setAnalysisProgress(Math.round(((i + 0.1) / selectedFiles.length) * 80));
+      for (let i = 0; i < selectedDocs.length; i++) {
+        const doc = selectedDocs[i];
+        setAnalysisProgress(Math.round(((i + 0.1) / selectedDocs.length) * 80));
 
-        const buffer = await file.arrayBuffer();
+        const buffer = await doc.file.arrayBuffer();
         const pagesData = await PdfTextExtractor.extractTextWithBounds(
           buffer,
-          p => setAnalysisProgress(Math.round(((i + (p.percent / 100) * 0.4) / selectedFiles.length) * 80))
+          p => setAnalysisProgress(Math.round(((i + (p.percent / 100) * 0.4) / selectedDocs.length) * 80))
         );
-        newPagesMap.set(file.name, pagesData);
+        newPagesMap.set(doc.fileId, pagesData);
 
         // Avaliação de integridade óptica: o processamento deve reprovar se não puder analisar adequadamente
         const isFileScanned = pagesData.some(p => p.isScanned);
@@ -253,8 +279,9 @@ export const LgpdRedactor: React.FC = () => {
           : undefined;
 
         newStatuses.push({
-          fileName: file.name,
-          fileSize: file.size,
+          fileId: doc.fileId,
+          fileName: doc.name,
+          fileSize: doc.size,
           totalPages: pagesData.length,
           isScanned: isFileScanned,
           reproved: isReproved,
@@ -262,20 +289,16 @@ export const LgpdRedactor: React.FC = () => {
           manualOverride: false
         });
 
-        // Executa varredura por padrões e regras LGPD com progresso por página em tempo real
+        // Executa varredura por padrões e regras LGPD com progresso por página em tempo real, indexado por fileId
         const items = await RedactionDetectionService.analyzePdf(
           pagesData,
           categories,
           detectionSettings,
-          p => setAnalysisProgress(Math.round(((i + 0.4 + (p.percent / 100) * 0.6) / selectedFiles.length) * 80)),
-          file.name
+          p => setAnalysisProgress(Math.round(((i + 0.4 + (p.percent / 100) * 0.6) / selectedDocs.length) * 80)),
+          doc.name,
+          doc.fileId
         );
-        const taggedItems = items.map(it => ({
-          ...it,
-          fileName: file.name,
-          rect: { ...it.rect, fileName: file.name }
-        }));
-        allDetected.push(...taggedItems);
+        allDetected.push(...items);
       }
 
       setPagesDataMap(newPagesMap);
@@ -299,15 +322,15 @@ export const LgpdRedactor: React.FC = () => {
 
   // Renderizar a página no Canvas de Pré-visualização para Desenho Manual
   useEffect(() => {
-    if (!hasAnalyzed || selectedFiles.length === 0 || !canvasRef.current) return;
+    if (!hasAnalyzed || selectedDocs.length === 0 || !canvasRef.current) return;
 
     let isMounted = true;
     const renderPreview = async () => {
-      const fileIndex = Math.min(activePreviewFileIndex, selectedFiles.length - 1);
-      const file = selectedFiles[fileIndex];
-      if (!file) return;
+      const docIndex = Math.min(activePreviewFileIndex, selectedDocs.length - 1);
+      const activeDoc = selectedDocs[docIndex];
+      if (!activeDoc) return;
 
-      const buffer = await file.arrayBuffer();
+      const buffer = await activeDoc.file.arrayBuffer();
       const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
       const pdf = await loadingTask.promise;
       
@@ -326,9 +349,9 @@ export const LgpdRedactor: React.FC = () => {
 
       await page.render({ canvasContext: ctx, viewport }).promise;
 
-      // Desenhar sobreposição das tarjas detectadas na página EXCLUSIVAMENTE deste arquivo
+      // Desenhar sobreposição das tarjas detectadas na página EXCLUSIVAMENTE deste arquivo por fileId
       const pageItems = detectedItems.filter(item =>
-        (!item.fileName || item.fileName === file.name) &&
+        item.fileId === activeDoc.fileId &&
         item.pageIndex === pageIndex &&
         item.selected
       );
@@ -359,7 +382,7 @@ export const LgpdRedactor: React.FC = () => {
 
     renderPreview();
     return () => { isMounted = false; };
-  }, [hasAnalyzed, selectedFiles, activePreviewFileIndex, activePreviewPageIndex, detectedItems]);
+  }, [hasAnalyzed, selectedDocs, activePreviewFileIndex, activePreviewPageIndex, detectedItems]);
 
   // Manipuladores de Evento de Desenho de Tarja Manual com o Mouse no Canvas
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -402,21 +425,23 @@ export const LgpdRedactor: React.FC = () => {
       const pdfH = currentBox.h / scale;
       const pdfY = (canvasH - (currentBox.y + currentBox.h)) / scale;
 
-      const fileIndex = Math.min(activePreviewFileIndex, selectedFiles.length - 1);
-      const activeFile = selectedFiles[fileIndex] || selectedFiles[0];
+      const docIndex = Math.min(activePreviewFileIndex, selectedDocs.length - 1);
+      const activeDoc = selectedDocs[docIndex] || selectedDocs[0];
 
       const newManualItem: DetectedRedactionItem = {
         id: 'manual-' + Math.random().toString(36).substring(7),
+        fileId: activeDoc?.fileId,
+        fileName: activeDoc?.name,
         pageIndex: activePreviewPageIndex,
-        fileName: activeFile?.name,
         text: 'Tarja Manual (Desenho com o Mouse)',
         category: 'Personalizado',
-        reason: activeFile ? `Tarja manual em ${activeFile.name} (pág. ${activePreviewPageIndex + 1})` : 'Tarja desenhada manualmente pelo usuário sobre elemento visual',
+        reason: activeDoc ? `Tarja manual em ${activeDoc.name} (pág. ${activePreviewPageIndex + 1})` : 'Tarja desenhada manualmente pelo usuário sobre elemento visual',
         confidence: 1.0,
         selected: true,
         rect: {
           pageIndex: activePreviewPageIndex,
-          fileName: activeFile?.name,
+          fileId: activeDoc?.fileId,
+          fileName: activeDoc?.name,
           x: pdfX,
           y: pdfY,
           width: pdfW,
@@ -443,7 +468,15 @@ export const LgpdRedactor: React.FC = () => {
 
   // 1. Inicia o fluxo com verificação estrita de reprovação e abre modal de confirmação explícita
   const handleInitiateRedaction = () => {
-    if (selectedFiles.length === 0) return;
+    if (selectedDocs.length === 0) return;
+
+    // Fluxo Obrigatório: Requer análise prévia revisada (eliminação da anonimização cega/emergencial)
+    if (!hasAnalyzed) {
+      setErrorMessage(
+        'Fluxo de Segurança Obrigatório: É indispensável executar a Análise Prévia e validar as tarjas antes de efetuar a anonimização definitiva. A anonimização emergencial sem análise prévia foi descontinuada para garantir conformidade integral com a LGPD.'
+      );
+      return;
+    }
 
     // Bloqueio rigoroso de arquivo escaneado reprovado sem override explícito do operador
     const blockedFiles = fileStatuses.filter(f => f.reproved && !f.manualOverride);
@@ -455,8 +488,8 @@ export const LgpdRedactor: React.FC = () => {
     }
 
     const approvedItems = detectedItems.filter(i => i.selected);
-    if (approvedItems.length === 0 && hasAnalyzed) {
-      setErrorMessage('Selecione pelo menos um item detectado para aplicar as tarjas.');
+    if (approvedItems.length === 0) {
+      setErrorMessage('Nenhuma tarja selecionada. Selecione pelo menos um item detectado ou desenhe uma tarja manual para prosseguir.');
       return;
     }
 
@@ -467,6 +500,10 @@ export const LgpdRedactor: React.FC = () => {
 
   // 2. Executa o Burn-in Definitivo após confirmação explícita do operador
   const handleExecuteConfirmedRedaction = async () => {
+    if (!hasAnalyzed) {
+      setErrorMessage('Operação abortada: Análise e confirmação prévias são obrigatórias.');
+      return;
+    }
     setShowConfirmModal(false);
     setIsRedacting(true);
     setErrorMessage(null);
@@ -476,25 +513,16 @@ export const LgpdRedactor: React.FC = () => {
       const auditRecords: LgpdAuditRecord[] = [];
       const approvedItems = detectedItems.filter(i => i.selected);
 
-      for (const file of selectedFiles) {
-        const buffer = await file.arrayBuffer();
+      for (const doc of selectedDocs) {
+        const buffer = await doc.file.arrayBuffer();
         
-        let rectsToApply: { pageIndex: number; x: number; y: number; width: number; height: number; fileName?: string }[] = [];
-
-        if (hasAnalyzed) {
-          // Filtra ESTRITAMENTE as tarjas aprovadas pertencentes a este arquivo específico
-          rectsToApply = approvedItems
-            .filter(i => !i.fileName || i.fileName === file.name)
-            .map(i => i.rect);
-        } else {
-          // Tarjamento Padrão Determinístico de Emergência
-          const pagesData = pagesDataMap.get(file.name) || await PdfTextExtractor.extractTextWithBounds(buffer);
-          const autoItems = await RedactionDetectionService.analyzePdf(pagesData, categories, {
-            mode: 'pattern',
-            rigorLevel
-          }, undefined, file.name);
-          rectsToApply = autoItems.map(i => i.rect);
-        }
+        // Filtra ESTRITAMENTE as tarjas aprovadas pertencentes a este fileId específico
+        const fileApprovedItems = approvedItems.filter(i => i.fileId === doc.fileId);
+        const rectsToApply = fileApprovedItems.map(i => ({
+          ...i.rect,
+          fileId: doc.fileId,
+          fileName: doc.name
+        }));
 
         const rasterOptions: AnonymizePdfOptions = {
           profile: rasterProfile,
@@ -502,26 +530,32 @@ export const LgpdRedactor: React.FC = () => {
           minDpi: rasterProfile === 'custom' ? customMinDpi : undefined,
           quality: rasterProfile === 'custom' ? customQuality / 100 : undefined,
           maxPixelsPerPage: rasterProfile === 'custom' ? customMaxPixels * 1_000_000 : undefined,
-          targetFileName: file.name
+          targetFileId: doc.fileId,
+          targetFileName: doc.name
         };
 
         const anonymizeRes = await LocalPdfEngine.anonymizePdfWithReport(buffer, rectsToApply, rasterOptions);
+        const transformedFileName = doc.name.replace(/\.pdf$/i, '') + '_anonimizado_LGPD.pdf';
 
         processedResults.push({
-          fileName: file.name.replace(/\.pdf$/i, '_anonimizado_LGPD.pdf'),
+          fileId: doc.fileId,
+          originalFileName: doc.name,
+          fileName: transformedFileName,
           data: anonymizeRes.pdfBytes,
           redactionCount: rectsToApply.length,
           rasterReport: anonymizeRes.report
         });
 
         // Registrar itens removidos para o Relatório Técnico de Integridade e Auditoria
-        const fileApprovedItems = approvedItems.filter(i => !i.fileName || i.fileName === file.name);
         for (const item of fileApprovedItems) {
+          const termHash = PdfReportExporterService.computeTermHash(item.text);
           auditRecords.push({
             id: item.id,
-            fileName: file.name,
+            fileId: doc.fileId,
+            fileName: doc.name,
             pageNumber: item.pageIndex + 1,
             originalTerm: item.text,
+            termHash,
             maskedTerm: '[DADO ANONIMIZADO LGPD]',
             entityType: item.category,
             detectionReason: item.reason || 'Regra de Conformidade LGPD',
@@ -533,7 +567,6 @@ export const LgpdRedactor: React.FC = () => {
       }
 
       setResults(processedResults);
-      setRemovedItemsAudit(auditRecords);
     } catch (err: any) {
       setErrorMessage('Erro ao queimar tarjas no PDF: ' + (err?.message || 'Erro inesperado.'));
     } finally {
@@ -588,11 +621,12 @@ export const LgpdRedactor: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Filtragem dos itens exibidos com suporte a isolamento por arquivo
-  const activeFileName = selectedFiles[activePreviewFileIndex]?.name;
+  // Filtragem dos itens exibidos com suporte a isolamento estrito por documento
+  const activeDoc = selectedDocs[activePreviewFileIndex] || selectedDocs[0];
+  const activeFileId = activeDoc?.fileId;
   const filteredDetectedItems = detectedItems.filter(item => {
-    if (fileViewFilter === 'ACTIVE' && activeFileName && item.fileName && item.fileName !== activeFileName) {
-      return false;
+    if (fileViewFilter === 'ACTIVE') {
+      if (!activeFileId || item.fileId !== activeFileId) return false;
     }
     if (categoryFilter === 'ALL') return true;
     return item.category === categoryFilter;
@@ -866,7 +900,7 @@ export const LgpdRedactor: React.FC = () => {
             <span>Perfil de Rasterização & Critérios de Qualidade Mínima:</span>
           </label>
           <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 w-fit">
-            🛡️ Achatamento 100% Inviolável em Todos os Perfis
+            🛡️ Sanitização por Achatamento Rasterizado (Destruição Física de Texto)
           </span>
         </div>
 
@@ -1083,15 +1117,21 @@ export const LgpdRedactor: React.FC = () => {
           </div>
 
           <div className="max-h-36 overflow-y-auto space-y-2 pr-1">
-            {selectedFiles.map((file, idx) => (
-              <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/60 text-xs">
+            {selectedDocs.map((doc, idx) => (
+              <div key={doc.fileId} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/60 text-xs">
                 <div className="flex items-center gap-2 truncate">
                   <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="text-slate-200 font-medium truncate">{file.name}</span>
+                  <span className="text-slate-200 font-medium truncate" title={`${doc.name} (ID: ${doc.fileId})`}>
+                    {doc.name}
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 shrink-0">
+                    ID: {doc.fileId.slice(-6)}
+                  </span>
                 </div>
                 <button
-                  onClick={() => removeFile(idx)}
+                  onClick={() => removeDocument(doc.fileId)}
                   className="text-red-400 hover:text-red-300 font-bold px-1.5 py-0.5 rounded hover:bg-red-500/10 text-sm transition-all"
+                  title="Remover documento do lote"
                 >
                   ×
                 </button>
@@ -1114,7 +1154,7 @@ export const LgpdRedactor: React.FC = () => {
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Analisar & Detectar Dados Sigilosos ({selectedFiles.length} PDF)</span>
+                  <span>Analisar & Detectar Dados Sigilosos ({selectedDocs.length} PDF)</span>
                 </>
               )}
             </button>
@@ -1123,24 +1163,24 @@ export const LgpdRedactor: React.FC = () => {
       )}
 
       {/* 5. Visualizador Canvas de Páginas com Ferramenta de Desenho Manual de Tarjas por Mouse */}
-      {hasAnalyzed && selectedFiles.length > 0 && (
+      {hasAnalyzed && selectedDocs.length > 0 && (
         <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-4 shadow-xl">
           {/* Abas Superiores de Isolamento Estrito de Arquivo */}
-          {selectedFiles.length > 1 && (
+          {selectedDocs.length > 1 && (
             <div className="space-y-1.5 pb-2 border-b border-slate-800/80">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Documentos no Lote (Isolamento Estrito):
               </span>
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                {selectedFiles.map((f, idx) => {
-                  const fStatus = fileStatuses.find(s => s.fileName === f.name);
+                {selectedDocs.map((doc, idx) => {
+                  const fStatus = fileStatuses.find(s => s.fileId === doc.fileId);
                   const isReproved = fStatus?.reproved && !fStatus?.manualOverride;
-                  const fileItems = detectedItems.filter(i => (!i.fileName || i.fileName === f.name));
+                  const fileItems = detectedItems.filter(i => i.fileId === doc.fileId);
                   const fileApproved = fileItems.filter(i => i.selected).length;
 
                   return (
                     <button
-                      key={f.name + idx}
+                      key={doc.fileId}
                       type="button"
                       onClick={() => {
                         setActivePreviewFileIndex(idx);
@@ -1156,7 +1196,10 @@ export const LgpdRedactor: React.FC = () => {
                     >
                       <FileText className={`w-4 h-4 ${isReproved ? 'text-red-400' : 'text-emerald-400'}`} />
                       <div className="flex flex-col text-left">
-                        <span className="font-bold truncate max-w-[170px]" title={f.name}>{f.name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold truncate max-w-[150px]" title={`${doc.name} (${doc.fileId})`}>{doc.name}</span>
+                          <span className="text-[9px] font-mono text-slate-500">#{doc.fileId.slice(-4)}</span>
+                        </div>
                         <div className="flex items-center gap-1 text-[10px]">
                           {isReproved ? (
                             <span className="text-red-400 font-bold">❌ Reprovado (OCR Ilegível)</span>
@@ -1174,8 +1217,8 @@ export const LgpdRedactor: React.FC = () => {
 
           {/* Banner de Reprovação Óptica para o Arquivo Ativo (se houver) */}
           {(() => {
-            const activeFile = selectedFiles[activePreviewFileIndex];
-            const activeStatus = fileStatuses.find(s => s.fileName === activeFile?.name);
+            const activeDoc = selectedDocs[activePreviewFileIndex];
+            const activeStatus = fileStatuses.find(s => s.fileId === activeDoc?.fileId);
             if (!activeStatus?.reproved) return null;
 
             return (
@@ -1200,7 +1243,7 @@ export const LgpdRedactor: React.FC = () => {
                   <div className="pt-1.5 flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => toggleFileManualOverride(activeStatus.fileName)}
+                      onClick={() => toggleFileManualOverride(activeStatus.fileId)}
                       className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
                         activeStatus.manualOverride
                           ? 'bg-emerald-600/30 border-emerald-500/50 text-emerald-300 shadow-sm'
@@ -1246,7 +1289,7 @@ export const LgpdRedactor: React.FC = () => {
 
             {/* Navegação entre Arquivos e Páginas do PDF */}
             <div className="flex items-center gap-3 text-xs flex-wrap">
-              {selectedFiles.length > 1 && (
+              {selectedDocs.length > 1 && (
                 <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
                   <span className="text-slate-400 text-[11px] font-medium">Arquivo:</span>
                   <select
@@ -1257,9 +1300,9 @@ export const LgpdRedactor: React.FC = () => {
                     }}
                     className="bg-transparent text-slate-200 font-semibold text-xs focus:outline-none cursor-pointer max-w-[180px] truncate"
                   >
-                    {selectedFiles.map((f, idx) => (
-                      <option key={f.name + idx} value={idx} className="bg-slate-900 text-slate-200">
-                        {f.name}
+                    {selectedDocs.map((doc, idx) => (
+                      <option key={doc.fileId} value={idx} className="bg-slate-900 text-slate-200">
+                        {doc.name} (#{doc.fileId.slice(-4)})
                       </option>
                     ))}
                   </select>
@@ -1330,7 +1373,7 @@ export const LgpdRedactor: React.FC = () => {
 
             {/* Alternância de Visualização e Controles de Seleção */}
             <div className="flex items-center gap-2 text-xs flex-wrap">
-              {selectedFiles.length > 1 && (
+              {selectedDocs.length > 1 && (
                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px]">
                   <button
                     type="button"
@@ -1357,22 +1400,22 @@ export const LgpdRedactor: React.FC = () => {
                 </div>
               )}
 
-              {activeFileName && (
+              {activeDoc && (
                 <>
                   <button
                     type="button"
-                    onClick={() => setFileItemsSelection(activeFileName, true)}
+                    onClick={() => setFileItemsSelection(activeDoc.fileId, true)}
                     className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] flex items-center gap-1 transition-all"
-                    title={`Marcar todos os itens de ${activeFileName}`}
+                    title={`Marcar todos os itens de ${activeDoc.name}`}
                   >
                     <CheckSquare className="w-3 h-3 text-emerald-400" />
                     <span>Aprovar Deste Arquivo</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFileItemsSelection(activeFileName, false)}
+                    onClick={() => setFileItemsSelection(activeDoc.fileId, false)}
                     className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] flex items-center gap-1 transition-all"
-                    title={`Desmarcar todos os itens de ${activeFileName}`}
+                    title={`Desmarcar todos os itens de ${activeDoc.name}`}
                   >
                     <Square className="w-3 h-3 text-slate-400" />
                     <span>Desmarcar Deste</span>
@@ -1525,15 +1568,15 @@ export const LgpdRedactor: React.FC = () => {
 
             <div className="text-xs text-slate-300 space-y-3">
               <p>
-                Você está prestes a aplicar <strong>{selectedCount} tarja(s) definitiva(s)</strong> em <strong>{selectedFiles.length} documento(s)</strong>:
+                Você está prestes a aplicar <strong>{selectedCount} tarja(s) definitiva(s)</strong> em <strong>{selectedDocs.length} documento(s)</strong>:
               </p>
               
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px] max-h-36 overflow-y-auto">
-                {selectedFiles.map(f => {
-                  const count = detectedItems.filter(i => (!i.fileName || i.fileName === f.name) && i.selected).length;
+                {selectedDocs.map(doc => {
+                  const count = detectedItems.filter(i => i.fileId === doc.fileId && i.selected).length;
                   return (
-                    <div key={f.name} className="flex justify-between items-center py-0.5 text-slate-300">
-                      <span className="truncate max-w-[280px]">• {f.name}</span>
+                    <div key={doc.fileId} className="flex justify-between items-center py-0.5 text-slate-300">
+                      <span className="truncate max-w-[280px]">• {doc.name} (#{doc.fileId.slice(-4)})</span>
                       <span className="text-emerald-400 font-bold">{count} tarja(s)</span>
                     </div>
                   );
@@ -1619,7 +1662,7 @@ export const LgpdRedactor: React.FC = () => {
               Todos os fluxos originais de texto, formulários interativos, assinaturas e metadados foram fisicamente destruídos.
             </p>
             <p className="text-slate-500 pt-0.5">
-              💡 <strong>Nota de Acessibilidade & Pesquisa (Ctrl+F):</strong> Como o texto original foi eliminado para assegurar proteção forense inviolável, caso o tribunal exija documentos pesquisáveis, envie o PDF baixado ao módulo <strong className="text-slate-400 font-semibold">OCR Local & Scanner</strong> para gerar uma nova camada de texto 100% limpa.
+              💡 <strong>Nota de Acessibilidade & Pesquisa (Ctrl+F):</strong> Como o texto original foi eliminado pela rasterização de segurança, caso o tribunal exija documentos pesquisáveis, envie o PDF baixado ao módulo <strong className="text-slate-400 font-semibold">OCR Local & Scanner</strong> para gerar uma nova camada textual pesquisável indexada.
             </p>
           </div>
 
@@ -1696,7 +1739,7 @@ export const LgpdRedactor: React.FC = () => {
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-medium">
-                            ✓ 100% no DPI Alvo Nominal ({res.rasterReport.targetDpi} DPI)
+                            ✓ Resolução nominal integral mantida ({res.rasterReport.targetDpi} DPI)
                           </span>
                         )}
                       </div>
@@ -1802,7 +1845,7 @@ export const LgpdRedactor: React.FC = () => {
                         <th className="py-2 px-2.5">Arquivo</th>
                         <th className="py-2 px-2.5">Pág.</th>
                         <th className="py-2 px-2.5">Categoria</th>
-                        <th className="py-2 px-2.5">Termo Original / Identificado</th>
+                        <th className="py-2 px-2.5">Dado Anonimizado / Hash SHA-256</th>
                         <th className="py-2 px-2.5">Coordenadas (PDF)</th>
                         <th className="py-2 px-2.5">Status</th>
                       </tr>
@@ -1810,7 +1853,7 @@ export const LgpdRedactor: React.FC = () => {
                     <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
                       {removedItemsAudit.map((record) => (
                         <tr key={record.id} className="hover:bg-slate-900/50">
-                          <td className="py-1.5 px-2.5 truncate max-w-[140px]" title={record.fileName}>
+                          <td className="py-1.5 px-2.5 truncate max-w-[140px]" title={`${record.fileName} (${record.fileId || ''})`}>
                             {record.fileName}
                           </td>
                           <td className="py-1.5 px-2.5 text-slate-400">Pág. {record.pageNumber}</td>
@@ -1819,8 +1862,13 @@ export const LgpdRedactor: React.FC = () => {
                               {record.entityType}
                             </span>
                           </td>
-                          <td className="py-1.5 px-2.5 text-slate-200 font-sans">
-                            "{record.originalTerm}"
+                          <td className="py-1.5 px-2.5 font-sans">
+                            <span className="text-slate-300 font-semibold text-[11px]">{record.maskedTerm || '[DADO ANONIMIZADO]'}</span>
+                            {record.termHash && (
+                              <div className="text-slate-500 font-mono text-[9px] mt-0.5 truncate max-w-[200px]" title={`Hash SHA-256: ${record.termHash}`}>
+                                #{record.termHash.slice(0, 16)}...
+                              </div>
+                            )}
                           </td>
                           <td className="py-1.5 px-2.5 text-slate-400 text-[10px]">
                             {record.coordinates}
@@ -1850,13 +1898,15 @@ export const LgpdRedactor: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  const recordsToExport = removedItemsAudit.length > 0
+                  const recordsToExport: LgpdAuditRecord[] = removedItemsAudit.length > 0
                     ? removedItemsAudit
                     : detectedItems.filter(i => i.selected).map(item => ({
                         id: item.id,
+                        fileId: item.fileId,
                         fileName: item.fileName,
                         pageNumber: item.pageIndex + 1,
                         originalTerm: item.text,
+                        termHash: PdfReportExporterService.computeTermHash(item.text),
                         maskedTerm: '[DADO ANONIMIZADO LGPD]',
                         entityType: item.category,
                         detectionReason: item.reason || 'Regra de Conformidade LGPD',
@@ -1864,10 +1914,10 @@ export const LgpdRedactor: React.FC = () => {
                         timestamp: new Date().toLocaleString('pt-BR'),
                         status: 'REMOVIDO / TARJADO'
                       }));
-                  PdfReportExporterService.exportLgpdAuditCsv(recordsToExport, 'relatorio_tecnico_itens_removidos_lgpd.csv');
+                  PdfReportExporterService.exportLgpdAuditCsv(recordsToExport, 'relatorio_tecnico_itens_removidos_lgpd.csv', { minimizePersonalData: true });
                 }}
                 className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 shadow-sm transition-all"
-                title="Baixar Relatório Técnico detalhado com todos os itens removidos e coordenadas em CSV"
+                title="Baixar Relatório Técnico com minimização de dados sensíveis e hash SHA-256 em CSV"
               >
                 <Download className="w-3.5 h-3.5 text-blue-400" />
                 <span>Relatório Técnico (CSV)</span>
@@ -1875,13 +1925,15 @@ export const LgpdRedactor: React.FC = () => {
 
               <button
                 onClick={() => {
-                  const recordsToExport = removedItemsAudit.length > 0
+                  const recordsToExport: LgpdAuditRecord[] = removedItemsAudit.length > 0
                     ? removedItemsAudit
                     : detectedItems.filter(i => i.selected).map(item => ({
                         id: item.id,
+                        fileId: item.fileId,
                         fileName: item.fileName,
                         pageNumber: item.pageIndex + 1,
                         originalTerm: item.text,
+                        termHash: PdfReportExporterService.computeTermHash(item.text),
                         maskedTerm: '[DADO ANONIMIZADO LGPD]',
                         entityType: item.category,
                         detectionReason: item.reason || 'Regra de Conformidade LGPD',
@@ -1889,10 +1941,10 @@ export const LgpdRedactor: React.FC = () => {
                         timestamp: new Date().toLocaleString('pt-BR'),
                         status: 'REMOVIDO / TARJADO'
                       }));
-                  PdfReportExporterService.exportLgpdAuditJson(recordsToExport, 'relatorio_tecnico_itens_removidos_lgpd.json');
+                  PdfReportExporterService.exportLgpdAuditJson(recordsToExport, 'relatorio_tecnico_itens_removidos_lgpd.json', { minimizePersonalData: true });
                 }}
                 className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 shadow-sm transition-all"
-                title="Baixar Relatório Técnico estruturado em JSON"
+                title="Baixar Relatório Técnico estruturado em JSON com minimização de dados sensíveis e hash SHA-256"
               >
                 <Download className="w-3.5 h-3.5 text-purple-400" />
                 <span>Relatório Técnico (JSON)</span>

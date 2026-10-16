@@ -83,6 +83,7 @@ export interface RedactPatternOptions {
 
 export interface RedactionRectangle {
   pageIndex: number;
+  fileId?: string;
   fileName?: string;
   x: number;
   y: number;
@@ -176,6 +177,7 @@ export interface AnonymizePdfOptions {
   onProgress?: (progress: { current: number; total: number; stage: string }) => void;
   onReport?: (report: RasterizationQualityReport) => void;
   targetFileName?: string;
+  targetFileId?: string;
   /**
    * @deprecated sanitizeFlatten NÃO PODE ser desativado no método de anonimização.
    * A tentativa de passar `false` resultará em lançamento de exceção de segurança.
@@ -190,20 +192,10 @@ export interface VisualOverlayOptions {
   borderWidth?: number;
 }
 
-export interface CompressPreset {
-  id: string;
-  name: string;
-  maxSizeMB: number;
-  description: string;
-  targetPortal: string;
-}
+import { UNIFIED_COURT_PRESETS, UnifiedCourtPreset } from '../data/courtPresetsData';
 
-export const COMPRESS_PRESETS: CompressPreset[] = [
-  { id: 'pje', name: 'PJe - Justiça do Trabalho / Cível', maxSizeMB: 3, description: 'Limite rigoroso de 3MB por arquivo para petições PJe', targetPortal: 'PJe Nacional' },
-  { id: 'tjsp', name: 'TJSP - Tribunal de Justiça SP', maxSizeMB: 10, description: 'Limite de 10MB para submissão de peças e anexos no esaj/TJSP', targetPortal: 'e-SAJ TJSP' },
-  { id: 'trf', name: 'TRF - Justiça Federal', maxSizeMB: 5, description: 'Compressão balanceada para o e-Proc / TRF (5MB max)', targetPortal: 'TRF / e-Proc' },
-  { id: 'prefeitura', name: 'Prefeitura - Processos Administrativos', maxSizeMB: 15, description: 'Otimização para portais e sistemas de protocolo municipal', targetPortal: 'Sistemas Municipais' }
-];
+export type CompressPreset = UnifiedCourtPreset;
+export const COMPRESS_PRESETS: CompressPreset[] = UNIFIED_COURT_PRESETS;
 
 function dataURLtoUint8Array(dataUrl: string): Uint8Array {
   const base64Str = dataUrl.substring(dataUrl.indexOf(',') + 1);
@@ -1127,10 +1119,12 @@ export class LocalPdfEngine {
     const doc = await PDFDocument.load(pdfBuffer instanceof Uint8Array ? pdfBuffer : new Uint8Array(pdfBuffer));
     const pages = doc.getPages();
 
-    // 0. Trava preventiva e isolamento por arquivo
+    // 0. Trava preventiva e isolamento estrito por documento (fileId prioritário, targetFileName secundário)
     let targetRects = rectangles;
-    if (options?.targetFileName) {
-      targetRects = targetRects.filter(r => !r.fileName || r.fileName === options.targetFileName);
+    if (options?.targetFileId) {
+      targetRects = targetRects.filter(r => r.fileId === options.targetFileId);
+    } else if (options?.targetFileName) {
+      targetRects = targetRects.filter(r => r.fileName === options.targetFileName);
     }
     const validRects = targetRects.filter(r => this.validateRedactionSpan(r.text, r.category, r.reason));
     const mergedRectsByPage = this.mergeSurgicalRectangles(validRects);
@@ -1253,8 +1247,14 @@ export class LocalPdfEngine {
     const doc = await PDFDocument.load(pdfBuffer instanceof Uint8Array ? pdfBuffer : new Uint8Array(pdfBuffer));
     const pages = doc.getPages();
 
-    // 0. Trava preventiva
-    const validRects = rectangles.filter(r => this.validateRedactionSpan(r.text, r.category, r.reason));
+    // 0. Trava preventiva e isolamento estrito por documento (fileId prioritário, targetFileName secundário)
+    let targetRects = rectangles;
+    if (options?.targetFileId) {
+      targetRects = targetRects.filter(r => r.fileId === options.targetFileId);
+    } else if (options?.targetFileName) {
+      targetRects = targetRects.filter(r => r.fileName === options.targetFileName);
+    }
+    const validRects = targetRects.filter(r => this.validateRedactionSpan(r.text, r.category, r.reason));
     const mergedRectsByPage = this.mergeSurgicalRectangles(validRects);
 
     // 1. Desenhar retângulos pretos sólidos rgb(0,0,0)
@@ -1406,11 +1406,10 @@ export class LocalPdfEngine {
           fs.writeFileSync(tmpIn, redactedPdfBuffer);
 
           const flattenerScript = path.resolve('scripts/headless_flattener.py');
-          const venvPython = path.resolve('.venv/Scripts/python.exe');
-          const pythonExe = fs.existsSync(venvPython) ? venvPython : 'python';
+          const pythonExe = process.env.KOVAX_PYTHON_PATH || 'python';
 
           if (!fs.existsSync(flattenerScript)) {
-            throw new Error(`Script headless_flattener.py não encontrado em: ${flattenerScript}`);
+            throw new Error(`Script headless_flattener.py não encontrado para execução em modo Node CLI sem DOM.`);
           }
 
           const qualityParam = String(Math.round(targetQuality * 100));

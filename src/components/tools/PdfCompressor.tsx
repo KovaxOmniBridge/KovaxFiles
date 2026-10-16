@@ -547,9 +547,15 @@ export const PdfCompressor: React.FC = () => {
       {/* Preset options if Volume PDF mode */}
       {activeMode === 'volume_pdf' && (
         <div className="p-4 rounded-xl bg-blue-950/20 border border-blue-500/30 space-y-3">
-          <label className="block text-xs font-bold text-blue-300 uppercase tracking-wider">
-            Selecione o Portal Alvo (Limite por Volume):
-          </label>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+            <label className="block text-xs font-bold text-blue-300 uppercase tracking-wider">
+              Selecione o Portal Alvo (Limite por Volume):
+            </label>
+            <span className="text-[10.5px] text-slate-400">
+              * Limites técnicos unificados vinculados a normas específicas (não são regras universais)
+            </span>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
             {TARGET_PRESETS.map((preset) => (
               <button
@@ -558,19 +564,45 @@ export const PdfCompressor: React.FC = () => {
                   setSelectedPreset(preset.id === 'custom' ? { ...preset, maxSizeMB: customMaxSizeMB } : preset);
                   resetResults();
                 }}
-                className={`p-2.5 rounded-lg text-left border text-xs transition-all ${
+                className={`p-2.5 rounded-lg text-left border text-xs transition-all flex flex-col justify-between ${
                   selectedPreset.id === preset.id
-                    ? 'bg-blue-600/30 border-blue-400 text-slate-100 font-semibold'
+                    ? 'bg-blue-600/30 border-blue-400 text-slate-100 font-semibold shadow-md'
                     : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700'
                 }`}
+                title={`${preset.name} • ${preset.courtScope} • Norma: ${preset.normativeReference}`}
               >
-                <div className="font-bold text-slate-200">{preset.name}</div>
-                <div className="text-[10px] text-blue-400">
-                  {preset.id === 'custom' ? `Configurável (${customMaxSizeMB}MB)` : `Máx ${preset.maxSizeMB}MB por parte`}
+                <div>
+                  <div className="font-bold text-slate-200 truncate">{preset.name}</div>
+                  <div className="text-[9.5px] text-slate-400 truncate mt-0.5" title={preset.courtScope}>
+                    {preset.courtScope}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-blue-400 mt-2 pt-1 border-t border-slate-800/80">
+                  <span className="truncate max-w-[120px]">{preset.versionOrDate}</span>
+                  <span className="font-bold shrink-0">
+                    {preset.id === 'custom' ? `${customMaxSizeMB} MB` : `${preset.maxSizeMB} MB`}
+                  </span>
                 </div>
               </button>
             ))}
           </div>
+
+          {selectedPreset && (
+            <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span className="font-bold text-slate-200">{selectedPreset.name}</span>
+                <span className="font-mono text-blue-400 text-[10.5px]">{selectedPreset.normativeReference}</span>
+              </div>
+              <div className="text-[10px] text-slate-400">
+                <strong className="text-slate-300">Escopo Jurisdicional:</strong> {selectedPreset.courtScope}
+              </div>
+              {selectedPreset.notes && (
+                <div className="text-[10px] text-amber-300/80 italic">
+                  Nota Prática: {selectedPreset.notes}
+                </div>
+              )}
+            </div>
+          )}
 
           {selectedPreset.id === 'custom' && (
             <div className="mt-3 p-3 rounded-lg bg-blue-900/30 border border-blue-500/40 flex items-center justify-between gap-4">

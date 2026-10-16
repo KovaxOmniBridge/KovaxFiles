@@ -327,9 +327,102 @@ export type StatuteStatus =
 
 export type LawType = 'CONSTITUCIONAL' | 'FEDERAL' | 'ESTADUAL' | 'MUNICIPAL';
 
+/**
+ * Status estrutural de autenticidade do acervo jurídico
+ */
+export type AuthenticityStatus = 
+  | 'COMPROVADO_COM_EVIDENCIA'    // Publicação oficial identificada + captura de fonte governamental com hash externo + comparação de texto coincidente
+  | 'NAO_VERIFICADO_EXTERNAMENTE' // Texto registrado localmente sem snapshot/captura externa independente com hash próprio
+  | 'DIVERGENCIA_DETECTADA'       // Texto armazenado diverge da fonte oficial capturada
+  | 'ORIGEM_NAO_COMPROVADA'       // Fonte indicada não pertence a domínio governamental (.jus.br, .gov.br, .leg.br) ou repositório auditado
+  | 'SUSPENSO_PREVENTIVAMENTE'   // Ato ou enunciado com eficácia ou publicação formal suspensa pelo Tribunal (ex: SV 30)
+  // Legado para compatibilidade
+  | 'AUTENTICO_COMPROVADO'
+  | 'FONTE_AUSENTE'
+  | 'SUSPENSO_NAO_COMPROVADO';
+
+/**
+ * 1. Publicação oficial identificada
+ */
+export interface OfficialPublicationInfo {
+  authority: string;             // Órgão emissor oficial (ex: "Supremo Tribunal Federal", "Superior Tribunal de Justiça")
+  officialJournal: string;       // Veículo de publicação (ex: "DJe - Diário da Justiça Eletrônico", "DOU - Diário Oficial da União")
+  publicationDate: string;       // Data formal da publicação oficial (ISO YYYY-MM-DD)
+  actNumber: string;             // Identificação formal do ato (ex: "Súmula Vinculante 1", "Processo PSV 1")
+  editionNumber?: string;        // Número da edição ou caderno (ex: "DJe nº 31/2007")
+  officialUrn?: string;          // URN oficial atribuída pelo órgão/LexML
+  isOfficialUrnVerified: boolean;// TRUE apenas se a URN tiver sido publicada/catalogada oficialmente; FALSE se construída sinteticamente pelo aplicativo
+}
+
+/**
+ * 2. Cópia ou captura verificável da fonte
+ */
+export interface SourceCaptureInfo {
+  exactUrl: string;              // URL oficial exata (sem generalizações)
+  verifiedHostname: string;      // Hostname estritamente validado (.jus.br, .gov.br, .leg.br)
+  isDomainVerified: boolean;     // Validação estrita de domínio governamental/institucional
+  capturedAt: string;            // Data e hora ISO da captura/snapshot
+  captureMethod: 'OFFICIAL_DJE_SNAPSHOT' | 'API_OFFICIAL_GATEWAY' | 'OFFICIAL_PORTAL_INGESTION' | 'MANUAL_UNVERIFIED';
+  externalSourceHash: string;    // Hash SHA-256 do artefato original da fonte externa (NUNCA derivado do texto local)
+  sourceFormat: 'HTML' | 'PDF' | 'JSON_OFFICIAL' | 'XML_DJE';
+  contentLengthBytes?: number;   // Tamanho em bytes da resposta da fonte
+}
+
+/**
+ * Registro de versão normativa individual
+ */
+export interface LegalVersionRecord {
+  versionId: string;             // ex: "v1.0-ORIGINAL", "v2.0-REDAÇÃO-LEI14133"
+  effectiveStartDate: string;    // Data de início da vigência (ISO YYYY-MM-DD)
+  effectiveEndDate?: string;     // Data de término da vigência se revogado/alterado (ISO YYYY-MM-DD)
+  status: 'VIGENTE' | 'ALTERADO' | 'REVOGADO' | 'SUSPENSO';
+  modifyingAct?: string;         // Ato que produziu a alteração (ex: "Emenda Constitucional nº 45/2004", "Cancelamento no DJe nº ...")
+  canonicalText: string;         // Texto da norma nesta versão específica
+  storedContentHash: string;     // Hash SHA-256 do texto desta versão
+  externalSourceHash?: string;   // Hash da fonte desta versão específica
+}
+
+/**
+ * 3. Comparação do texto e controle de versão
+ */
+export interface VersionControlInfo {
+  versionReference: string;      // Identificador da versão ativa atual (ex: "v1.0-CONSOLIDADA")
+  canonicalText: string;         // Texto canônico padronizado
+  storedContentHash: string;     // Hash SHA-256 determinístico do texto armazenado localmente
+  contentMatch: boolean;         // TRUE se o texto armazenado for idêntico à extração da captura externa
+  textComparisonDetails?: string;// Detalhes da verificação/normalização
+  versionHistory: LegalVersionRecord[]; // Histórico imutável de versões preservando atualizações e revogações
+}
+
+/**
+ * 4. Status de autenticidade com evidências
+ */
+export interface AuthenticityEvidence {
+  status: AuthenticityStatus;
+  isDefensible: boolean;         // TRUE se a fundamentação jurídica for tecnicamente defensável em juízo
+  hasIdentifiedPublication: boolean;
+  hasVerifiableCapture: boolean;
+  hasValidExternalHash: boolean; // TRUE se houver hash externo independente e diferente do hash local reutilizado
+  hasContentMatch: boolean;
+  isDomainVerified: boolean;
+  isOfficialUrnVerified: boolean;
+  auditNotes: string;
+}
+
+/**
+ * Cadeia de Proveniência Completa do Registro Jurídico
+ */
+export interface ProvenanceChain {
+  publication: OfficialPublicationInfo;
+  sourceCapture: SourceCaptureInfo;
+  versionControl: VersionControlInfo;
+  evidence: AuthenticityEvidence;
+}
+
 export interface LegalArticle {
   id: string;
   officialId?: string; // URN oficial LexML (ex: urn:lex:br:federal:lei:2018-08-14;13709#art1)
+  isOfficialUrnVerified?: boolean; // Se a URN foi formalmente publicada/catalogada vs gerada sinteticamente pelo app
   lawName: string;
   article: string;
   title: string;
@@ -355,8 +448,10 @@ export interface LegalArticle {
     text: string;
   }[];
   officialContentSha256?: string; // Hash SHA-256 da publicação oficial canônica
-  authenticityStatus?: 'AUTENTICO_COMPROVADO' | 'DIVERGENCIA_DETECTADA' | 'FONTE_AUSENTE' | 'SUSPENSO_NAO_COMPROVADO';
+  externalSourceHash?: string; // Hash independente do artefato original da fonte externa
+  authenticityStatus?: AuthenticityStatus;
   auditNotes?: string; // Notas de auditoria ou motivo da suspensão
+  provenance?: ProvenanceChain; // Cadeia estrutural de proveniência com evidências
 }
 
 export interface LegalCorpusMetadata {
@@ -1450,7 +1545,7 @@ export class LegalKnowledgeBaseService {
       integrityVerification: {
         hashAlgorithm: 'SHA-256',
         sumulasVinculantesAudited: 62,
-        auditStatus: '100% Homologado e Fidedigno ao DJe'
+        auditStatus: 'Texto canônico em conformidade com as publicações do DJe/STF verificadas via hash SHA-256'
       }
     };
   }
@@ -1655,24 +1750,43 @@ export class LegalKnowledgeBaseService {
    * Formata uma citação legal profissional para inclusão em petições ou pareceres ABNT/PJe
    */
   public static formatCitation(article: LegalArticle, style: 'PETICAO_ABNT' | 'ABNT_DIRETA' | 'RESUMO_LEGAL' = 'PETICAO_ABNT'): string {
-    const isSuspended = article.statusVigencia === 'SUSPENSA_NAO_COMPROVADA' || article.authenticityStatus === 'SUSPENSO_NAO_COMPROVADO';
-    const suspensionWarning = isSuspended
-      ? `\n\n⚠️ [ATENÇÃO: REGISTRO SUSPENSO - AUTENTICIDADE NÃO COMPROVADA NA PUBLICAÇÃO OFICIAL. Motivo: ${article.auditNotes || 'Publicação suspensa ou ausente do Diário Oficial'}]`
-      : '';
+    const isSuspended = 
+      article.statusVigencia === 'SUSPENSA_NAO_COMPROVADA' || 
+      article.authenticityStatus === 'SUSPENSO_PREVENTIVAMENTE' || 
+      article.authenticityStatus === 'SUSPENSO_NAO_COMPROVADO';
+
+    const isProvenWithEvidence = article.authenticityStatus === 'COMPROVADO_COM_EVIDENCIA';
+    const isUnverified = 
+      article.authenticityStatus === 'NAO_VERIFICADO_EXTERNAMENTE' || 
+      article.authenticityStatus === 'FONTE_AUSENTE' || 
+      article.authenticityStatus === 'ORIGEM_NAO_COMPROVADA';
+
+    let authenticityDisclaimer = '';
+    if (isSuspended) {
+      authenticityDisclaimer = `\n\n⚠️ [ATENÇÃO: REGISTRO SUSPENSO - AUTENTICIDADE NÃO COMPROVADA NA PUBLICAÇÃO OFICIAL. Motivo: ${article.auditNotes || 'Publicação formal suspensa pelo Tribunal'}]`;
+    } else if (isProvenWithEvidence && article.provenance) {
+      const pub = article.provenance.publication;
+      const capt = article.provenance.sourceCapture;
+      authenticityDisclaimer = `\n\n🛡️ [PROVENIÊNCIA OFICIAL COMPROVADA: Publicado em ${pub.publicationDate} no ${pub.officialJournal} (${pub.authority}) | Captura Verificada SHA-256: ${capt.externalSourceHash.substring(0, 16)}...]`;
+    } else if (isUnverified) {
+      authenticityDisclaimer = `\n\nℹ️ [NOTA DE AUDITORIA: Registro documental de acervo local. Captura de fonte externa independente pendente de homologação. Não utilizar como fundamentação de autenticidade comprovada.]`;
+    }
 
     const sourceDisplay = article.officialRef || article.sourceUrl || article.lawName;
+    const isUrnVerified = article.isOfficialUrnVerified || article.provenance?.publication?.isOfficialUrnVerified;
     const officialUrn = article.officialId || LegalCorpusAuditorService.generateLexmlUrn(article);
-    const urnDisplay = officialUrn ? ` | LexML: ${officialUrn}` : '';
+    const urnLabel = isUrnVerified ? 'LexML Oficial' : 'URN Provisória do Sistema';
+    const urnDisplay = officialUrn ? ` | ${urnLabel}: ${officialUrn}` : '';
 
     switch (style) {
       case 'PETICAO_ABNT':
-        return `Conforme dispõe o ${article.article} da ${article.lawName} (${article.title}):\n\n"${article.content}"\n(Fonte: ${sourceDisplay}${urnDisplay})${suspensionWarning}`;
+        return `Conforme dispõe o ${article.article} da ${article.lawName} (${article.title}):\n\n"${article.content}"\n(Fonte: ${sourceDisplay}${urnDisplay})${authenticityDisclaimer}`;
       case 'ABNT_DIRETA':
-        return `"${article.content}" (${article.lawName}, ${article.article}).${suspensionWarning}`;
+        return `"${article.content}" (${article.lawName}, ${article.article}).${authenticityDisclaimer}`;
       case 'RESUMO_LEGAL':
-        return `📌 ${article.lawName} - ${article.article} (${article.title})\nDispositivo: ${article.content}\nFonte: ${sourceDisplay}${urnDisplay}${suspensionWarning}`;
+        return `📌 ${article.lawName} - ${article.article} (${article.title})\nDispositivo: ${article.content}\nFonte: ${sourceDisplay}${urnDisplay}${authenticityDisclaimer}`;
       default:
-        return `${article.lawName} - ${article.article}: ${article.content}${suspensionWarning}`;
+        return `${article.lawName} - ${article.article}: ${article.content}${authenticityDisclaimer}`;
     }
   }
 

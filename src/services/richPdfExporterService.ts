@@ -541,6 +541,14 @@ export class RichPdfExporterService {
         .replace(/<div[^>]*class="[^"]*page-break[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '\n#PAGEBREAK#\n')
         .replace(/<[^>]+style="[^"]*page-break-(?:after|before):\s*always[^"]*"[^>]*>[\s\S]*?<\/[^>]+>/gi, '\n#PAGEBREAK#\n');
 
+      const imgRegex = /<img[^>]*src=["'](data:image\/[^"']+)["'][^>]*>/gi;
+      let imgMatch: RegExpExecArray | null;
+      while ((imgMatch = imgRegex.exec(cleanHtml)) !== null) {
+        if (imgMatch[1]) {
+          blocks.push({ type: 'image', text: '', imageSrc: imgMatch[1] });
+        }
+      }
+
       const tableMatch = cleanHtml.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
       if (tableMatch) {
         const rows: Array<{ isHeader?: boolean; cells: Array<{ text: string }> }> = [];

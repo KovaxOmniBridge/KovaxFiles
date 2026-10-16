@@ -54,19 +54,11 @@ export function getOfflineWorkerOptions(
 ): Partial<Tesseract.WorkerOptions> {
   const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
   const basePath = getTessdataBasePath();
+  const workerLocalPath = isBrowser ? `${basePath}/worker.min.js` : `${basePath}/worker.min.js`;
 
-  if (isBrowser) {
-    return {
-      workerPath: `${basePath}/worker.min.js`,
-      corePath: basePath,
-      langPath: basePath,
-      gzip: false,
-      ...customOptions
-    };
-  }
-
-  // No Node.js, langPath aponta para o diretório local no sistema de arquivos
   return {
+    workerPath: workerLocalPath,
+    corePath: basePath,
     langPath: basePath,
     gzip: false,
     ...customOptions

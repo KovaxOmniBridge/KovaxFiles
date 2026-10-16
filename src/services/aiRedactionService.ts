@@ -20,8 +20,9 @@ export interface RedactionCategoryOptions {
 
 export interface DetectedRedactionItem {
   id: string;
-  pageIndex: number;
+  fileId?: string;
   fileName?: string;
+  pageIndex: number;
   text: string;
   category: 'CPF' | 'CNPJ' | 'RG' | 'E-mail' | 'Telefone' | 'Nome de Pessoa' | 'Endereço' | 'Financeiro' | 'Saúde' | 'Personalizado';
   reason: string;
@@ -29,6 +30,7 @@ export interface DetectedRedactionItem {
   selected: boolean;
   rect: {
     pageIndex: number;
+    fileId?: string;
     fileName?: string;
     x: number;
     y: number;
@@ -63,7 +65,8 @@ export class RedactionDetectionService {
     categories: RedactionCategoryOptions,
     settings: DetectionSettings,
     onProgress?: (progress: { message: string; percent: number }) => void,
-    fileName?: string
+    fileName?: string,
+    fileId?: string
   ): Promise<DetectedRedactionItem[]> {
     const results: DetectedRedactionItem[] = [];
     const totalPages = pagesData.length;
@@ -142,10 +145,16 @@ export class RedactionDetectionService {
       }
     }
 
-    if (fileName) {
+    if (fileName || fileId) {
       for (const item of results) {
-        item.fileName = fileName;
-        if (item.rect) item.rect.fileName = fileName;
+        if (fileName) {
+          item.fileName = fileName;
+          if (item.rect) item.rect.fileName = fileName;
+        }
+        if (fileId) {
+          item.fileId = fileId;
+          if (item.rect) item.rect.fileId = fileId;
+        }
       }
     }
 

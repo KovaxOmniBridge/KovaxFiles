@@ -1,0 +1,81 @@
+name: Continuous Integration & Tiered Quality Gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Execução diária/periódica às 03:00 UTC (Testes de Desempenho, Carga e Stress)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ============================================================================
+  # TIER 1: FAST PR BATTERY (Executado em todo commit e Pull Request)
+  # ============================================================================
+  pr-quality-gates:
+    name: PR Quality Gates (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify Offline OCR Assets & Tessdata
+        run: npm run prepare:tessdata
+
+      - name: Run Complete PR Battery (11 Critical Suites)
+        run: npm run test:pr
+
+  # ============================================================================
+  # TIER 2: NIGHTLY & DISPATCH (Desempenho, Carga, Estresse e Memória)
+  # ============================================================================
+  nightly-performance-stress:
+    name: Performance, Load & Memory Stress (${{ matrix.os }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Application Assets
+        run: npm run build
+
+      - name: Run Performance, Load & Recovery Suite
+        run: npm run test:load
+
+      - name: Run Reproducible Resource Benchmarks (CPU, RAM, Throughput)
+        run: npm run benchmark
+
+      - name: Run Packaged Desktop Pre-Release Audit
+        run: npm run test:release

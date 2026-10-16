@@ -83,9 +83,128 @@ export function clearSessionAuthorizations() {
 }
 
 /**
- * Validação estrutural de assinatura mágica de conteúdo (Magic Bytes).
- * Comprova que o conteúdo real do arquivo corresponde à extensão declarada,
- * impedindo a execução ou abertura de binários executáveis ou scripts camuflados como documentos.
+ * Validação estrutural de assinatura mágica de conteúdo (Magic Bytes) diretamente em memória.
+ * Comprova que o buffer corresponde à extensão declarada ANTES de qualquer escrita em disco,
+ * impedindo a execução ou persistência de binários executáveis ou scripts camuflados como documentos.
+ */
+export function validateBufferContentMatchesType(
+  rawBuffer: Buffer | Uint8Array,
+  ext: string
+): { valid: boolean; error?: string } {
+  if (!rawBuffer || rawBuffer.length === 0) {
+    return { valid: false, error: 'O buffer de dados fornecido está vazio (0 bytes).' };
+  }
+
+  const buffer = Buffer.isBuffer(rawBuffer) ? rawBuffer : Buffer.from(rawBuffer);
+  const bytesRead = Math.min(buffer.length, 1024);
+
+  // Bloqueio incondicional de executáveis binários disfarçados de documentos:
+  // 1. Windows Portable Executable (MZ = 0x4D, 0x5A)
+  if (bytesRead >= 2 && buffer[0] === 0x4D && buffer[1] === 0x5A) {
+    return { valid: false, error: 'Violação de tipo: Assinatura de executável Windows PE (MZ) detectada.' };
+  }
+  // 2. Linux ELF (0x7F, 0x45, 0x4C, 0x46)
+  if (bytesRead >= 4 && buffer[0] === 0x7F && buffer[1] === 0x45 && buffer[2] === 0x4C && buffer[3] === 0x46) {
+    return { valid: false, error: 'Violação de tipo: Assinatura de binário executável ELF detectada.' };
+  }
+  // 3. Mach-O Executable
+  if (bytesRead >= 4 && (
+    (buffer[0] === 0xFE && buffer[1] === 0xED && buffer[2] === 0xFA && (buffer[3] === 0xCE || buffer[3] === 0xCF)) ||
+    (buffer[0] === 0xCF && buffer[1] === 0xFA && buffer[2] === 0xED && buffer[3] === 0xFE)
+  )) {
+    return { valid: false, error: 'Violação de tipo: Assinatura de binário Mach-O detectada.' };
+  }
+  // 4. Scripts executáveis iniciados com Shebang ('#!')
+  if (bytesRead >= 2 && buffer[0] === 0x23 && buffer[1] === 0x21) {
+    return { valid: false, error: 'Violação de tipo: Assinatura de script executável (Shebang #!) detectada.' };
+  }
+
+  const normalizedExt = ext.toLowerCase().trim();
+
+  // Validação de correspondência entre extensão declarada e assinatura real
+  switch (normalizedExt) {
+    case '.pdf': {
+      const headerStr = buffer.toString('latin1', 0, bytesRead);
+      if (!headerStr.includes('%PDF-')) {
+        return { valid: false, error: 'Arquivo inválido: Assinatura mágica de documento PDF (%PDF-) não encontrada nos cabeçalhos.' };
+      }
+      break;
+    }
+    case '.png': {
+      const isPng = bytesRead >= 8 &&
+        buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 &&
+        buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A;
+      if (!isPng) {
+        return { valid: false, error: 'Arquivo inválido: Assinatura mágica de imagem PNG não encontrada.' };
+      }
+      break;
+    }
+    case '.jpg':
+    case '.jpeg': {
+      const isJpg = bytesRead >= 3 && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+      if (!isJpg) {
+        return { valid: false, error: 'Arquivo inválido: Assinatura mágica de imagem JPEG não encontrada.' };
+      }
+      break;
+    }
+    case '.webp': {
+      const isWebp = bytesRead >= 12 &&
+        buffer.toString('ascii', 0, 4) === 'RIFF' &&
+        buffer.toString('ascii', 8, 12) === 'WEBP';
+      if (!isWebp) {
+        return { valid: false, error: 'Arquivo inválido: Assinatura mágica de imagem WebP não encontrada.' };
+      }
+      break;
+    }
+    case '.heic': {
+      const isFtyp = bytesRead >= 12 && buffer.toString('ascii', 4, 8) === 'ftyp';
+      if (!isFtyp) {
+        return { valid: false, error: 'Arquivo inválido: Assinatura de container HEIC (ftyp) não encontrada.' };
+      }
+      break;
+    }
+    case '.docx':
+    case '.zip': {
+      const isZip = bytesRead >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4B &&
+        (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07) &&
+        (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08);
+      if (!isZip) {
+        return { valid: false, error: 'Arquivo inválido: Assinatura de container compactado (PK) não encontrada.' };
+      }
+      break;
+    }
+    case '.json': {
+      for (let i = 0; i < bytesRead; i++) {
+        if (buffer[i] === 0x00) {
+          return { valid: false, error: 'Arquivo JSON inválido: bytes nulos binários detectados.' };
+        }
+      }
+      const text = buffer.toString('utf-8', 0, bytesRead).trim();
+      const firstChar = text.charCodeAt(0) === 0xFEFF ? text.slice(1).trim()[0] : text[0];
+      if (firstChar !== '{' && firstChar !== '[') {
+        return { valid: false, error: 'Arquivo JSON inválido: estrutura não se inicia com "{" ou "[".' };
+      }
+      break;
+    }
+    case '.txt':
+    case '.md':
+    case '.csv': {
+      let nullCount = 0;
+      for (let i = 0; i < bytesRead; i++) {
+        if (buffer[i] === 0x00) nullCount++;
+      }
+      if (nullCount > 0) {
+        return { valid: false, error: 'Arquivo de texto documental corrompido: bytes nulos binários detectados.' };
+      }
+      break;
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validação estrutural de assinatura mágica de conteúdo (Magic Bytes) lendo do disco.
  */
 export function validateFileContentMatchesType(filePath: string, ext: string): { valid: boolean; error?: string } {
   try {
@@ -99,95 +218,7 @@ export function validateFileContentMatchesType(filePath: string, ext: string): {
       return { valid: true };
     }
 
-    // Bloqueio incondicional de executáveis binários disfarçados de documentos:
-    // 1. Windows Portable Executable (MZ = 0x4D, 0x5A)
-    if (bytesRead >= 2 && buffer[0] === 0x4D && buffer[1] === 0x5A) {
-      return { valid: false, error: 'Violação de tipo: Assinatura de executável Windows PE (MZ) detectada no arquivo.' };
-    }
-    // 2. Linux ELF (0x7F, 0x45, 0x4C, 0x46)
-    if (bytesRead >= 4 && buffer[0] === 0x7F && buffer[1] === 0x45 && buffer[2] === 0x4C && buffer[3] === 0x46) {
-      return { valid: false, error: 'Violação de tipo: Assinatura de binário executável ELF detectada no arquivo.' };
-    }
-    // 3. Mach-O Executable
-    if (bytesRead >= 4 && (
-      (buffer[0] === 0xFE && buffer[1] === 0xED && buffer[2] === 0xFA && (buffer[3] === 0xCE || buffer[3] === 0xCF)) ||
-      (buffer[0] === 0xCF && buffer[1] === 0xFA && buffer[2] === 0xED && buffer[3] === 0xFE)
-    )) {
-      return { valid: false, error: 'Violação de tipo: Assinatura de binário Mach-O detectada no arquivo.' };
-    }
-    // 4. Scripts executáveis iniciados com Shebang ('#!')
-    if (bytesRead >= 2 && buffer[0] === 0x23 && buffer[1] === 0x21) {
-      return { valid: false, error: 'Violação de tipo: Assinatura de script executável (Shebang #!) detectada no arquivo.' };
-    }
-
-    // Validação de correspondência entre extensão declarada e assinatura real
-    switch (ext) {
-      case '.pdf': {
-        const headerStr = buffer.toString('latin1', 0, bytesRead);
-        if (!headerStr.includes('%PDF-')) {
-          return { valid: false, error: 'Arquivo inválido: Assinatura mágica de documento PDF (%PDF-) não encontrada nos cabeçalhos.' };
-        }
-        break;
-      }
-      case '.png': {
-        const isPng = bytesRead >= 8 &&
-          buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 &&
-          buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A;
-        if (!isPng) {
-          return { valid: false, error: 'Arquivo inválido: Assinatura mágica de imagem PNG não encontrada.' };
-        }
-        break;
-      }
-      case '.jpg':
-      case '.jpeg': {
-        const isJpg = bytesRead >= 3 && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
-        if (!isJpg) {
-          return { valid: false, error: 'Arquivo inválido: Assinatura mágica de imagem JPEG não encontrada.' };
-        }
-        break;
-      }
-      case '.webp': {
-        const isWebp = bytesRead >= 12 &&
-          buffer.toString('ascii', 0, 4) === 'RIFF' &&
-          buffer.toString('ascii', 8, 12) === 'WEBP';
-        if (!isWebp) {
-          return { valid: false, error: 'Arquivo inválido: Assinatura mágica de imagem WebP não encontrada.' };
-        }
-        break;
-      }
-      case '.heic': {
-        const isFtyp = bytesRead >= 12 && buffer.toString('ascii', 4, 8) === 'ftyp';
-        if (!isFtyp) {
-          return { valid: false, error: 'Arquivo inválido: Assinatura de container HEIC (ftyp) não encontrada.' };
-        }
-        break;
-      }
-      case '.docx':
-      case '.zip': {
-        const isZip = bytesRead >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4B &&
-          (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07) &&
-          (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08);
-        if (!isZip) {
-          return { valid: false, error: 'Arquivo inválido: Assinatura de container compactado (PK) não encontrada.' };
-        }
-        break;
-      }
-      case '.txt':
-      case '.md':
-      case '.json':
-      case '.csv': {
-        let nullCount = 0;
-        for (let i = 0; i < bytesRead; i++) {
-          if (buffer[i] === 0x00) nullCount++;
-        }
-        if (nullCount > 0) {
-          return { valid: false, error: 'Arquivo de texto documental corrompido: bytes nulos binários detectados.' };
-        }
-        break;
-      }
-    }
-
-    return { valid: true };
+    return validateBufferContentMatchesType(buffer.subarray(0, bytesRead), ext);
   } catch (err: any) {
     return { valid: false, error: `Falha na verificação de assinatura de arquivo: ${err?.message || 'Erro de E/S'}` };
   }

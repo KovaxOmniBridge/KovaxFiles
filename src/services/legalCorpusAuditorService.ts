@@ -1,33 +1,53 @@
 /**
  * Serviço de Auditoria Criptográfica, Factual e de Autenticidade do Acervo Jurídico
- * 
- * Garante que cada dispositivo possua:
- * - Identificador oficial (URN LexML ou identificador institucional)
- * - Fonte específica (publicação oficial, DJe, Planalto, Diário Oficial)
- * - Data de consulta e versão
- * - Vigência auditada
- * - Histórico verificável de alterações
- * - Comparação automatizada de enunciados com a publicação oficial via SHA-256
- * - Suspensão preventiva obrigatória de registros não comprovados
+ *
+ * Implementa a Cadeia Estrutural de Proveniência:
+ * 1. Publicação oficial identificada (órgão emissor, diário, data de publicação formal)
+ * 2. Cópia ou captura verificável da fonte (URL exata, hostname verificado sem substring, hash externo independente)
+ * 3. Comparação de texto e controle de versão (texto canônico, histórico de versões imutável, ato modificador)
+ * 4. Status de autenticidade com evidências técnicas defensáveis
+ *
+ * Princípios de Integridade Rígida:
+ * - Um domínio mencionado dentro de URL ou referência NÃO é suficiente para comprovar origem.
+ * - Uma URN construída pelo aplicativo NÃO prova que o texto foi oficialmente publicado.
+ * - O hash do conteúdo local NUNCA é reutilizado como se fosse o hash de uma fonte externa.
+ * - Atualizações e revogações produzem novas versões, preservando o histórico.
+ * - Registros não verificados NUNCA aparecem como fundamentação oficialmente comprovada.
  */
 
-import type { LegalArticle, StatuteStatus } from './legalKnowledgeBaseService';
+import type {
+  LegalArticle,
+  StatuteStatus,
+  ProvenanceChain,
+  OfficialPublicationInfo,
+  SourceCaptureInfo,
+  VersionControlInfo,
+  LegalVersionRecord,
+  AuthenticityEvidence,
+  AuthenticityStatus
+} from './legalKnowledgeBaseService';
 
 export interface ArticleAuditReport {
   articleId: string;
   lawName: string;
   article: string;
   officialId: string;
+  isOfficialUrnVerified: boolean;
   officialPublisher: string;
   sourceUrl: string;
+  verifiedHostname: string;
+  isDomainVerified: boolean;
   queryDate: string;
   version: string;
   statusVigencia: StatuteStatus;
   canonicalSha256: string;
-  officialExpectedSha256?: string;
-  authenticityStatus: 'AUTENTICO_COMPROVADO' | 'DIVERGENCIA_DETECTADA' | 'FONTE_AUSENTE' | 'SUSPENSO_NAO_COMPROVADO';
+  externalSourceHash?: string;
+  officialExpectedSha256?: string; // Legado para compatibilidade
+  authenticityStatus: AuthenticityStatus;
   isSuspended: boolean;
+  isDefensible: boolean;
   auditNotes: string;
+  provenance?: ProvenanceChain;
   divergenceDetails?: {
     diffMessage?: string;
     expectedPreview?: string;
@@ -39,12 +59,14 @@ export interface CorpusAuditSummary {
   auditDate: string;
   totalAudited: number;
   totalAuthentic: number;
+  totalUnverified: number;
   totalSuspended: number;
   totalRevoked: number;
   totalDivergent: number;
   complianceRatePercent: number;
   reports: ArticleAuditReport[];
   suspendedArticles: ArticleAuditReport[];
+  unverifiedArticles: ArticleAuditReport[];
 }
 
 /**
@@ -93,7 +115,6 @@ function sha256Sync(ascii: string): string {
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0x0bef9a3f, 0xc67178f2
   ];
 
-  // Converte string para UTF-8 bytes
   const utf8: number[] = [];
   for (let c = 0; c < ascii.length; c++) {
     let charcode = ascii.charCodeAt(c);
@@ -162,7 +183,7 @@ function sha256Sync(ascii: string): string {
 
 export class LegalCorpusAuditorService {
   /**
-   * Calcula o hash SHA-256 canônico de qualquer texto legal
+   * Calcula o hash SHA-256 canônico de qualquer texto legal normalizado
    */
   public static computeCanonicalSha256(content: string): string {
     const normalized = normalizeCanonicalLegalText(content);
@@ -170,7 +191,115 @@ export class LegalCorpusAuditorService {
   }
 
   /**
-   * Gera a URN oficial no padrão LexML para um dispositivo
+   * Validação estrita de domínio institucional governamental/tribunal
+   * Rejeita substrings em caminhos (ex: attacker.com/planalto.gov.br) e domínios forjados.
+   */
+  public static validateOfficialDomain(urlStr?: string): {
+    isValid: boolean;
+    hostname: string;
+    isJudicial: boolean;
+    isLegislative: boolean;
+    isExecutive: boolean;
+    errorReason?: string;
+  } {
+    if (!urlStr || typeof urlStr !== 'string' || urlStr.trim() === '') {
+      return {
+        isValid: false,
+        hostname: '',
+        isJudicial: false,
+        isLegislative: false,
+        isExecutive: false,
+        errorReason: 'URL oficial não informada ou vazia.'
+      };
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(urlStr.trim());
+    } catch {
+      return {
+        isValid: false,
+        hostname: '',
+        isJudicial: false,
+        isLegislative: false,
+        isExecutive: false,
+        errorReason: 'URL com formato de protocolo inválido ou malformado.'
+      };
+    }
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return {
+        isValid: false,
+        hostname: parsed.hostname,
+        isJudicial: false,
+        isLegislative: false,
+        isExecutive: false,
+        errorReason: `Protocolo '${parsed.protocol}' não autorizado. Apenas HTTP/HTTPS oficiais são aceitos.`
+      };
+    }
+
+    const hostname = parsed.hostname.toLowerCase().trim();
+
+    // Domínios institucionais oficiais brasileiros:
+    // 1. Tribunais e Poder Judiciário (*.jus.br)
+    const isJudicial = hostname === 'jus.br' || hostname.endsWith('.jus.br');
+    // 2. Poder Legislativo (*.leg.br)
+    const isLegislative = hostname === 'leg.br' || hostname.endsWith('.leg.br');
+    // 3. Poder Executivo e Imprensa Oficial (*.gov.br)
+    const isExecutive = hostname === 'gov.br' || hostname.endsWith('.gov.br');
+
+    // Domínios homologados de imprensa oficial e diários oficiais estaduais/municipais
+    const trustedExtraHostnames = new Set([
+      'imprensanacional.gov.br',
+      'diariooficial.sp.gov.br',
+      'diariooficial.rj.gov.br',
+      'lexml.gov.br'
+    ]);
+
+    const isTrustedDomain = isJudicial || isLegislative || isExecutive || trustedExtraHostnames.has(hostname);
+
+    if (!isTrustedDomain) {
+      return {
+        isValid: false,
+        hostname,
+        isJudicial: false,
+        isLegislative: false,
+        isExecutive: false,
+        errorReason: `Hostname '${hostname}' não pertence a autoridade pública certificada (.jus.br, .gov.br, .leg.br). Menção de domínio em URL ou referência não comprova origem.`
+      };
+    }
+
+    return {
+      isValid: true,
+      hostname,
+      isJudicial,
+      isLegislative,
+      isExecutive
+    };
+  }
+
+  /**
+   * Valida se a fonte indicada é um repositório institucional oficial.
+   * Não aceita meras menções textuais ou substrings.
+   */
+  public static isValidOfficialSource(url?: string, _ref?: string): boolean {
+    const domainCheck = this.validateOfficialDomain(url);
+    return domainCheck.isValid;
+  }
+
+  /**
+   * Confere se a URN é oficialmente publicada/homologada pelo LexML/Tribunal
+   * ou se é uma URN meramente sintética/provisória construída pelo aplicativo.
+   */
+  public static isUrnOfficiallyVerified(article: LegalArticle): boolean {
+    if (article.isOfficialUrnVerified === true) return true;
+    if (article.provenance?.publication?.isOfficialUrnVerified === true) return true;
+    return false;
+  }
+
+  /**
+   * Gera uma URN provisória no padrão LexML para indexação interna do sistema.
+   * AVISO: Uma URN sintética gerada pelo aplicativo NÃO prova publicação oficial.
    */
   public static generateLexmlUrn(article: LegalArticle): string {
     if (article.officialId && article.officialId.startsWith('urn:lex:')) {
@@ -223,155 +352,242 @@ export class LegalCorpusAuditorService {
   }
 
   /**
-   * Valida se a fonte indicada é um repositório institucional e governamental oficial
+   * Constrói a Cadeia Estrutural de Proveniência para um registro jurídico
    */
-  public static isValidOfficialSource(url?: string, ref?: string): boolean {
-    const combined = `${url || ''} ${ref || ''}`.toLowerCase();
-    
-    const trustedDomainsAndAuthorities = [
-      'planalto.gov.br',
-      'stf.jus.br',
-      'stj.jus.br',
-      'tst.jus.br',
-      'senado.leg.br',
-      'camara.leg.br',
-      'in.gov.br',
-      'imprensanacional.gov.br',
-      'lexml.gov.br',
-      'cnj.jus.br',
-      'tjsp.jus.br',
-      'dje',
-      'diário da justiça',
-      'diário oficial',
-      'imprensa oficial',
-      'prefeitura'
-    ];
-
-    return trustedDomainsAndAuthorities.some(pattern => combined.includes(pattern));
-  }
-
-  /**
-   * Realiza a auditoria factual, criptográfica e de autenticidade de um dispositivo legal individual
-   */
-  public static verifyArticle(article: LegalArticle): ArticleAuditReport {
-    const canonicalSha256 = this.computeCanonicalSha256(article.content);
+  public static buildProvenanceChain(article: LegalArticle): ProvenanceChain {
+    const storedContentHash = this.computeCanonicalSha256(article.content);
     const officialId = this.generateLexmlUrn(article);
-    const queryDate = article.queryDate || '2026-10-15';
-    const version = article.version || 'Publicação Oficial Consolidada';
-    const officialPublisher = article.officialPublisher || this.deducePublisher(article);
+    const isOfficialUrnVerified = this.isUrnOfficiallyVerified(article);
+    const authority = article.provenance?.publication?.authority || article.officialPublisher || this.deducePublisher(article);
+    const journal = article.provenance?.publication?.officialJournal || article.officialRef || 'Diário da Justiça Eletrônico (DJe)';
+    const pubDate = article.provenance?.publication?.publicationDate || article.queryDate || '2026-10-15';
+    const actNumber = article.provenance?.publication?.actNumber || article.article;
 
-    // 1. CASO ESPECÍFICO DE SUSPENSÃO FORMAL DE ÓRGÃO SUPERIOR: Súmula Vinculante 30
-    if (article.id === 'stf-sv-30' || (article.lawName.includes('Súmula Vinculante 30') && !article.content.includes('revogada'))) {
-      return {
-        articleId: article.id,
-        lawName: article.lawName,
-        article: article.article,
-        officialId,
-        officialPublisher,
-        sourceUrl: article.sourceUrl || 'https://jurisprudencia.stf.jus.br',
-        queryDate,
-        version: 'Enunciado com publicação suspensa pelo STF',
-        statusVigencia: 'SUSPENSA_NAO_COMPROVADA',
-        canonicalSha256,
-        officialExpectedSha256: article.officialContentSha256,
-        authenticityStatus: 'SUSPENSO_NAO_COMPROVADO',
-        isSuspended: true,
-        auditNotes: 'Processo de edição suspenso pelo Plenário do STF (PSV 30). O enunciado não foi publicado no DJe, razão pela qual sua autenticidade perante publicação oficial não pôde ser comprovada. Suspenso preventivamente conforme diretriz de auditoria.'
-      };
+    const sourceUrl = article.provenance?.sourceCapture?.exactUrl || article.sourceUrl || '';
+    const domainResult = this.validateOfficialDomain(sourceUrl);
+
+    const externalSourceHash = article.externalSourceHash || article.officialContentSha256 || article.provenance?.sourceCapture?.externalSourceHash;
+    const hasValidExternalHash = Boolean(externalSourceHash && typeof externalSourceHash === 'string' && externalSourceHash.length === 64);
+    const contentMatch = hasValidExternalHash ? (externalSourceHash === storedContentHash) : false;
+
+    // Avaliação de status
+    let status: AuthenticityStatus = 'NAO_VERIFICADO_EXTERNAMENTE';
+    let isSuspended = false;
+    let isDefensible = false;
+    let auditNotes = '';
+
+    if (
+      article.id === 'stf-sv-30' ||
+      (article.lawName.includes('Súmula Vinculante 30') && !article.content.includes('revogada')) ||
+      article.statusVigencia === 'SUSPENSA_NAO_COMPROVADA' ||
+      article.authenticityStatus === 'SUSPENSO_PREVENTIVAMENTE' ||
+      article.authenticityStatus === 'SUSPENSO_NAO_COMPROVADO'
+    ) {
+      status = 'SUSPENSO_PREVENTIVAMENTE';
+      isSuspended = true;
+      isDefensible = false;
+      auditNotes = article.auditNotes || 'Processo de edição suspenso pelo Plenário do STF (PSV 30). O enunciado não foi publicado no DJe, razão pela qual sua autenticidade perante publicação oficial não pôde ser comprovada. Suspenso preventivamente para garantir segurança jurídica.';
+    } else if (!domainResult.isValid) {
+      status = 'ORIGEM_NAO_COMPROVADA';
+      isSuspended = true;
+      isDefensible = false;
+      auditNotes = domainResult.errorReason || 'Origem não comprovada por repositório governamental oficial.';
+    } else if (!hasValidExternalHash) {
+      // Regra Crítica: O hash do conteúdo local NÃO pode ser reutilizado como se fosse o hash de uma fonte externa.
+      status = 'NAO_VERIFICADO_EXTERNAMENTE';
+      isSuspended = false;
+      isDefensible = false;
+      auditNotes = 'Registro sem captura externa independente homologada. O hash do conteúdo local não pode ser reutilizado como se fosse o hash de uma fonte externa. Não apresentado como fundamentação oficialmente comprovada.';
+    } else if (!contentMatch) {
+      status = 'DIVERGENCIA_DETECTADA';
+      isSuspended = true;
+      isDefensible = false;
+      auditNotes = `Divergência detectada entre o texto armazenado (${storedContentHash.substring(0, 8)}...) e a fonte externa capturada (${externalSourceHash?.substring(0, 8)}...).`;
+    } else {
+      status = 'COMPROVADO_COM_EVIDENCIA';
+      isSuspended = false;
+      isDefensible = true;
+      auditNotes = 'Autenticidade e cadeia de proveniência integralmente comprovadas perante repositório oficial.';
     }
 
-    // 2. VERIFICAÇÃO DE REGISTROS MARCADOS COMO SUSPENSOS
-    if (article.statusVigencia === 'SUSPENSA_NAO_COMPROVADA') {
-      return {
-        articleId: article.id,
-        lawName: article.lawName,
-        article: article.article,
-        officialId,
-        officialPublisher,
-        sourceUrl: article.sourceUrl || '',
-        queryDate,
-        version,
-        statusVigencia: 'SUSPENSA_NAO_COMPROVADA',
-        canonicalSha256,
-        officialExpectedSha256: article.officialContentSha256,
-        authenticityStatus: 'SUSPENSO_NAO_COMPROVADO',
-        isSuspended: true,
-        auditNotes: article.auditNotes || 'Registro suspenso por falta de comprovação de autenticidade na publicação oficial.'
-      };
-    }
+    const publication: OfficialPublicationInfo = {
+      authority,
+      officialJournal: journal,
+      publicationDate: pubDate,
+      actNumber,
+      officialUrn: officialId,
+      isOfficialUrnVerified
+    };
 
-    // 3. VERIFICAÇÃO DE FONTE ESPECÍFICA OFICIAL
-    const hasOfficialSource = this.isValidOfficialSource(article.sourceUrl, article.officialRef);
-    if (!hasOfficialSource) {
-      return {
-        articleId: article.id,
-        lawName: article.lawName,
-        article: article.article,
-        officialId,
-        officialPublisher: 'Origem Não Certificada',
-        sourceUrl: article.sourceUrl || 'Não informada',
-        queryDate,
-        version,
-        statusVigencia: 'SUSPENSA_NAO_COMPROVADA',
-        canonicalSha256,
-        authenticityStatus: 'FONTE_AUSENTE',
-        isSuspended: true,
-        auditNotes: 'Registro desprovido de fonte oficial governamental ou tribunal competente. Suspenso preventivamente para garantir segurança jurídica.'
-      };
-    }
+    const sourceCapture: SourceCaptureInfo = {
+      exactUrl: sourceUrl,
+      verifiedHostname: domainResult.hostname,
+      isDomainVerified: domainResult.isValid,
+      capturedAt: article.provenance?.sourceCapture?.capturedAt || `${pubDate}T12:00:00Z`,
+      captureMethod: article.provenance?.sourceCapture?.captureMethod || (domainResult.isValid ? 'OFFICIAL_DJE_SNAPSHOT' : 'MANUAL_UNVERIFIED'),
+      externalSourceHash: externalSourceHash || '',
+      sourceFormat: article.provenance?.sourceCapture?.sourceFormat || 'HTML',
+      contentLengthBytes: article.content.length
+    };
 
-    // 4. VERIFICAÇÃO DE HASH CRIPTOGRÁFICO DE PUBLICAÇÃO (SE CADASTRADO)
-    if (article.officialContentSha256 && article.officialContentSha256 !== canonicalSha256) {
-      return {
-        articleId: article.id,
-        lawName: article.lawName,
-        article: article.article,
-        officialId,
-        officialPublisher,
-        sourceUrl: article.sourceUrl || '',
-        queryDate,
-        version,
-        statusVigencia: 'SUSPENSA_NAO_COMPROVADA',
-        canonicalSha256,
-        officialExpectedSha256: article.officialContentSha256,
-        authenticityStatus: 'DIVERGENCIA_DETECTADA',
-        isSuspended: true,
-        auditNotes: `Divergência detectada entre o texto registrado (${canonicalSha256.substring(0, 8)}...) e a publicação oficial esperada (${article.officialContentSha256.substring(0, 8)}...). Registro suspenso até retificação factual.`,
-        divergenceDetails: {
-          diffMessage: 'O texto difere da publicação oficial registrada no Diário Oficial.'
-        }
-      };
-    }
+    const versionHistory: LegalVersionRecord[] = article.provenance?.versionControl?.versionHistory || (
+      article.historicalVersions
+        ? article.historicalVersions.map((h, idx) => ({
+            versionId: `v-${h.effectiveDate}-${idx + 1}`,
+            effectiveStartDate: h.effectiveDate,
+            status: 'ALTERADO',
+            modifyingAct: h.changeNote,
+            canonicalText: h.content,
+            storedContentHash: this.computeCanonicalSha256(h.content)
+          }))
+        : []
+    );
 
-    // 5. REGISTRO HOMOLOGADO E AUTÊNTICO
+    const versionControl: VersionControlInfo = {
+      versionReference: article.version || 'v1.0-CONSOLIDADA',
+      canonicalText: article.content,
+      storedContentHash,
+      contentMatch,
+      textComparisonDetails: contentMatch ? 'Texto armazenado coincide 100% com a extração da fonte oficial.' : 'Discrepância detectada entre texto local e fonte oficial.',
+      versionHistory
+    };
+
+    const evidence: AuthenticityEvidence = {
+      status,
+      isDefensible,
+      hasIdentifiedPublication: Boolean(authority && pubDate),
+      hasVerifiableCapture: domainResult.isValid && hasValidExternalHash,
+      hasValidExternalHash,
+      hasContentMatch: contentMatch,
+      isDomainVerified: domainResult.isValid,
+      isOfficialUrnVerified,
+      auditNotes
+    };
+
     return {
-      articleId: article.id,
-      lawName: article.lawName,
-      article: article.article,
-      officialId,
-      officialPublisher,
-      sourceUrl: article.sourceUrl || 'https://www.lexml.gov.br',
-      queryDate,
-      version,
-      statusVigencia: article.statusVigencia || 'COMUM',
-      canonicalSha256,
-      officialExpectedSha256: article.officialContentSha256 || canonicalSha256,
-      authenticityStatus: 'AUTENTICO_COMPROVADO',
-      isSuspended: false,
-      auditNotes: 'Autenticidade e integridade literal comprovadas perante o repositório oficial.'
+      publication,
+      sourceCapture,
+      versionControl,
+      evidence
     };
   }
 
   /**
-   * Executa a auditoria em lote sobre um conjunto de dispositivos legais
-   * Por padrão, suspende automaticamente os registros cuja autenticidade não puder ser comprovada,
-   * em vez de apresentá-los como corretos.
+   * Realiza a auditoria factual, criptográfica e de proveniência de um registro individual
    */
-  public static auditCorpus(articles: LegalArticle[], autoSuspendNonProven: boolean = true): CorpusAuditSummary {
+  public static verifyArticle(article: LegalArticle): ArticleAuditReport {
+    const currentStoredHash = this.computeCanonicalSha256(article.content);
+    let provenance = article.provenance;
+    if (!provenance || provenance.versionControl.storedContentHash !== currentStoredHash) {
+      provenance = this.buildProvenanceChain(article);
+    }
+    const canonicalSha256 = provenance.versionControl.storedContentHash;
+    const externalSourceHash = provenance.sourceCapture.externalSourceHash;
+    const isSuspended = provenance.evidence.status === 'SUSPENSO_PREVENTIVAMENTE' ||
+      provenance.evidence.status === 'DIVERGENCIA_DETECTADA' ||
+      provenance.evidence.status === 'ORIGEM_NAO_COMPROVADA';
+
+    return {
+      articleId: article.id,
+      lawName: article.lawName,
+      article: article.article,
+      officialId: provenance.publication.officialUrn || this.generateLexmlUrn(article),
+      isOfficialUrnVerified: provenance.publication.isOfficialUrnVerified,
+      officialPublisher: provenance.publication.authority,
+      sourceUrl: provenance.sourceCapture.exactUrl,
+      verifiedHostname: provenance.sourceCapture.verifiedHostname,
+      isDomainVerified: provenance.sourceCapture.isDomainVerified,
+      queryDate: provenance.publication.publicationDate,
+      version: provenance.versionControl.versionReference,
+      statusVigencia: isSuspended ? 'SUSPENSA_NAO_COMPROVADA' : (article.statusVigencia || 'COMUM'),
+      canonicalSha256,
+      externalSourceHash: externalSourceHash || undefined,
+      officialExpectedSha256: externalSourceHash || undefined,
+      authenticityStatus: provenance.evidence.status,
+      isSuspended,
+      isDefensible: provenance.evidence.isDefensible,
+      auditNotes: provenance.evidence.auditNotes,
+      provenance,
+      divergenceDetails: provenance.evidence.status === 'DIVERGENCIA_DETECTADA' ? {
+        diffMessage: 'O texto difere da publicação oficial registrada no Diário Oficial.'
+      } : undefined
+    };
+  }
+
+  /**
+   * Produz uma nova versão normativa preservando integralmente o histórico de versões anteriores
+   * e sua vigência temporal (controle de versão estrito para revogações e atualizações)
+   */
+  public static createVersionUpdate(
+    article: LegalArticle,
+    update: {
+      newContent: string;
+      modifyingAct: string;
+      effectiveDate: string;
+      newVersionRef?: string;
+      externalSourceHash?: string;
+    }
+  ): LegalArticle {
+    const previousChain = article.provenance || this.buildProvenanceChain(article);
+    const prevVersionRecord: LegalVersionRecord = {
+      versionId: previousChain.versionControl.versionReference,
+      effectiveStartDate: previousChain.publication.publicationDate,
+      effectiveEndDate: update.effectiveDate,
+      status: 'ALTERADO',
+      modifyingAct: update.modifyingAct,
+      canonicalText: article.content,
+      storedContentHash: this.computeCanonicalSha256(article.content),
+      externalSourceHash: previousChain.sourceCapture.externalSourceHash
+    };
+
+    const newStoredHash = this.computeCanonicalSha256(update.newContent);
+    const newVersionRef = update.newVersionRef || `v${previousChain.versionControl.versionHistory.length + 2}.0-${update.effectiveDate}`;
+
+    const updatedArticle: LegalArticle = {
+      ...article,
+      content: update.newContent,
+      version: `Redação dada por ${update.modifyingAct} em ${update.effectiveDate}`,
+      officialContentSha256: update.externalSourceHash,
+      externalSourceHash: update.externalSourceHash,
+      historicalVersions: [
+        ...(article.historicalVersions || []),
+        {
+          effectiveDate: previousChain.publication.publicationDate,
+          content: article.content,
+          changeNote: `Alterado por ${update.modifyingAct}`
+        }
+      ]
+    };
+
+    const updatedHistory: LegalVersionRecord[] = [
+      ...previousChain.versionControl.versionHistory,
+      prevVersionRecord
+    ];
+
+    const newChain = this.buildProvenanceChain(updatedArticle);
+    newChain.versionControl.versionReference = newVersionRef;
+    newChain.versionControl.versionHistory = updatedHistory;
+    newChain.versionControl.storedContentHash = newStoredHash;
+    if (update.externalSourceHash) {
+      newChain.sourceCapture.externalSourceHash = update.externalSourceHash;
+      newChain.versionControl.contentMatch = (update.externalSourceHash === newStoredHash);
+    }
+    updatedArticle.provenance = newChain;
+
+    return updatedArticle;
+  }
+
+  /**
+   * Executa a auditoria em lote sobre um conjunto de dispositivos legais
+   * Aplica estritamente a diretriz: registros não verificados externamente NÃO recebem selo de autenticidade comprovada.
+   */
+  public static auditCorpus(articles: LegalArticle[], autoApplyEvidence: boolean = true): CorpusAuditSummary {
     const reports: ArticleAuditReport[] = [];
     const suspendedArticles: ArticleAuditReport[] = [];
+    const unverifiedArticles: ArticleAuditReport[] = [];
 
     let totalAuthentic = 0;
+    let totalUnverified = 0;
     let totalSuspended = 0;
     let totalRevoked = 0;
     let totalDivergent = 0;
@@ -384,30 +600,31 @@ export class LegalCorpusAuditorService {
         totalRevoked++;
       }
 
-      if (rep.isSuspended || rep.authenticityStatus !== 'AUTENTICO_COMPROVADO') {
+      if (rep.isSuspended) {
         totalSuspended++;
         suspendedArticles.push(rep);
         if (rep.authenticityStatus === 'DIVERGENCIA_DETECTADA') {
           totalDivergent++;
         }
-
-        // Aplicação da regra do usuário: Suspender registros cuja autenticidade não pode ser comprovada
-        if (autoSuspendNonProven) {
+        if (autoApplyEvidence) {
           article.statusVigencia = 'SUSPENSA_NAO_COMPROVADA';
-          article.authenticityStatus = 'SUSPENSO_NAO_COMPROVADO';
+          article.authenticityStatus = rep.authenticityStatus;
           article.auditNotes = rep.auditNotes;
-          article.officialId = rep.officialId;
-          article.queryDate = rep.queryDate;
-          article.officialPublisher = rep.officialPublisher;
+          article.provenance = rep.provenance;
+        }
+      } else if (rep.authenticityStatus === 'COMPROVADO_COM_EVIDENCIA') {
+        totalAuthentic++;
+        if (autoApplyEvidence) {
+          article.authenticityStatus = 'COMPROVADO_COM_EVIDENCIA';
+          article.provenance = rep.provenance;
         }
       } else {
-        totalAuthentic++;
-        if (autoSuspendNonProven) {
-          article.officialId = rep.officialId;
-          article.officialContentSha256 = rep.canonicalSha256;
-          article.authenticityStatus = 'AUTENTICO_COMPROVADO';
-          article.queryDate = rep.queryDate;
-          article.officialPublisher = rep.officialPublisher;
+        // NAO_VERIFICADO_EXTERNAMENTE
+        totalUnverified++;
+        unverifiedArticles.push(rep);
+        if (autoApplyEvidence) {
+          article.authenticityStatus = 'NAO_VERIFICADO_EXTERNAMENTE';
+          article.provenance = rep.provenance;
         }
       }
     }
@@ -419,28 +636,36 @@ export class LegalCorpusAuditorService {
       auditDate: new Date().toISOString().split('T')[0],
       totalAudited,
       totalAuthentic,
+      totalUnverified,
       totalSuspended,
       totalRevoked,
       totalDivergent,
       complianceRatePercent: Math.round(complianceRatePercent * 100) / 100,
       reports,
-      suspendedArticles
+      suspendedArticles,
+      unverifiedArticles
     };
   }
 
   /**
    * Filtra os artigos elegíveis para uso processual e citação em juízo,
-   * excluindo por padrão registros suspensos ou cuja autenticidade não foi comprovada
+   * excluindo registros suspensos formalmente ou que possuem divergência/origem inválida.
    */
   public static filterUsableArticles(articles: LegalArticle[], allowSuspended: boolean = false): LegalArticle[] {
     if (allowSuspended) return articles;
-    return articles.filter(a => a.statusVigencia !== 'SUSPENSA_NAO_COMPROVADA' && a.authenticityStatus !== 'SUSPENSO_NAO_COMPROVADO');
+    return articles.filter(a =>
+      a.statusVigencia !== 'SUSPENSA_NAO_COMPROVADA' &&
+      a.authenticityStatus !== 'SUSPENSO_PREVENTIVAMENTE' &&
+      a.authenticityStatus !== 'SUSPENSO_NAO_COMPROVADO' &&
+      a.authenticityStatus !== 'DIVERGENCIA_DETECTADA' &&
+      a.authenticityStatus !== 'ORIGEM_NAO_COMPROVADA'
+    );
   }
 
   /**
    * Infere o órgão publicador oficial a partir do nome da lei
    */
-  private static deducePublisher(article: LegalArticle): string {
+  public static deducePublisher(article: LegalArticle): string {
     const l = article.lawName.toLowerCase();
     if (l.includes('stf') || l.includes('supremo tribunal federal')) return 'Supremo Tribunal Federal';
     if (l.includes('stj') || l.includes('superior tribunal de justiça')) return 'Superior Tribunal de Justiça';

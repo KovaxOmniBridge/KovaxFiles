@@ -1,25 +1,10 @@
 import { PDFDocument, rgb, StandardFonts, PDFName, PDFNumber, PDFString } from 'pdf-lib';
 import { zipSync, unzlibSync, inflateSync, decompressSync } from 'fflate';
+import { UNIFIED_COURT_PRESETS, UnifiedCourtPreset, getUnifiedCourtPreset } from '../data/courtPresetsData';
 
-export interface TargetPreset {
-  id: string;
-  name: string;
-  maxSizeMB: number;
-  description: string;
-  targetPortal: string;
-}
-
-export const TARGET_PRESETS: TargetPreset[] = [
-  { id: 'pje', name: 'PJe Nacional - Cível / Família', maxSizeMB: 3, description: 'Limite estrito de 3MB por arquivo para juntada no PJe Nacional', targetPortal: 'PJe Nacional' },
-  { id: 'pje-jt', name: 'PJe - Justiça do Trabalho (JT)', maxSizeMB: 10, description: 'Limite de até 10MB para anexos em secretarias e TRTs', targetPortal: 'TRT / CSJT' },
-  { id: 'tjsp', name: 'TJSP - Tribunal de Justiça SP', maxSizeMB: 10, description: 'Limite de 10MB para anexos e peças no e-SAJ TJSP', targetPortal: 'e-SAJ TJSP' },
-  { id: 'trf', name: 'TRF - Justiça Federal', maxSizeMB: 5, description: 'Limite de 5MB por volume para e-Proc / TRF', targetPortal: 'TRF / e-Proc' },
-  { id: 'stf', name: 'STF - Supremo Tribunal Federal', maxSizeMB: 10, description: 'Limite de 10MB para peticionamento eletrônico no STF', targetPortal: 'STF Digital' },
-  { id: 'stj', name: 'STJ - Superior Tribunal de Justiça', maxSizeMB: 20, description: 'Limite de 20MB para peticionamento e peças no STJ', targetPortal: 'STJ Eletrônico' },
-  { id: 'projudi', name: 'Projudi - Processo Eletrônico', maxSizeMB: 5, description: 'Limite padrão de 5MB para anexos no Projudi', targetPortal: 'Projudi Estadual' },
-  { id: 'prefeitura', name: 'Prefeitura - Processos Administrativos', maxSizeMB: 15, description: 'Otimização para portais e sistemas de protocolo municipal', targetPortal: 'Sistemas Municipais' },
-  { id: 'custom', name: 'Personalizado / Configurável', maxSizeMB: 20, description: 'Tamanho e limite definidos livremente pelo usuário', targetPortal: 'Arquivamento Interno' }
-];
+export type TargetPreset = UnifiedCourtPreset;
+export const TARGET_PRESETS: TargetPreset[] = UNIFIED_COURT_PRESETS;
+export { getUnifiedCourtPreset };
 
 export interface ProgressState {
   message: string;
@@ -774,8 +759,7 @@ export class CompressionEngine {
                   const os = await import('os');
                   const { spawnSync } = await import('child_process');
 
-                  const venvPy = path.resolve('.venv/Scripts/python.exe');
-                  const pythonExe = fs.existsSync(venvPy) ? venvPy : 'python';
+                  const pythonExe = process.env.KOVAX_PYTHON_PATH || 'python';
 
                   const tmpRaw = path.join(os.tmpdir(), `kovax_raw_${Date.now()}_${idx}.bin`);
                   const tmpJpg = path.join(os.tmpdir(), `kovax_jpg_${Date.now()}_${idx}.jpg`);
@@ -1646,6 +1630,18 @@ img.save(sys.argv[6], 'JPEG', quality=int(float(sys.argv[7])*100))
       preservationReportPdf,
       consultationCopy
     };
+  }
+
+  /**
+   * Alias de compatibilidade para compressDirectPdf
+   */
+  static directCompressPdf(
+    pdfBuffer: ArrayBuffer,
+    fileName: string,
+    options?: AdvancedCompressOptions,
+    onProgress?: ProgressCallback
+  ): Promise<DirectCompressOutput> {
+    return this.compressDirectPdf(pdfBuffer, fileName, options, onProgress);
   }
 
   /**

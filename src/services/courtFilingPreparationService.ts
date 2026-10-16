@@ -1,5 +1,11 @@
 import { PDFDocument, PDFPage, rgb, StandardFonts, degrees } from 'pdf-lib';
-import { CompressionEngine } from './compressionEngine';
+import { CompressionEngine, SignatureDetectionResult } from './compressionEngine';
+import { 
+  UNIFIED_COURT_PRESETS, 
+  UnifiedCourtPreset, 
+  getUnifiedCourtPreset, 
+  getDefaultCourtPreset 
+} from '../data/courtPresetsData';
 
 export type CourtPieceType = 
   | 'peticao_inicial'
@@ -42,62 +48,15 @@ export interface CourtFilingPiece {
   originalPageCount: number;
   effectivePageCount: number;
   sha256Hex: string;
+  signatureInfo?: SignatureDetectionResult;
   modifications?: PageModification[];
 }
 
-export interface CourtTargetPreset {
-  id: string;
-  name: string;
-  shortLabel: string;
-  maxVolumeSizeBytes: number; // Ex: 10 * 1024 * 1024 (10 MB)
-  description: string;
-  recommendedResolutionDpi?: number;
-}
+/** Tipo unificado para presets de tribunal (retrocompatível) */
+export type CourtTargetPreset = UnifiedCourtPreset;
 
-export const COURT_TARGET_PRESETS: CourtTargetPreset[] = [
-  {
-    id: 'pje_10mb',
-    name: 'PJe Nacional (TRT / TRF / TJ)',
-    shortLabel: 'PJe (10 MB)',
-    maxVolumeSizeBytes: 10 * 1024 * 1024,
-    description: 'Padrão do Processo Judicial Eletrônico nacional com limite de 10 MB por arquivo.'
-  },
-  {
-    id: 'tjsp_esaj_30mb',
-    name: 'TJSP - Portal e-SAJ (30 MB)',
-    shortLabel: 'TJSP eSAJ (30 MB)',
-    maxVolumeSizeBytes: 30 * 1024 * 1024,
-    description: 'Tribunal de Justiça de São Paulo com limite geral de 30 MB por anexo.'
-  },
-  {
-    id: 'trf_eproc_20mb',
-    name: 'TRF / JF - Eproc (20 MB)',
-    shortLabel: 'Eproc (20 MB)',
-    maxVolumeSizeBytes: 20 * 1024 * 1024,
-    description: 'Justiça Federal (TRF1 a TRF6) com limite padrão de 20 MB por peça/anexo.'
-  },
-  {
-    id: 'stj_stf_50mb',
-    name: 'Tribunais Superiores (STJ / STF)',
-    shortLabel: 'STJ / STF (50 MB)',
-    maxVolumeSizeBytes: 50 * 1024 * 1024,
-    description: 'Instâncias superiores com capacidade expandida de até 50 MB por volume.'
-  },
-  {
-    id: 'pje_strict_5mb',
-    name: 'PJe Reduzido / Varas com Limite Rígido (5 MB)',
-    shortLabel: 'PJe Rígido (5 MB)',
-    maxVolumeSizeBytes: 5 * 1024 * 1024,
-    description: 'Para comarcas do interior ou varas trabalhistas com cota estrita de 5 MB.'
-  },
-  {
-    id: 'custom',
-    name: 'Limite Personalizado',
-    shortLabel: 'Customizado',
-    maxVolumeSizeBytes: 15 * 1024 * 1024,
-    description: 'Permite ao operador definir o limite máximo exato em Megabytes.'
-  }
-];
+/** Catálogo unificado de presets de tribunais sincronizado */
+export const COURT_TARGET_PRESETS: UnifiedCourtPreset[] = UNIFIED_COURT_PRESETS;
 
 export interface PlannedPieceRange {
   pieceId: string;
@@ -156,6 +115,9 @@ export interface GeneratedVolumeResult {
   endFolha: number;
   sha256Hex: string;
   piecesIncludedCount: number;
+  autoCorrected?: boolean;
+  autoCorrectionDetails?: string;
+  exceedsEffectiveLimit?: boolean;
 }
 
 export interface CourtFilingPackageResult {
@@ -170,8 +132,17 @@ export interface CourtFilingPackageResult {
     totalEffectivePages: number;
     totalSizeBytes: number;
     allWithinLimit: boolean;
+    reproved: boolean;
+    reprovedReason?: string;
+    status: 'PREPARADO_PARA_PROTOCOLO' | 'REPROVADO_POR_EXCESSO_DE_TAMANHO';
     processNumber: string;
     targetCourt: string;
+    targetPresetId: string;
+    targetNormativeReference: string;
+    targetScope: string;
+    hasSignaturesDetected: boolean;
+    signaturesNotice?: string;
+    legalDisclaimer: string;
     generatedAt: string;
   };
 }
@@ -200,6 +171,7 @@ export class CourtFilingPreparationService {
     const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
     const count = doc.getPageCount();
     const sha256Hex = await computeSha256(buffer);
+    const signatureInfo = CompressionEngine.detectDigitalSignatures(buffer);
 
     // Detecção heurística de tipo de peça pelo nome do arquivo
     let detectedType: CourtPieceType = initialPieceType || 'outro';
@@ -238,6 +210,7 @@ export class CourtFilingPreparationService {
       originalPageCount: count,
       effectivePageCount: count,
       sha256Hex,
+      signatureInfo,
       modifications: []
     };
   }
@@ -296,8 +269,8 @@ export class CourtFilingPreparationService {
       const pieceSizeBytes = piece.sizeBytes;
       const bytesPerPage = pieceSizeBytes / Math.max(1, piece.originalPageCount);
 
-      // CASO A: A peça inteira cabe no volume atual
-      if (currentVolumePieces.length === 0 || (currentVolumeSizeBytes + pieceSizeBytes <= effectiveLimit)) {
+      // CASO A: A peça cabe no limite individual E cabe no volume atual acumulado
+      if (pieceSizeBytes <= effectiveLimit && (currentVolumePieces.length === 0 || (currentVolumeSizeBytes + pieceSizeBytes <= effectiveLimit))) {
         const startFolha = globalFolhaCursor;
         const endFolha = globalFolhaCursor + piecePageCount - 1;
 
@@ -318,7 +291,7 @@ export class CourtFilingPreparationService {
         currentVolumePageCount += piecePageCount;
         globalFolhaCursor = endFolha + 1;
       } 
-      // CASO B: A peça cabe em um novo volume limpo
+      // CASO B: A peça cabe no limite individual, mas não cabe no volume atual acumulado
       else if (pieceSizeBytes <= effectiveLimit) {
         // Fechar volume atual
         const volStart = currentVolumePieces[0]?.startFolha || globalFolhaCursor;
@@ -361,8 +334,8 @@ export class CourtFilingPreparationService {
         currentVolumePageCount += piecePageCount;
         globalFolhaCursor = endFolha + 1;
       }
-      // CASO C: A própria peça individual é maior que o limite máximo do tribunal!
-      // Necessário fatiar a peça em partes proporcionais
+      // CASO C: A própria peça individual é maior que o limite máximo do tribunal (pieceSizeBytes > effectiveLimit)!
+      // Obrigatoriamente fatiar a peça em partes proporcionais por páginas
       else {
         // Se o volume atual já tem peças, fecha antes de começar o fatiamento
         if (currentVolumePieces.length > 0) {
@@ -386,8 +359,9 @@ export class CourtFilingPreparationService {
           currentVolumePageCount = 0;
         }
 
-        // Fatiar a peça gigante por páginas
-        const maxPagesPerSlice = Math.max(1, Math.floor(effectiveLimit / bytesPerPage));
+        // Fatiar a peça gigante por páginas (aplicando margem preventiva de 10% no limite)
+        const safeSliceLimit = Math.floor(effectiveLimit * 0.90);
+        const maxPagesPerSlice = Math.max(1, Math.floor(safeSliceLimit / Math.max(1, bytesPerPage)));
         const totalSlices = Math.ceil(piecePageCount / maxPagesPerSlice);
 
         for (let sliceIdx = 0; sliceIdx < totalSlices; sliceIdx++) {
@@ -721,8 +695,83 @@ export class CourtFilingPreparationService {
   }
 
   /**
+   * Compila fisicamente o documento PDF de um Volume específico com Capa, Índice e Chancela
+   */
+  static async compileVolumeDocument(
+    plan: CourtFilingVolumePlan,
+    totalVolumes: number,
+    options: CourtFilingOptions,
+    piecesMap: Map<string, CourtFilingPiece>
+  ): Promise<{ pdfBytes: Uint8Array; pageCount: number }> {
+    const volDoc = await PDFDocument.create();
+    const fontBold = await volDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontRegular = await volDoc.embedFont(StandardFonts.Helvetica);
+
+    // Adicionar Capa e Índice se configurado
+    if (options.includeCoverAndIndex) {
+      const coverBytes = await this.generateVolumeCoverAndIndex(plan, totalVolumes, options);
+      const coverDoc = await PDFDocument.load(coverBytes);
+      const [coverPage] = await volDoc.copyPages(coverDoc, [0]);
+      volDoc.addPage(coverPage);
+    }
+
+    // Adicionar e carimbar as páginas de cada peça planejada neste volume
+    for (const plannedPiece of plan.plannedPieces) {
+      const sourcePiece = piecesMap.get(plannedPiece.pieceId);
+      if (!sourcePiece) continue;
+
+      const sourceDoc = await PDFDocument.load(sourcePiece.rawBuffer, { ignoreEncryption: true });
+      const validSourcePages = this.getEffectivePages(sourcePiece);
+
+      // Modificações específicas (rotações)
+      const rotMap = new Map<number, number>();
+      if (sourcePiece.modifications) {
+        for (const m of sourcePiece.modifications) {
+          if (m.rotate) rotMap.set(m.pageIndex, m.rotate);
+        }
+      }
+
+      // Selecionar o intervalo de páginas desta fatia
+      let folhaCounter = plannedPiece.startFolha;
+
+      for (let pageIdx = plannedPiece.startSourcePageIndex; pageIdx <= plannedPiece.endSourcePageIndex; pageIdx++) {
+        if (!validSourcePages.includes(pageIdx)) continue;
+
+        const [copiedPage] = await volDoc.copyPages(sourceDoc, [pageIdx]);
+
+        // Aplicar rotação se solicitada
+        const rotAngle = rotMap.get(pageIdx);
+        if (rotAngle) {
+          const currentRot = copiedPage.getRotation().angle;
+          copiedPage.setRotation(degrees((currentRot + rotAngle) % 360));
+        }
+
+        // Aplicar chancela de autos e identificação da peça
+        this.applyStampToPage(
+          copiedPage,
+          folhaCounter,
+          plannedPiece.pieceTitle,
+          options,
+          fontBold,
+          fontRegular
+        );
+
+        volDoc.addPage(copiedPage);
+        folhaCounter++;
+      }
+    }
+
+    const savedBytes = await volDoc.save();
+    return {
+      pdfBytes: savedBytes,
+      pageCount: volDoc.getPageCount()
+    };
+  }
+
+  /**
    * Executa a montagem completa dos autos judiciais, dividindo em volumes conforme limite,
-   * inserindo capa/índice, paginando sequencialmente e gerando manifestos e pacote ZIP.
+   * medindo tamanhos efetivos gerados, autocorrigindo volumes excedentes, alertando sobre
+   * assinaturas preexistentes e emitindo manifesto de preparação (distinto de protocolo judicial).
    */
   static async executeFilingPipeline(
     pieces: CourtFilingPiece[],
@@ -735,10 +784,14 @@ export class CourtFilingPreparationService {
 
     onProgress?.('Planejando distribuição e divisão em volumes...', 10);
 
+    const limitBytes = options.targetPreset.maxVolumeSizeBytes;
+    const signedPieces = pieces.filter(p => p.signatureInfo?.hasSignatures);
+    const hasSignaturesDetected = signedPieces.length > 0;
+
     // 1. Planejar Volumes de acordo com o limite do Tribunal
     const volumePlans = this.planVolumes(
       pieces,
-      options.targetPreset.maxVolumeSizeBytes,
+      limitBytes,
       options.startFolhaNumber
     );
 
@@ -749,75 +802,59 @@ export class CourtFilingPreparationService {
     }
 
     const totalVols = volumePlans.length;
+    const reprovalReasons: string[] = [];
 
-    // 2. Processar e compilar cada Volume
+    // 2. Processar e compilar cada Volume com medição efetiva de tamanho
     for (let vIdx = 0; vIdx < totalVols; vIdx++) {
       const plan = volumePlans[vIdx];
       const volNum = plan.volumeIndex;
 
-      onProgress?.(`Compilando Volume ${volNum} de ${totalVols}...`, Math.round(15 + (vIdx / totalVols) * 65));
+      onProgress?.(`Compilando e chancelando Volume ${volNum} de ${totalVols}...`, Math.round(15 + (vIdx / totalVols) * 60));
 
-      const volDoc = await PDFDocument.create();
-      const fontBold = await volDoc.embedFont(StandardFonts.HelveticaBold);
-      const fontRegular = await volDoc.embedFont(StandardFonts.Helvetica);
+      const compiled = await this.compileVolumeDocument(plan, totalVols, options, piecesMap);
+      let volBytes = compiled.pdfBytes;
+      let effectiveSize = volBytes.byteLength;
+      let autoCorrected = false;
+      let autoCorrectionDetails: string | undefined;
 
-      // Adicionar Capa e Índice se configurado
-      if (options.includeCoverAndIndex) {
-        const coverBytes = await this.generateVolumeCoverAndIndex(plan, totalVols, options);
-        const coverDoc = await PDFDocument.load(coverBytes);
-        const [coverPage] = await volDoc.copyPages(coverDoc, [0]);
-        volDoc.addPage(coverPage);
-      }
+      // Medição efetiva: Se o volume gerado exceder o limite real em bytes
+      if (effectiveSize > limitBytes) {
+        onProgress?.(`Volume ${volNum} excedeu ${(effectiveSize / (1024 * 1024)).toFixed(2)} MB. Tentando autocorreção por compressão...`, Math.round(15 + (vIdx / totalVols) * 60 + 2));
 
-      // Adicionar e carimbar as páginas de cada peça planejada neste volume
-      for (const plannedPiece of plan.plannedPieces) {
-        const sourcePiece = piecesMap.get(plannedPiece.pieceId);
-        if (!sourcePiece) continue;
-
-        const sourceDoc = await PDFDocument.load(sourcePiece.rawBuffer, { ignoreEncryption: true });
-        const validSourcePages = this.getEffectivePages(sourcePiece);
-
-        // Modificações específicas (rotações)
-        const rotMap = new Map<number, number>();
-        if (sourcePiece.modifications) {
-          for (const m of sourcePiece.modifications) {
-            if (m.rotate) rotMap.set(m.pageIndex, m.rotate);
-          }
-        }
-
-        // Selecionar o intervalo de páginas desta fatia
-        let folhaCounter = plannedPiece.startFolha;
-
-        for (let pageIdx = plannedPiece.startSourcePageIndex; pageIdx <= plannedPiece.endSourcePageIndex; pageIdx++) {
-          if (!validSourcePages.includes(pageIdx)) continue;
-
-          const [copiedPage] = await volDoc.copyPages(sourceDoc, [pageIdx]);
-
-          // Aplicar rotação se solicitada
-          const rotAngle = rotMap.get(pageIdx);
-          if (rotAngle) {
-            const currentRot = copiedPage.getRotation().angle;
-            copiedPage.setRotation(degrees((currentRot + rotAngle) % 360));
-          }
-
-          // Aplicar chancela de autos e identificação da peça
-          this.applyStampToPage(
-            copiedPage,
-            folhaCounter,
-            plannedPiece.pieceTitle,
-            options,
-            fontBold,
-            fontRegular
+        try {
+          const arrayBuffer = volBytes.buffer.slice(volBytes.byteOffset, volBytes.byteOffset + volBytes.byteLength) as ArrayBuffer;
+          const compResult = await CompressionEngine.directCompressPdf(
+            arrayBuffer,
+            `Volume_${volNum}.pdf`,
+            {
+              workflowMode: 'unsigned_optimization',
+              allowSignedPdfReencoding: true,
+              enableImageReencode: true,
+              imageQuality: 0.65,
+              maxDpi: options.targetPreset.recommendedResolutionDpi || 150,
+              detectSignatures: false
+            }
           );
 
-          volDoc.addPage(copiedPage);
-          folhaCounter++;
+          if (compResult.data.byteLength <= limitBytes) {
+            autoCorrected = true;
+            autoCorrectionDetails = `Volume autocorrigido via compressão adaptativa: ${(effectiveSize / (1024 * 1024)).toFixed(2)} MB -> ${(compResult.data.byteLength / (1024 * 1024)).toFixed(2)} MB.`;
+            volBytes = compResult.data;
+            effectiveSize = volBytes.byteLength;
+          }
+        } catch (compErr) {
+          console.warn(`[executeFilingPipeline] Autocorreção via compressão falhou para Volume ${volNum}:`, compErr);
+        }
+
+        // Se ainda exceder após compressão
+        if (effectiveSize > limitBytes) {
+          reprovalReasons.push(
+            `Volume ${volNum} possui tamanho efetivo de ${(effectiveSize / (1024 * 1024)).toFixed(2)} MB, excedendo o teto estrito de ${(limitBytes / (1024 * 1024)).toFixed(0)} MB do tribunal selecionado.`
+          );
         }
       }
 
-      const volBytes = await volDoc.save();
       const volSha256 = await computeSha256(volBytes);
-
       const safeProc = (options.processNumber || 'Autos').replace(/[^a-zA-Z0-9]/g, '_');
       const volFileName = `Volume_${String(volNum).padStart(2, '0')}_Processo_${safeProc}.pdf`;
 
@@ -826,23 +863,47 @@ export class CourtFilingPreparationService {
         volumeTitle: plan.volumeTitle,
         fileName: volFileName,
         pdfBytes: volBytes,
-        sizeBytes: volBytes.byteLength,
-        pageCount: volDoc.getPageCount(),
+        sizeBytes: effectiveSize,
+        pageCount: compiled.pageCount,
         startFolha: plan.startFolha,
         endFolha: plan.endFolha,
         sha256Hex: volSha256,
-        piecesIncludedCount: plan.plannedPieces.length
+        piecesIncludedCount: plan.plannedPieces.length,
+        autoCorrected,
+        autoCorrectionDetails,
+        exceedsEffectiveLimit: effectiveSize > limitBytes
       });
     }
 
     onProgress?.('Gerando Manifesto de Integridade e Pacote ZIP...', 85);
 
+    const isReproved = reprovalReasons.length > 0 || generatedVolumes.some(v => v.sizeBytes > limitBytes);
+    const reprovedReason = isReproved
+      ? `PACOTE REPROVADO PARA PROTOCOLO: ${reprovalReasons.join(' ')} Os arquivos gerados violam a cota máxima de transmissão do portal. É necessário fracionar manualmente os anexos volumosos ou adotar limite ampliado se autorizado por despacho.`
+      : undefined;
+
+    const packageStatus = isReproved ? 'REPROVADO_POR_EXCESSO_DE_TAMANHO' : 'PREPARADO_PARA_PROTOCOLO';
+
+    const legalDisclaimer = 
+      'AVISO DE DELIMITAÇÃO TÉCNICA E ISENÇÃO DE PROTOCOLO: A aplicação KovaxFiles Desktop realiza a compilação, chancela, numeração de folhas e controle de integridade documental para PREPARAÇÃO de autos digitais. ' +
+      'A EMISSÃO DESTE PACOTE NÃO CONSTITUI PROTOCOLO JUDICIAL NEM COMPROVA QUE O TRIBUNAL RECEBEU OU ACEITOU OS DOCUMENTOS. ' +
+      'O protocolo efetivo, a conferência de tempestividade e a obtenção do Recibo Oficial de Protocolo Judicial são de responsabilidade exclusiva do advogado ou operador responsável perante o portal informatizado do tribunal.';
+
+    const signaturesNotice = hasSignaturesDetected
+      ? `ALERTA DE ASSINATURA DIGITAL ORIGINÁRIA: Detectou-se assinatura digital pré-existente em ${signedPieces.length} peça(s) original(is): ${signedPieces.map(p => `"${p.fileName}"`).join(', ')}. A inserção em volume compilado, renumeração de folhas, carimbo e/ou rotação alteram a integridade binária dos arquivos, desvinculando as assinaturas criptográficas originárias no PDF final montado. O hash SHA-256 de cada peça original foi registrado neste manifesto para comprovação de autenticidade originária.`
+      : undefined;
+
     // 3. Gerar Manifesto de Arquivos (JSON & TXT)
     const nowIso = new Date().toISOString();
     const manifestObj = {
-      titulo: 'Manifesto Oficial de Protocolo e Integridade Documental',
+      titulo: 'Manifesto Técnico de Preparação de Autos e Integridade Documental',
       aplicacao: 'KovaxFiles Desktop - Engenharia Documental Judicial',
+      status: packageStatus,
+      reprovado: isReproved,
+      motivoReprovacao: reprovedReason,
       dataGeracao: nowIso,
+      delimitacaoTecnica: legalDisclaimer,
+      alertaAssinaturasDigitais: signaturesNotice,
       dadosProcessuais: {
         processo: options.processNumber,
         tribunal: options.courtName,
@@ -852,14 +913,25 @@ export class CourtFilingPreparationService {
         reu: options.defendantName,
         advogado: options.lawyerName,
         oab: options.lawyerOab,
-        tribunalAlvo: options.targetPreset.name,
-        limiteVolumeMaxBytes: options.targetPreset.maxVolumeSizeBytes
+        presetTribunal: {
+          id: options.targetPreset.id,
+          nome: options.targetPreset.name,
+          limiteMaximoMB: options.targetPreset.maxSizeMB,
+          limiteMaximoBytes: options.targetPreset.maxVolumeSizeBytes,
+          escopo: options.targetPreset.courtScope,
+          referenciaNormativa: options.targetPreset.normativeReference,
+          versaoOuData: options.targetPreset.versionOrDate,
+          regraUniversal: false
+        }
       },
       resumo: {
         totalVolumes: generatedVolumes.length,
         totalPecasOriginais: pieces.length,
         totalFolhasNumeradas: generatedVolumes.reduce((acc, v) => acc + (v.endFolha - v.startFolha + 1), 0),
-        todosVolumesDentroDoLimite: generatedVolumes.every(v => v.sizeBytes <= options.targetPreset.maxVolumeSizeBytes)
+        todosVolumesDentroDoLimite: !isReproved,
+        volumesComExcesso: generatedVolumes.filter(v => v.exceedsEffectiveLimit).length,
+        volumesAutocorrigidos: generatedVolumes.filter(v => v.autoCorrected).length,
+        pecasComAssinaturaDigitalDetectada: signedPieces.length
       },
       volumesGerados: generatedVolumes.map(v => ({
         volume: v.volumeIndex,
@@ -868,6 +940,9 @@ export class CourtFilingPreparationService {
         totalPaginas: v.pageCount,
         tamanhoBytes: v.sizeBytes,
         tamanhoFormatado: (v.sizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
+        dentroDoLimite: !v.exceedsEffectiveLimit,
+        autocorrigido: v.autoCorrected || false,
+        detalhesAutocorrecao: v.autoCorrectionDetails,
         sha256Hex: v.sha256Hex
       })),
       pecasOriginaisJuntadas: pieces.map((p, idx) => ({
@@ -877,6 +952,8 @@ export class CourtFilingPreparationService {
         arquivoOriginal: p.fileName,
         paginas: p.effectivePageCount,
         tamanhoBytes: p.sizeBytes,
+        possuiAssinaturaDigital: p.signatureInfo?.hasSignatures || false,
+        qtdAssinaturas: p.signatureInfo?.signatureCount || 0,
         sha256Original: p.sha256Hex
       }))
     };
@@ -885,43 +962,70 @@ export class CourtFilingPreparationService {
 
     const manifestTxtLines = [
       '================================================================================',
-      'MANIFESTO OFICIAL DE INTEGRIDADE DOCUMENTAL E PROTOCOLO JUDICIAL',
-      'KovaxFiles Desktop • Conformidade ICP-Brasil e Resoluções PJe/CNJ',
+      'MANIFESTO TÉCNICO DE INTEGRIDADE E PREPARAÇÃO DE AUTOS PARA PROTOCOLO',
+      'KovaxFiles Desktop • Engenharia Documental Forense',
+      `STATUS TÉCNICO: [${packageStatus}]`,
       '================================================================================',
       '',
-      `PROCESSO Nº:      ${options.processNumber || 'NÃO INFORMADO'}`,
-      `TRIBUNAL / ÓRGÃO: ${options.courtName || 'NÃO INFORMADO'}`,
-      `VARA / FORO:      ${options.varalForum || 'NÃO INFORMADO'}`,
-      `AÇÃO:             ${options.actionType || 'NÃO INFORMADO'}`,
-      `AUTOR:            ${options.authorName || 'NÃO INFORMADO'}`,
-      `RÉU:              ${options.defendantName || 'NÃO INFORMADO'}`,
-      `ADVOGADO (A):     ${options.lawyerName || 'NÃO INFORMADO'} (${options.lawyerOab || 'OAB N/A'})`,
-      `DATA DA EMISSÃO:  ${new Date().toLocaleString('pt-BR')}`,
+      `PROCESSO Nº:         ${options.processNumber || 'NÃO INFORMADO'}`,
+      `TRIBUNAL / ÓRGÃO:    ${options.courtName || 'NÃO INFORMADO'}`,
+      `VARA / FORO:         ${options.varalForum || 'NÃO INFORMADO'}`,
+      `AÇÃO:                ${options.actionType || 'NÃO INFORMADO'}`,
+      `POLO ATIVO (AUTOR):  ${options.authorName || 'NÃO INFORMADO'}`,
+      `POLO PASSIVO (RÉU):  ${options.defendantName || 'NÃO INFORMADO'}`,
+      `PATRONO / OAB:       ${options.lawyerName || 'NÃO INFORMADO'} (${options.lawyerOab || 'OAB N/A'})`,
+      `DATA DA PREPARAÇÃO:  ${new Date().toLocaleString('pt-BR')}`,
       '',
       '--------------------------------------------------------------------------------',
-      'VOLUMES CONSOLIDADOS PARA PROTOCOLO:',
+      'PARÂMETROS REGULATÓRIOS DO TRIBUNAL SELECIONADO:',
+      '--------------------------------------------------------------------------------',
+      `• Preset Aplicado:   ${options.targetPreset.name} (${options.targetPreset.shortLabel})`,
+      `• Limite Máximo:      ${(options.targetPreset.maxVolumeSizeBytes / (1024 * 1024)).toFixed(0)} MB por Volume`,
+      `• Escopo Específico: ${options.targetPreset.courtScope}`,
+      `• Norma Reguladora:  ${options.targetPreset.normativeReference} (${options.targetPreset.versionOrDate})`,
+      '• Regra Universal:    NÃO (Regra contextual sujeita a editais locais e capacidade de portal)',
+      '',
+      isReproved ? [
+        '********************************************************************************',
+        'ATENÇÃO: PACOTE REPROVADO POR EXCESSO DE TAMANHO',
+        reprovedReason || '',
+        '********************************************************************************',
+        ''
+      ].join('\n') : '',
+      '--------------------------------------------------------------------------------',
+      'VOLUMES GERADOS E MEDIÇÃO EFETIVA DE TAMANHO:',
       '--------------------------------------------------------------------------------',
       ...generatedVolumes.map(v => 
         `[${v.volumeTitle}] ${v.fileName}\n` +
-        `  • Paginação:    ${options.folhaPrefix} ${v.startFolha} até ${options.folhaPrefix} ${v.endFolha} (${v.pageCount} págs)\n` +
-        `  • Tamanho:      ${(v.sizeBytes / (1024 * 1024)).toFixed(2)} MB\n` +
-        `  • Hash SHA-256: ${v.sha256Hex}\n`
+        `  • Paginação:       ${options.folhaPrefix} ${v.startFolha} até ${options.folhaPrefix} ${v.endFolha} (${v.pageCount} págs)\n` +
+        `  • Tamanho Efetivo: ${(v.sizeBytes / (1024 * 1024)).toFixed(2)} MB (${v.sizeBytes.toLocaleString('pt-BR')} bytes)\n` +
+        `  • Status Limite:   ${v.exceedsEffectiveLimit ? 'REPROVADO (EXCEDE LIMITE)' : 'APROVADO (DENTRO DO LIMITE)'}\n` +
+        (v.autoCorrected ? `  • Autocorreção:    ${v.autoCorrectionDetails}\n` : '') +
+        `  • Hash SHA-256:    ${v.sha256Hex}\n`
       ),
       '--------------------------------------------------------------------------------',
-      'RELAÇÃO DE PEÇAS ORIGINAIS JUNTADAS E HASHES DE AUDITORIA:',
+      'PEÇAS ORIGINAIS JUNTADAS E HASHES DE AUDITORIA:',
       '--------------------------------------------------------------------------------',
       ...pieces.map((p, i) => 
         `Item ${(i + 1).toString().padStart(2, '0')}: [${PIECE_TYPE_LABELS[p.pieceType]}] ${p.title}\n` +
-        `  • Arquivo:      ${p.fileName} (${p.effectivePageCount} págs - ${(p.sizeBytes / 1024).toFixed(1)} KB)\n` +
-        `  • SHA-256 Orig: ${p.sha256Hex}\n`
+        `  • Arquivo:         ${p.fileName} (${p.effectivePageCount} págs - ${(p.sizeBytes / 1024).toFixed(1)} KB)\n` +
+        `  • Assinatura:      ${p.signatureInfo?.hasSignatures ? `DETECTADA (${p.signatureInfo.signatureCount} assinatura(s))` : 'Nenhuma'}\n` +
+        `  • SHA-256 Matriz:  ${p.sha256Hex}\n`
       ),
+      hasSignaturesDetected ? [
+        '--------------------------------------------------------------------------------',
+        'ALERTA JURÍDICO DE ASSINATURAS DIGITAIS ORIGINÁRIAS:',
+        '--------------------------------------------------------------------------------',
+        signaturesNotice || '',
+        ''
+      ].join('\n') : '',
       '================================================================================',
-      'CERTIDÃO DE IMUTABILIDADE:',
-      'Atesta-se que todos os arquivos foram processados em conformidade técnica e que',
-      'os hashes SHA-256 acima comprovam a integridade estrita das peças produzidas.',
+      'CLÁUSULA DE DELIMITAÇÃO TÉCNICA E ISENÇÃO DE PROTOCOLO:',
+      '================================================================================',
+      legalDisclaimer,
       '================================================================================'
     ];
-    const manifestTxt = manifestTxtLines.join('\n');
+    const manifestTxt = manifestTxtLines.filter(Boolean).join('\n');
 
     // 4. Criar Arquivo ZIP com todo o pacote
     const zipEntries: { name: string; data: Uint8Array }[] = [];
@@ -944,7 +1048,7 @@ export class CourtFilingPreparationService {
 
     const zipBuffer = CompressionEngine.createZipArchive(zipEntries);
 
-    onProgress?.('Pacote de protocolo finalizado com sucesso!', 100);
+    onProgress?.('Pacote finalizado!', 100);
 
     return {
       volumes: generatedVolumes,
@@ -957,9 +1061,18 @@ export class CourtFilingPreparationService {
         totalOriginalPages: pieces.reduce((acc, p) => acc + p.originalPageCount, 0),
         totalEffectivePages: pieces.reduce((acc, p) => acc + p.effectivePageCount, 0),
         totalSizeBytes: generatedVolumes.reduce((acc, v) => acc + v.sizeBytes, 0),
-        allWithinLimit: generatedVolumes.every(v => v.sizeBytes <= options.targetPreset.maxVolumeSizeBytes),
+        allWithinLimit: !isReproved,
+        reproved: isReproved,
+        reprovedReason,
+        status: packageStatus,
         processNumber: options.processNumber,
         targetCourt: options.targetPreset.name,
+        targetPresetId: options.targetPreset.id,
+        targetNormativeReference: options.targetPreset.normativeReference,
+        targetScope: options.targetPreset.courtScope,
+        hasSignaturesDetected,
+        signaturesNotice,
+        legalDisclaimer,
         generatedAt: nowIso
       }
     };

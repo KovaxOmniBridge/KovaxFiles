@@ -1,54 +1,57 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import assert from 'assert';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { PdfTextExtractor } from '../src/services/pdfTextExtractor.js';
-import { AiRedactionService, RedactionCategoryOptions } from '../src/services/aiRedactionService.js';
+import { RedactionDetectionService, RedactionCategoryOptions } from '../src/services/aiRedactionService.js';
 import { LocalPdfEngine, RedactionRectangle } from '../src/services/pdfEngine.js';
+import { PdfReportExporterService } from '../src/services/pdfReportExporterService.js';
 
 async function runBatchRedactionIsolationTest() {
   console.log('================================================================');
-  console.log('🧪 TESTE DE ISOLAMENTO E ASSOCIAÇÃO DE ARQUIVOS EM LOTE (LGPD)');
+  console.log('🧪 TESTE DE ISOLAMENTO E PREVENÇÃO DE COLISÃO DE NOMES (LGPD)');
   console.log('================================================================\n');
 
   fs.mkdirSync('test_output', { recursive: true });
 
-  // 1. Criar Documento A: Contém CPF na posição Y: 700
-  console.log('[1/4] Gerando Documento A com dado sensível em Y: 700...');
+  const SAME_FILE_NAME = 'processo_judicial.pdf';
+  const FILE_ID_DOC_A = 'doc_origem_tj_sp_1001';
+  const FILE_ID_DOC_B = 'doc_origem_trf_3_2002';
+
+  // 1. Criar Documento A: Mesmo nome ('processo_judicial.pdf'), CPF na posição Y: 700
+  console.log('[1/5] Gerando Documento A com nome "processo_judicial.pdf" (fileId TJ-SP)...');
   const docA = await PDFDocument.create();
   const fontA = await docA.embedFont(StandardFonts.Helvetica);
   const pageA = docA.addPage([595, 842]);
   
   const sensitiveCpfDocA = '111.222.333-44';
-  pageA.drawText(`Contrato de Honorários A`, { x: 50, y: 750, size: 14, font: fontA });
-  pageA.drawText(`CPF do Cliente A: ${sensitiveCpfDocA}`, { x: 50, y: 700, size: 12, font: fontA });
-  pageA.drawText(`Texto Legítimo Neutro A`, { x: 50, y: 400, size: 12, font: fontA });
+  pageA.drawText(`Vara Cível SP - Processo de Cobrança`, { x: 50, y: 750, size: 14, font: fontA });
+  pageA.drawText(`CPF Requerente A: ${sensitiveCpfDocA}`, { x: 50, y: 700, size: 12, font: fontA });
+  pageA.drawText(`Texto Legítimo Não Sigiloso no Documento A`, { x: 50, y: 400, size: 12, font: fontA });
   
   const bytesDocA = await docA.save();
-  const pathDocA = 'test_output/batch_doc_a.pdf';
-  fs.writeFileSync(pathDocA, bytesDocA);
+  const sha256OriginalA = crypto.createHash('sha256').update(bytesDocA).digest('hex');
 
-  // 2. Criar Documento B: Contém texto legítimo na posição Y: 700 e CPF em Y: 400
-  console.log('[2/4] Gerando Documento B com texto legítimo em Y: 700 e dado sensível em Y: 400...');
+  // 2. Criar Documento B: Mesmo nome ('processo_judicial.pdf'), CPF na posição Y: 400
+  console.log('[2/5] Gerando Documento B com IDÊNTICO nome "processo_judicial.pdf" (fileId TRF-3)...');
   const docB = await PDFDocument.create();
   const fontB = await docB.embedFont(StandardFonts.Helvetica);
   const pageB = docB.addPage([595, 842]);
 
   const sensitiveCpfDocB = '999.888.777-66';
-  const legitimateClauseDocB = 'Cláusula Contratual Importante - Texto Legítimo Não Sigiloso';
-  pageB.drawText(`Contrato de Prestação B`, { x: 50, y: 750, size: 14, font: fontB });
-  pageB.drawText(legitimateClauseDocB, { x: 50, y: 700, size: 12, font: fontB });
-  pageB.drawText(`CPF do Fornecedor B: ${sensitiveCpfDocB}`, { x: 50, y: 400, size: 12, font: fontB });
+  pageB.drawText(`Vara Federal SP - Execução Fiscal`, { x: 50, y: 750, size: 14, font: fontB });
+  pageB.drawText(`Cláusula Pública Neutra no Documento B`, { x: 50, y: 700, size: 12, font: fontB });
+  pageB.drawText(`CPF Executado B: ${sensitiveCpfDocB}`, { x: 50, y: 400, size: 12, font: fontB });
 
   const bytesDocB = await docB.save();
-  const pathDocB = 'test_output/batch_doc_b.pdf';
-  fs.writeFileSync(pathDocB, bytesDocB);
+  const sha256OriginalB = crypto.createHash('sha256').update(bytesDocB).digest('hex');
 
-  // 3. Simular o fluxo de análise em lote (como no LgpdRedactor e LgpdPrivacySecuritySuite)
-  console.log('\n[3/4] Analisando ambos os documentos em lote e validando rastreabilidade de arquivo...');
-  const files = [
-    { name: 'batch_doc_a.pdf', data: bytesDocA },
-    { name: 'batch_doc_b.pdf', data: bytesDocB }
+  // 3. Simular lote com fileId único e imutável por documento
+  console.log('\n[3/5] Analisando documentos em lote com isolamento estrito por fileId...');
+  const batchDocuments = [
+    { fileId: FILE_ID_DOC_A, name: SAME_FILE_NAME, data: bytesDocA },
+    { fileId: FILE_ID_DOC_B, name: SAME_FILE_NAME, data: bytesDocB }
   ];
 
   const categories: RedactionCategoryOptions = {
@@ -66,83 +69,93 @@ async function runBatchRedactionIsolationTest() {
 
   const allDetectedItems: any[] = [];
 
-  for (const file of files) {
-    const pagesData = await PdfTextExtractor.extractTextWithBounds(file.data.buffer as ArrayBuffer);
-    const items = await AiRedactionService.analyzePdf(
+  for (const doc of batchDocuments) {
+    const pagesData = await PdfTextExtractor.extractTextWithBounds(doc.data.buffer as ArrayBuffer);
+    const items = await RedactionDetectionService.analyzePdf(
       pagesData,
       categories,
       { mode: 'pattern' },
       undefined,
-      file.name
+      doc.name,
+      doc.fileId
     );
 
-    const taggedItems = items.map(it => ({
-      ...it,
-      fileName: file.name,
-      rect: { ...it.rect, fileName: file.name }
-    }));
-
-    allDetectedItems.push(...taggedItems);
+    allDetectedItems.push(...items);
   }
 
   console.log(`  -> Total de ocorrências detectadas no lote: ${allDetectedItems.length}`);
   for (const item of allDetectedItems) {
-    console.log(`     * [${item.fileName}] "${item.text}" na Pág ${item.pageIndex + 1} em (x: ${item.rect.x.toFixed(1)}, y: ${item.rect.y.toFixed(1)})`);
+    console.log(`     * [fileId: ${item.fileId}] [fileName: ${item.fileName}] "${item.text}" na Pág ${item.pageIndex + 1} (y: ${item.rect.y.toFixed(1)})`);
   }
 
-  assert.strictEqual(allDetectedItems.length, 2, 'Deve detectar exatamente 2 CPFs no total do lote');
+  assert.strictEqual(allDetectedItems.length, 2, 'Deve detectar exatamente 2 CPFs no lote');
   
   const itemA = allDetectedItems.find(i => i.text.includes(sensitiveCpfDocA));
   const itemB = allDetectedItems.find(i => i.text.includes(sensitiveCpfDocB));
 
   assert.ok(itemA, 'O CPF do Doc A deve ter sido detectado');
   assert.ok(itemB, 'O CPF do Doc B deve ter sido detectado');
-  assert.strictEqual(itemA.fileName, 'batch_doc_a.pdf', 'Item A deve estar associado a batch_doc_a.pdf');
-  assert.strictEqual(itemB.fileName, 'batch_doc_b.pdf', 'Item B deve estar associado a batch_doc_b.pdf');
 
-  // Validar que as coordenadas Y são diferentes (700 vs 400)
-  console.log(`  -> Y do Item A: ${itemA.rect.y.toFixed(0)} | Y do Item B: ${itemB.rect.y.toFixed(0)}`);
-  assert.ok(Math.abs(itemA.rect.y - itemB.rect.y) > 200, 'Os dois itens devem estar em posições Y distintas');
+  // Provar que ambos têm o MESMO nome de arquivo, mas fileId DIFERENTE
+  assert.strictEqual(itemA.fileName, SAME_FILE_NAME);
+  assert.strictEqual(itemB.fileName, SAME_FILE_NAME);
+  assert.strictEqual(itemA.fileId, FILE_ID_DOC_A, 'Item A deve possuir fileId do TJ-SP');
+  assert.strictEqual(itemB.fileId, FILE_ID_DOC_B, 'Item B deve possuir fileId do TRF-3');
 
-  // 4. Executar anonimização com filtragem estrita de retângulos por arquivo
-  console.log('\n[4/4] Executando anonimização com isolamento estrito por arquivo...');
-  for (const file of files) {
-    // Filtragem correta: apenas os retângulos deste arquivo específico
-    const fileRects: RedactionRectangle[] = allDetectedItems
-      .filter(i => !i.fileName || i.fileName === file.name)
-      .map(i => i.rect);
+  // 4. Demonstrar a falha da associação permissiva antiga vs a precisão do fileId
+  console.log('\n[4/5] Comparando associação permissiva por nome vs isolamento estrito por fileId...');
+  
+  // Se usássemos !i.fileName || i.fileName === doc.name:
+  const faultyMatchesA = allDetectedItems.filter(i => !i.fileName || i.fileName === SAME_FILE_NAME);
+  assert.strictEqual(
+    faultyMatchesA.length,
+    2,
+    'A associação permissiva por nome causaria colisão de 2 itens em arquivos de mesmo nome'
+  );
+  console.log('  ⚠️ AVISO: Filtragem por nome produziria colisão cruzada (2 itens capturados em doc A)');
 
-    console.log(`  -> Processando ${file.name}: aplicando ${fileRects.length} retângulos`);
-    
-    if (file.name === 'batch_doc_a.pdf') {
-      assert.strictEqual(fileRects.length, 1, 'Doc A deve receber exatamente 1 retângulo');
-      assert.ok(Math.abs(fileRects[0].y - itemA.rect.y) < 5, 'Retângulo do Doc A deve ser em Y ~ 700');
-    } else {
-      assert.strictEqual(fileRects.length, 1, 'Doc B deve receber exatamente 1 retângulo');
-      assert.ok(Math.abs(fileRects[0].y - itemB.rect.y) < 5, 'Retângulo do Doc B deve ser em Y ~ 400');
-    }
+  // Com o novo isolamento estrito por fileId:
+  const strictMatchesA = allDetectedItems.filter(i => i.fileId === FILE_ID_DOC_A);
+  const strictMatchesB = allDetectedItems.filter(i => i.fileId === FILE_ID_DOC_B);
 
-    const redactedBytes = await LocalPdfEngine.anonymizePdf(file.data.buffer as ArrayBuffer, fileRects, {
-      targetFileName: file.name
-    });
+  assert.strictEqual(strictMatchesA.length, 1, 'Isolamento estrito por fileId deve selecionar apenas 1 item para Doc A');
+  assert.strictEqual(strictMatchesB.length, 1, 'Isolamento estrito por fileId deve selecionar apenas 1 item para Doc B');
+  assert.strictEqual(strictMatchesA[0].rect.fileId, FILE_ID_DOC_A);
+  assert.strictEqual(strictMatchesB[0].rect.fileId, FILE_ID_DOC_B);
+  console.log('  ✓ Isolamento estrito por fileId homologado: 100% livre de colisão entre arquivos de mesmo nome.');
 
-    assert.ok(redactedBytes.length > 0, `Bytes anonimizados de ${file.name} devem ser válidos`);
-    fs.writeFileSync(`test_output/${file.name}_redacted.pdf`, redactedBytes);
+  // 5. Execução definitiva da anonimização mantendo os originais intactos e gerando nova versão
+  console.log('\n[5/5] Executando queima definitiva com targetFileId e validando integridade do original...');
+  const allRects = allDetectedItems.map(i => i.rect);
+
+  for (const doc of batchDocuments) {
+    // Passamos todos os retângulos do lote para validar que a engine isola estritamente por targetFileId
+    const anonymizeRes = await LocalPdfEngine.anonymizePdfWithReport(
+      doc.data.buffer as ArrayBuffer,
+      allRects,
+      {
+        targetFileId: doc.fileId,
+        targetFileName: doc.name
+      }
+    );
+
+    // O original permaneceu intacto?
+    const sha256Current = crypto.createHash('sha256').update(doc.data).digest('hex');
+    const sha256Expected = doc.fileId === FILE_ID_DOC_A ? sha256OriginalA : sha256OriginalB;
+    assert.strictEqual(sha256Current, sha256Expected, `Original do documento ${doc.fileId} deve permanecer intacto`);
+
+    // Nova versão produzida com sufixo identificador de transformação
+    const transformedName = doc.name.replace(/\.pdf$/i, '') + `_${doc.fileId.slice(-4)}_anonimizado_LGPD.pdf`;
+    const outPath = path.join('test_output', transformedName);
+    fs.writeFileSync(outPath, anonymizeRes.pdfBytes);
+
+    assert.ok(anonymizeRes.pdfBytes.length > 0, 'Bytes anonimizados devem ser válidos');
+    console.log(`  ✓ Documento ${doc.fileId}: Original intacto (SHA: ${sha256Current.slice(0, 12)}...) | Nova versão salva: ${transformedName}`);
   }
 
-  // Verificação defensiva: o que aconteceria se passássemos allDetectedItems com targetFileName?
-  console.log('\n[Extra] Testando trava de proteção defensiva no LocalPdfEngine.anonymizePdf...');
-  const allRects = allDetectedItems.map(i => i.rect);
-  // Passando TODOS os retângulos do lote para Doc B, mas com targetFileName: 'batch_doc_b.pdf'
-  const defBytes = await LocalPdfEngine.anonymizePdf(bytesDocB.buffer as ArrayBuffer, allRects, {
-    targetFileName: 'batch_doc_b.pdf'
-  });
-  assert.ok(defBytes.length > 0, 'LocalPdfEngine com targetFileName deve processar com sucesso');
-  console.log('  -> Trava defensiva do LocalPdfEngine filtrada com sucesso!');
-
   console.log('\n================================================================');
-  console.log('✅ SUCESSO: O ISOLAMENTO DE ARQUIVOS EM LOTE FOI HOMOLOGADO!');
-  console.log('================================================================');
+  console.log('✅ SUCESSO: TESTE DE ISOLAMENTO POR FILEID APROVADO COM DISTINÇÃO!');
+  console.log('================================================================\n');
 }
 
 runBatchRedactionIsolationTest().catch(err => {

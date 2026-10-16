@@ -195,3 +195,22 @@ Para implantação em órgãos públicos, tribunais e escritórios de advocacia,
 * **Distinção entre Integridade (SHA-256) e Autoria (Assinatura Digital)**: A lista de hashes `SHA256SUMS.txt` atesta apenas a integridade física de transporte do download. A autenticidade da autoria, reputação do SmartScreen e não-repúdio são garantidos exclusivamente pela assinatura digital Authenticode embutida no `.exe`.
 * **Homologação Corporativa**: Consulte [docs/SECURITY_DISTRIBUTION.md](docs/SECURITY_DISTRIBUTION.md) para o guia completo de auditoria forense via PowerShell (`Get-AuthenticodeSignature`, `Get-FileHash`), requisitos para certificados EV / ICP-Brasil e parâmetros de whitelist para AppLocker e Windows Defender Application Control (WDAC).
 
+---
+
+## 📚 Governança Técnica e Documentação Oficial
+
+Para auditoria técnica, sustentação de longo prazo e homologação em ambientes institucionais:
+
+| Documento ou Controle | Conteúdo e Finalidade |
+| :--- | :--- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Separação entre núcleo (`core/`), interface (`features/`), Electron e adaptadores de infraestrutura; contratos e ciclo de vida de operações. |
+| [SECURITY.md](SECURITY.md) | Modelo formal de ameaças (*Threat Model*), tratamento de arquivos não confiáveis e procedimento de reporte de vulnerabilidades. |
+| [docs/SUPPORTED_FORMATS.md](docs/SUPPORTED_FORMATS.md) | Formatos aceitos e limitações técnicas comprovadas de cada conversão e operação de engenharia documental. |
+| [docs/LEGAL_DATA_PROVENANCE.md](docs/LEGAL_DATA_PROVENANCE.md) | Origem do acervo jurídico, cadeia de custódia, segregação de hashes e versionamento de normas (ex: tratamento da SV 30). |
+| [docs/OFFLINE_OPERATION.md](docs/OFFLINE_OPERATION.md) | Inventário de recursos empacotados offline (`tessdata`, fontes locais, WASM) e comportamento em redes desconectadas (*air-gapped*). |
+| [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Critérios obrigatórios de portão de CI, instalação em máquinas limpas e verificação de assinatura digital. |
+| [docs/TEST_MATRIX.md](docs/TEST_MATRIX.md) | Ambientes multiplataforma (Windows, Mac, Linux) e tipologias de documentos cobertos pelas 13 suítes automatizadas. |
+| [CHANGELOG.md](CHANGELOG.md) | Histórico de versões seguindo *Keep a Changelog* (correções arquiteturais, notas de compatibilidade e regressões conhecidas). |
+| [docs/VERSIONING_POLICY.md](docs/VERSIONING_POLICY.md) | Política de ciclo de vida e critérios de promoção entre versões de desenvolvimento (`alpha`), homologação (`beta`/`rc`) e estáveis (`stable`). |
+
+
