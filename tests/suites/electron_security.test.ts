@@ -85,6 +85,76 @@ async function runElectronSecuritySuite() {
     );
   });
 
+  // 5. Isolamento Estrito IPC PAdES: Chave Privada e Instâncias Complexas NUNCA devem vazar para o Renderer
+  test('IPC padesHandlers deve retornar apenas certInfo serializável e descartar privateKey', async () => {
+    const { sanitizeCertInfoForIpc } = await import('../../electron/ipc/padesHandlers.ts');
+    const handlersPath = path.resolve('electron/ipc/padesHandlers.ts');
+    const handlersContent = fs.readFileSync(handlersPath, 'utf-8');
+
+    // Comprovar estaticamente que o handler não devolve o retorno cru de parseCertificate
+    assert.ok(
+      handlersContent.includes('return { certInfo: safeCertInfo }'),
+      'pades:parseCertificate deve retornar estritamente { certInfo: safeCertInfo }'
+    );
+    assert.ok(
+      handlersContent.includes('(parsed as any).privateKey = null'),
+      'pades:parseCertificate deve anular a referência à privateKey'
+    );
+
+    // Testar que sanitizeCertInfoForIpc produz objeto limpo sem métodos de objetos C++/Forge
+    const mockCertInfo: any = {
+      commonName: 'ADVOGADO TESTE:12345678900',
+      organization: 'Tribunal',
+      country: 'BR',
+      issuer: 'AC Raiz',
+      serialNumber: '123',
+      notBefore: new Date(),
+      notAfter: new Date(),
+      isValidTemporal: true,
+      fingerprintSha256: 'abcd',
+      isSelfSigned: false,
+      isIcpBrasil: false,
+      hasIcpBrasilClues: true,
+      trustStatus: 'INDICIOS_DE_ICP_BRASIL_CADEIA_NAO_VALIDADA',
+      legalSignatureType: 'AVANCADA_NAO_ICP',
+      hasLegalPresumption: false,
+      legalClassificationText: 'Texto Legal',
+      legalBasis: 'Base Legal',
+      hasCrlOrOcspDeclared: false,
+      // Propriedade perigosa hipotética que nunca pode passar
+      privateKey: { n: 12345, d: 67890, sign: () => {} },
+      unserializableMethod: () => 'leak'
+    };
+
+    const sanitized = sanitizeCertInfoForIpc(mockCertInfo);
+    assert.strictEqual((sanitized as any).privateKey, undefined, 'Chave privada não pode existir em certInfo sanitizado');
+    assert.strictEqual((sanitized as any).unserializableMethod, undefined, 'Métodos não serializáveis não podem existir');
+    assert.strictEqual(sanitized.commonName, 'ADVOGADO TESTE:12345678900');
+    assert.strictEqual(sanitized.hasLegalPresumption, false);
+  });
+
+  // 6. Limites Estritos de Payload IPC: Proteção contra Exaustão de Memória / DoS
+  test('validatePadesPayloadSize deve rejeitar certificados ou PDFs que excedam os limites seguros', async () => {
+    const { validatePadesPayloadSize, MAX_PADES_CERTIFICATE_SIZE_BYTES, MAX_PADES_PDF_SIZE_BYTES } = await import('../../electron/ipc/padesHandlers.ts');
+
+    assert.ok(MAX_PADES_CERTIFICATE_SIZE_BYTES > 0 && MAX_PADES_CERTIFICATE_SIZE_BYTES <= 20 * 1024 * 1024);
+    assert.ok(MAX_PADES_PDF_SIZE_BYTES > 0 && MAX_PADES_PDF_SIZE_BYTES <= 500 * 1024 * 1024);
+
+    // Dentro do limite: não deve lançar erro
+    assert.doesNotThrow(() => validatePadesPayloadSize(1024 * 1024, MAX_PADES_CERTIFICATE_SIZE_BYTES, 'certificado PKCS#12'));
+    assert.doesNotThrow(() => validatePadesPayloadSize(50 * 1024 * 1024, MAX_PADES_PDF_SIZE_BYTES, 'documento PDF'));
+
+    // Acima do limite: deve lançar erro com mensagem clara
+    assert.throws(
+      () => validatePadesPayloadSize(MAX_PADES_CERTIFICATE_SIZE_BYTES + 1024, MAX_PADES_CERTIFICATE_SIZE_BYTES, 'certificado PKCS#12'),
+      /excede o limite máximo permitido/i
+    );
+    assert.throws(
+      () => validatePadesPayloadSize(MAX_PADES_PDF_SIZE_BYTES + 1024, MAX_PADES_PDF_SIZE_BYTES, 'documento PDF'),
+      /excede o limite máximo permitido/i
+    );
+  });
+
   console.log(`\nResultado Suíte 2 (Segurança Electron): ${passed} Passados, ${failed} Falhados\n`);
   if (failed > 0) {
     process.exit(1);
