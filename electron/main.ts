@@ -18,6 +18,7 @@ const __dirname = path.dirname(__filename);
 
 const preloadPath = path.join(__dirname, 'preload.cjs');
 const windowManager = new WindowManager(preloadPath);
+const isSmokeTest = process.argv.includes('--smoke-test') || process.argv.includes('--test-clean-environment');
 
 app.whenReady().then(() => {
   // 1. Configurar segurança de sessão (bloqueio de rede e CSP estrita)
@@ -26,7 +27,15 @@ app.whenReady().then(() => {
   // 2. Registrar todos os canais IPC validados
   registerAllIpcHandlers(() => windowManager.getMainWindow());
 
-  // 3. Inicializar a janela principal da aplicação
+  // 3. Suporte a Smoke Test / Teste de Execução em Ambiente Limpo (CI / Testes Automatizados)
+  if (isSmokeTest) {
+    console.log('[SmokeTest] Inicialização do processo principal concluída com sucesso em ambiente limpo.');
+    console.log('[SmokeTest] Módulos nativos, IPC e SessionSecurity carregados.');
+    app.exit(0);
+    return;
+  }
+
+  // 4. Inicializar a janela principal da aplicação
   windowManager.createWindow();
 
   app.on('activate', () => {
