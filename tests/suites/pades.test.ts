@@ -41,6 +41,30 @@ function generateTestP12(commonName: string, pass: string): Buffer {
   return Buffer.from(p12Der, 'binary');
 }
 
+export function resolveElectronE2eCommand(
+  mainJs: string,
+  testArg = '--test-pades-e2e',
+  platform = process.platform,
+  hasDisplay = Boolean(process.env.DISPLAY)
+): { command: string; args: string[]; shell: boolean } {
+  const electronArgs = [mainJs, testArg];
+  if (platform === 'linux') {
+    electronArgs.unshift('--no-sandbox');
+  }
+  if (platform === 'linux' && !hasDisplay) {
+    return {
+      command: 'xvfb-run',
+      args: ['-a', 'npx', 'electron', ...electronArgs],
+      shell: false
+    };
+  }
+  return {
+    command: 'npx',
+    args: ['electron', ...electronArgs],
+    shell: platform === 'win32'
+  };
+}
+
 async function runPadesSuite() {
   console.log('='.repeat(80));
   console.log('  [SUÍTE 8: PAdES] ASSINATURA, ADULTERAÇÃO, CERTIFICADO NÃO CONFIÁVEL E MÚLTIPLAS ASSINATURAS');
@@ -230,7 +254,24 @@ async function runPadesSuite() {
     );
   });
 
-  // 8. Homologação Ponta a Ponta no Runtime Real do Electron Empacotado (--test-pades-e2e)
+  // 8. Anti-Regressão de Portabilidade: Verificação de invocação Electron em Linux/CI
+  await test('Anti-Regressão: Invocação de teste Electron deve usar --no-sandbox e xvfb-run no Linux', () => {
+    const linuxHeadless = resolveElectronE2eCommand('dist-electron/main.js', '--test-pades-e2e', 'linux', false);
+    assert.strictEqual(linuxHeadless.command, 'xvfb-run', 'Linux headless deve encapsular via xvfb-run');
+    assert.ok(linuxHeadless.args.includes('--no-sandbox'), 'Linux deve receber flag --no-sandbox no CI');
+    assert.strictEqual(linuxHeadless.args[linuxHeadless.args.length - 1], '--test-pades-e2e');
+
+    const linuxWithDisplay = resolveElectronE2eCommand('dist-electron/main.js', '--test-pades-e2e', 'linux', true);
+    assert.strictEqual(linuxWithDisplay.command, 'npx');
+    assert.ok(linuxWithDisplay.args.includes('--no-sandbox'), 'Linux com display ainda requer --no-sandbox em containers');
+
+    const winConfig = resolveElectronE2eCommand('dist-electron/main.js', '--test-pades-e2e', 'win32', true);
+    assert.strictEqual(winConfig.command, 'npx');
+    assert.strictEqual(winConfig.shell, true, 'Windows deve usar shell para resolução de npx');
+    assert.ok(!winConfig.args.includes('--no-sandbox'), 'Windows não requer --no-sandbox');
+  });
+
+  // 9. Homologação Ponta a Ponta no Runtime Real do Electron Empacotado (--test-pades-e2e)
   await test('Homologação E2E Real no Electron: carregar certificado A1, assinar, salvar, validar e isolar chave privada', () => {
     const mainJs = path.resolve('dist-electron/main.js');
     if (!fs.existsSync(mainJs)) {
@@ -238,10 +279,11 @@ async function runPadesSuite() {
       return;
     }
 
-    const output = execFileSync('npx', ['electron', 'dist-electron/main.js', '--test-pades-e2e'], {
+    const execConfig = resolveElectronE2eCommand(mainJs, '--test-pades-e2e');
+    const output = execFileSync(execConfig.command, execConfig.args, {
       encoding: 'utf-8',
-      shell: true,
-      timeout: 30000,
+      shell: execConfig.shell,
+      timeout: 60000,
       env: { ...process.env, NODE_ENV: 'production' }
     });
 
