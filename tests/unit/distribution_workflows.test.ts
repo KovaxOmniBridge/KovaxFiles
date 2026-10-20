@@ -22,6 +22,18 @@ rejects(w => w.jobs.build_installers.env = { RELEASE_DIR: 'release/${{ runner.os
 rejects(w => w.jobs.build_installers.steps.unshift({ run: 'npm run test:release' }));
 rejects(w => w.jobs.build_installers.steps.unshift({ run: 'npm run test:release && npm run package:internal' }));
 rejects(w => w.jobs.build_installers.steps.push({ run: 'npm run test:journey || true' }));
+rejects(w => w.jobs.build_installers.steps.push({ run: 'npm run test:journey:negative || true' }));
+rejects(w => w.jobs.build_installers.steps = w.jobs.build_installers.steps.filter((s: { run?: string }) => !s.run?.includes('test:journey:negative')));
+rejects(w => {
+  const steps = w.jobs.build_installers.steps;
+  const jIndex = steps.findIndex((s: { run?: string }) => s.run?.includes('test:journey') && !s.run?.includes('negative'));
+  const jNegIndex = steps.findIndex((s: { run?: string }) => s.run?.includes('test:journey:negative'));
+  if (jIndex !== -1 && jNegIndex !== -1) {
+    const temp = steps[jIndex];
+    steps[jIndex] = steps[jNegIndex];
+    steps[jNegIndex] = temp;
+  }
+});
 rejects(w => w.jobs.build_installers.steps = w.jobs.build_installers.steps.filter((s: { run?: string }) => s.run !== 'npm run test:installers'));
 rejects(w => w.jobs.build_installers.steps = w.jobs.build_installers.steps.filter((s: { run?: string }) => s.run !== 'npm run distribution:finalize'));
 rejects(w => w.jobs.build_installers.steps.unshift({ uses: 'softprops/action-gh-release@v2' }));

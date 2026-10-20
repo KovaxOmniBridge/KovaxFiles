@@ -7,6 +7,7 @@ export type DistributionPlatform = 'win' | 'mac' | 'linux';
 export interface BuildIdentity {
   runId: string; commit: string; sourceDigest: string; product: string; version: string;
   platform: DistributionPlatform; architecture: string; channel: 'internal' | 'official';
+  workflowRunId?: string;
 }
 export interface ArtifactRecord extends BuildIdentity { target: string; file: string; size: number; sha256: string }
 export interface DistributionPackage {

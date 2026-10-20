@@ -8,11 +8,140 @@ import {
   hashFile,
   type BuildIdentity,
   type ArtifactRecord,
-  type DistributionPackage
+  type DistributionPackage,
+  type DistributionPlatform
 } from '../../scripts/distribution_artifacts.ts';
 
 const pkg: DistributionPackage = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kovax-publication-test-'));
+
+function createPlatformFixture(targetDir: string, platform: DistributionPlatform, options?: {
+  channel?: 'official' | 'internal';
+  commit?: string;
+  workflowRunId?: string;
+  runId?: string;
+  sourceDigest?: string;
+  mutateIdentity?: (id: BuildIdentity) => void;
+  mutateRecords?: (records: ArtifactRecord[]) => void;
+  omitEvidence?: ('smoke' | 'journey' | 'journey-negative' | 'installers' | 'distribution')[];
+  mutateSmoke?: (smoke: any) => void;
+  mutateJourney?: (journey: any) => void;
+  mutateJourneyNegative?: (journeyNeg: any) => void;
+  mutateInstallers?: (installers: any) => void;
+  mutateDistribution?: (dist: any) => void;
+}): { identity: BuildIdentity; records: ArtifactRecord[] } {
+  fs.mkdirSync(targetDir, { recursive: true });
+  const channel = options?.channel || 'official';
+  const commit = options?.commit || 'commit-official-456';
+  const workflowRunId = options?.workflowRunId || 'run-actions-789';
+  const runId = options?.runId || `run-${platform}-${Date.now()}`;
+  const sourceDigest = options?.sourceDigest || 'digest-source-abc';
+
+  const identity: BuildIdentity = {
+    runId,
+    commit,
+    sourceDigest,
+    product: pkg.build.productName,
+    version: pkg.version,
+    platform,
+    architecture: 'x64',
+    channel,
+    workflowRunId
+  };
+  if (options?.mutateIdentity) options.mutateIdentity(identity);
+
+  const expected = expectedArtifacts(pkg, platform, 'x64');
+  const records: ArtifactRecord[] = expected.map(exp => {
+    const filePath = path.join(targetDir, exp.file);
+    fs.writeFileSync(filePath, Buffer.alloc(1_200_000, platform[0]));
+    return {
+      ...identity,
+      target: exp.target,
+      file: exp.file,
+      size: fs.statSync(filePath).size,
+      sha256: hashFile(filePath)
+    };
+  });
+  if (options?.mutateRecords) options.mutateRecords(records);
+
+  fs.writeFileSync(path.join(targetDir, 'build-run.json'), JSON.stringify(identity, null, 2));
+  fs.writeFileSync(path.join(targetDir, 'artifacts.json'), JSON.stringify(records, null, 2));
+
+  const evidenceDir = path.join(targetDir, 'evidence');
+  fs.mkdirSync(evidenceDir, { recursive: true });
+
+  const omits = new Set(options?.omitEvidence || []);
+
+  // 1. Smoke
+  if (!omits.has('smoke')) {
+    const smokeDir = path.join(evidenceDir, 'smoke');
+    fs.mkdirSync(smokeDir, { recursive: true });
+    const smoke: any = {
+      ...identity,
+      status: 'passed',
+      mode: 'smoke',
+      artifacts: records
+    };
+    if (options?.mutateSmoke) options.mutateSmoke(smoke);
+    fs.writeFileSync(path.join(smokeDir, 'result.json'), JSON.stringify(smoke, null, 2));
+  }
+
+  // 2. Journey
+  if (!omits.has('journey')) {
+    const journeyDir = path.join(evidenceDir, 'journey');
+    fs.mkdirSync(journeyDir, { recursive: true });
+    const journey: any = {
+      ...identity,
+      status: 'passed',
+      mode: 'journey',
+      artifacts: records
+    };
+    if (options?.mutateJourney) options.mutateJourney(journey);
+    fs.writeFileSync(path.join(journeyDir, 'result.json'), JSON.stringify(journey, null, 2));
+  }
+
+  // 3. Journey-Negative
+  if (!omits.has('journey-negative')) {
+    const journeyNegDir = path.join(evidenceDir, 'journey-negative');
+    fs.mkdirSync(journeyNegDir, { recursive: true });
+    const journeyNeg: any = {
+      ...identity,
+      status: 'passed',
+      mode: 'journey-negative',
+      artifacts: records
+    };
+    if (options?.mutateJourneyNegative) options.mutateJourneyNegative(journeyNeg);
+    fs.writeFileSync(path.join(journeyNegDir, 'result.json'), JSON.stringify(journeyNeg, null, 2));
+  }
+
+  // 4. Installers
+  if (!omits.has('installers')) {
+    const installers: any = {
+      ...identity,
+      classification: channel === 'internal' ? 'NAO_HOMOLOGADO' : 'OFFICIAL_SIGNATURE_VERIFIED',
+      records
+    };
+    if (options?.mutateInstallers) options.mutateInstallers(installers);
+    fs.writeFileSync(path.join(evidenceDir, 'installers.json'), JSON.stringify(installers, null, 2));
+  }
+
+  // 5. Distribution
+  if (!omits.has('distribution')) {
+    const dist: any = {
+      ...identity,
+      classification: channel === 'internal' ? 'NAO_HOMOLOGADO' : 'SIGNED_ARTIFACTS_VERIFIED',
+      smoke: 'passed',
+      journey: 'passed',
+      negativeJourney: 'passed',
+      installers: 'identified-and-verified',
+      artifacts: records
+    };
+    if (options?.mutateDistribution) options.mutateDistribution(dist);
+    fs.writeFileSync(path.join(evidenceDir, 'distribution.json'), JSON.stringify(dist, null, 2));
+  }
+
+  return { identity, records };
+}
 
 try {
   const downloadsDir = path.join(tempRoot, 'downloads');
@@ -20,34 +149,11 @@ try {
   fs.mkdirSync(downloadsDir, { recursive: true });
 
   const winRunDir = path.join(downloadsDir, 'installers-windows-latest');
-  fs.mkdirSync(winRunDir, { recursive: true });
-
-  const winIdentity: BuildIdentity = {
-    runId: 'run-win-100',
-    commit: 'commit123456',
-    sourceDigest: 'digest123456',
-    product: pkg.build.productName,
-    version: pkg.version,
-    platform: 'win',
-    architecture: 'x64',
-    channel: 'official'
-  };
-
-  const winExpected = expectedArtifacts(pkg, 'win', 'x64');
-  const winRecords: ArtifactRecord[] = winExpected.map(exp => {
-    const filePath = path.join(winRunDir, exp.file);
-    fs.writeFileSync(filePath, Buffer.alloc(1_500_000, 'w'));
-    return {
-      ...winIdentity,
-      target: exp.target,
-      file: exp.file,
-      size: fs.statSync(filePath).size,
-      sha256: hashFile(filePath)
-    };
+  const { identity: winIdentity, records: winRecords } = createPlatformFixture(winRunDir, 'win', {
+    channel: 'official',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789'
   });
-
-  fs.writeFileSync(path.join(winRunDir, 'build-run.json'), JSON.stringify(winIdentity, null, 2));
-  fs.writeFileSync(path.join(winRunDir, 'artifacts.json'), JSON.stringify(winRecords, null, 2));
 
   // Simular presença de pasta win-unpacked contendo o executável interno descompactado
   const winUnpackedDir = path.join(winRunDir, 'win-unpacked');
@@ -58,6 +164,8 @@ try {
   fs.writeFileSync(path.join(winRunDir, 'extra-unrelated-file.exe'), Buffer.alloc(50_000, 'x'));
   fs.writeFileSync(path.join(winRunDir, 'random-debug-asset.zip'), Buffer.alloc(50_000, 'z'));
 
+  const winExpected = expectedArtifacts(pkg, 'win', 'x64');
+
   // ---------------------------------------------------------------------------
   // REGRESSÃO 1 e 2: Executável dentro de win-unpacked e arquivo extra com extensão permitida NÃO entram na publicação
   // REGRESSÃO 8: Conjunto válido gera exatamente os assets e o manifesto esperados
@@ -66,7 +174,10 @@ try {
     downloadsDir,
     outputDir,
     requiredPlatforms: ['win'],
-    pkg
+    pkg,
+    channel: 'official',
+    expectedCommit: 'commit-official-456',
+    expectedWorkflowRunId: 'run-actions-789'
   });
 
   assert.equal(result.copiedFiles.length, winExpected.length, 'Apenas os instaladores esperados devem ser copiados');
@@ -92,113 +203,301 @@ try {
   }
 
   // ---------------------------------------------------------------------------
-  // REGRESSÃO 3: Caminho absoluto ou com travessia de diretórios é rejeitado
+  // REGRESSÕES OBRIGATÓRIAS DO CONTRATO DE PUBLICAÇÃO OFICIAL
   // ---------------------------------------------------------------------------
-  const maliciousDir = path.join(tempRoot, 'malicious');
-  fs.mkdirSync(maliciousDir, { recursive: true });
-  fs.writeFileSync(path.join(maliciousDir, 'build-run.json'), JSON.stringify(winIdentity, null, 2));
 
-  // Caso 3a: Travessia ../
-  const traversalRecords = winRecords.map(r => ({ ...r, file: `../${r.file}` }));
-  fs.writeFileSync(path.join(maliciousDir, 'artifacts.json'), JSON.stringify(traversalRecords, null, 2));
+  // Regressão A: Rejeitar pacote interno apresentado ao modo oficial
+  const internalInOfficialDir = path.join(tempRoot, 'internal-in-official');
+  createPlatformFixture(path.join(internalInOfficialDir, 'win'), 'win', {
+    channel: 'internal',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789'
+  });
   assert.throws(
-    () => prepareReleasePublication({ downloadsDir: maliciousDir, outputDir: path.join(tempRoot, 'out-traversal'), pkg }),
+    () => prepareReleasePublication({
+      downloadsDir: internalInOfficialDir,
+      outputDir: path.join(tempRoot, 'out-int-off'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Pacote com canal "internal" rejeitado no modo de publicação oficial/
+  );
+
+  // Regressão B: Rejeitar commit diferente do esperado
+  assert.throws(
+    () => prepareReleasePublication({
+      downloadsDir,
+      outputDir: path.join(tempRoot, 'out-wrong-commit'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-divergent-999',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Commit da execução \(commit-official-456\) diverge do commit esperado/
+  );
+
+  // Regressão C: Rejeitar identidade de workflow run ID diferente da esperada
+  assert.throws(
+    () => prepareReleasePublication({
+      downloadsDir,
+      outputDir: path.join(tempRoot, 'out-wrong-workflow'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-wrong'
+    }),
+    /Identidade do workflow \(run-actions-789\) diverge da esperada/
+  );
+
+  // Regressão D: Rejeitar evidência obrigatória ausente (smoke, journey, journey-negative, installers, distribution)
+  for (const missingType of ['smoke', 'journey', 'journey-negative', 'installers', 'distribution'] as const) {
+    const missingEvidenceDir = path.join(tempRoot, `missing-evidence-${missingType}`);
+    createPlatformFixture(path.join(missingEvidenceDir, 'win'), 'win', {
+      channel: 'official',
+      commit: 'commit-official-456',
+      workflowRunId: 'run-actions-789',
+      omitEvidence: [missingType]
+    });
+    assert.throws(
+      () => prepareReleasePublication({
+        downloadsDir: missingEvidenceDir,
+        outputDir: path.join(tempRoot, `out-miss-${missingType}`),
+        pkg,
+        channel: 'official',
+        expectedCommit: 'commit-official-456',
+        expectedWorkflowRunId: 'run-actions-789'
+      }),
+      new RegExp(`Evidência de ${missingType.replace('-', '.*')}|ausente para win`, 'i')
+    );
+  }
+
+  // Regressão E: Rejeitar evidência reprovada (status !== passed)
+  const failedSmokeDir = path.join(tempRoot, 'failed-smoke');
+  createPlatformFixture(path.join(failedSmokeDir, 'win'), 'win', {
+    channel: 'official',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789',
+    mutateSmoke: s => { s.status = 'failed'; }
+  });
+  assert.throws(
+    () => prepareReleasePublication({
+      downloadsDir: failedSmokeDir,
+      outputDir: path.join(tempRoot, 'out-fail-smoke'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Evidência de smoke reprovada/
+  );
+
+  const failedJourneyNegDir = path.join(tempRoot, 'failed-journey-neg');
+  createPlatformFixture(path.join(failedJourneyNegDir, 'win'), 'win', {
+    channel: 'official',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789',
+    mutateJourneyNegative: j => { j.status = 'failed'; }
+  });
+  assert.throws(
+    () => prepareReleasePublication({
+      downloadsDir: failedJourneyNegDir,
+      outputDir: path.join(tempRoot, 'out-fail-jneg'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Evidência de jornada negativa reprovada/
+  );
+
+  // Regressão F: Rejeitar evidência de outra execução (runId divergente na evidência)
+  const otherRunDir = path.join(tempRoot, 'other-run-evidence');
+  createPlatformFixture(path.join(otherRunDir, 'win'), 'win', {
+    channel: 'official',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789',
+    mutateSmoke: s => { s.runId = 'other-run-id-abc'; }
+  });
+  assert.throws(
+    () => prepareReleasePublication({
+      downloadsDir: otherRunDir,
+      outputDir: path.join(tempRoot, 'out-other-run'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Smoke pertence a outra execução/
+  );
+
+  // Regressão G: Rejeitar divergência de código-fonte, arquitetura ou artefatos na evidência
+  const divergentSourceDir = path.join(tempRoot, 'divergent-source-evidence');
+  createPlatformFixture(path.join(divergentSourceDir, 'win'), 'win', {
+    channel: 'official',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789',
+    mutateJourney: j => { j.sourceDigest = 'divergent-source-digest'; }
+  });
+  assert.throws(
+    () => prepareReleasePublication({
+      downloadsDir: divergentSourceDir,
+      outputDir: path.join(tempRoot, 'out-div-source'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Digest de fontes divergente em jornada/i
+  );
+
+  // Regressão H: Rejeitar validação de assinatura nativa ausente ou inválida em Windows/macOS no modo oficial
+  const unsignedOfficialDir = path.join(tempRoot, 'unsigned-official');
+  createPlatformFixture(path.join(unsignedOfficialDir, 'win'), 'win', {
+    channel: 'official',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789',
+    mutateInstallers: inst => { inst.classification = 'NAO_HOMOLOGADO'; }
+  });
+  assert.throws(
+    () => prepareReleasePublication({
+      downloadsDir: unsignedOfficialDir,
+      outputDir: path.join(tempRoot, 'out-unsign-off'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Validação nativa de assinatura oficial ausente ou reprovada para win/
+  );
+
+  // Regressão I: --validate-only não pode enfraquecer os critérios do modo oficial
+  assert.throws(
+    () => prepareReleasePublication({
+      downloadsDir: unsignedOfficialDir,
+      outputDir: path.join(tempRoot, 'out-valonly-weak'),
+      pkg,
+      channel: 'official',
+      validateOnly: true,
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Validação nativa de assinatura oficial ausente ou reprovada para win/
+  );
+
+  // Regressão J: Modo explícito de ensaio interno aceita pacote interno íntegro
+  const internalRehearsalDir = path.join(tempRoot, 'internal-rehearsal');
+  createPlatformFixture(path.join(internalRehearsalDir, 'win'), 'win', {
+    channel: 'internal',
+    commit: 'commit-internal-111',
+    workflowRunId: 'run-actions-internal'
+  });
+  const internalResult = prepareReleasePublication({
+    downloadsDir: internalRehearsalDir,
+    outputDir: path.join(tempRoot, 'out-internal-ok'),
+    pkg,
+    channel: 'internal',
+    expectedCommit: 'commit-internal-111',
+    expectedWorkflowRunId: 'run-actions-internal',
+    validateOnly: true
+  });
+  assert.equal(internalResult.records.length, winExpected.length, 'Ensaio interno deve aprovar pacote interno íntegro');
+
+  // ---------------------------------------------------------------------------
+  // REGRESSÕES ESTRUTURAIS DE CAMINHO, TAMANHO, DUPLICATAS E MISTURA
+  // ---------------------------------------------------------------------------
+
+  // Travessia e caminhos absolutos
+  const maliciousDir = path.join(tempRoot, 'malicious');
+  fs.mkdirSync(path.join(maliciousDir, 'win'), { recursive: true });
+  fs.writeFileSync(path.join(maliciousDir, 'win', 'build-run.json'), JSON.stringify(winIdentity, null, 2));
+  const traversalRecords = winRecords.map(r => ({ ...r, file: `../${r.file}` }));
+  fs.writeFileSync(path.join(maliciousDir, 'win', 'artifacts.json'), JSON.stringify(traversalRecords, null, 2));
+  assert.throws(
+    () => prepareReleasePublication({
+      downloadsDir: maliciousDir,
+      outputDir: path.join(tempRoot, 'out-traversal'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
     /Travessia de diretório rejeitada|Caminho inseguro rejeitado/
   );
 
-  // Caso 3b: Caminho absoluto
-  const absoluteRecords = winRecords.map(r => ({ ...r, file: path.resolve('something.exe') }));
-  fs.writeFileSync(path.join(maliciousDir, 'artifacts.json'), JSON.stringify(absoluteRecords, null, 2));
+  // Tamanho físico divergente
+  const divergentSizeDir = path.join(tempRoot, 'divergent-size');
+  createPlatformFixture(path.join(divergentSizeDir, 'win'), 'win', {
+    channel: 'official',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789',
+    mutateRecords: recs => { recs[0].size += 1000; }
+  });
   assert.throws(
-    () => prepareReleasePublication({ downloadsDir: maliciousDir, outputDir: path.join(tempRoot, 'out-abs'), pkg }),
-    /Caminho absoluto rejeitado|Caminho inseguro rejeitado/
-  );
-
-  // ---------------------------------------------------------------------------
-  // REGRESSÃO 4: Hash ou tamanho divergente reprova
-  // ---------------------------------------------------------------------------
-  const divergentDir = path.join(tempRoot, 'divergent');
-  fs.mkdirSync(divergentDir, { recursive: true });
-  fs.writeFileSync(path.join(divergentDir, 'build-run.json'), JSON.stringify(winIdentity, null, 2));
-
-  // Caso 4a: Tamanho divergente
-  const divergentSizeRecords = winRecords.map((r, i) => i === 0 ? { ...r, size: r.size + 100 } : r);
-  fs.writeFileSync(path.join(divergentDir, 'artifacts.json'), JSON.stringify(divergentSizeRecords, null, 2));
-  // Copiar arquivos reais para a pasta
-  for (const rec of winRecords) {
-    fs.writeFileSync(path.join(divergentDir, rec.file), Buffer.alloc(1_500_000, 'w'));
-  }
-  assert.throws(
-    () => prepareReleasePublication({ downloadsDir: divergentDir, outputDir: path.join(tempRoot, 'out-div-size'), pkg }),
+    () => prepareReleasePublication({
+      downloadsDir: divergentSizeDir,
+      outputDir: path.join(tempRoot, 'out-div-size'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
     /Tamanho físico divergente/
   );
 
-  // Caso 4b: Hash SHA-256 divergente
-  const divergentHashRecords = winRecords.map((r, i) => i === 0 ? { ...r, sha256: 'f'.repeat(64) } : r);
-  fs.writeFileSync(path.join(divergentDir, 'artifacts.json'), JSON.stringify(divergentHashRecords, null, 2));
+  // Hash SHA-256 divergente
+  const divergentHashDir = path.join(tempRoot, 'divergent-hash');
+  createPlatformFixture(path.join(divergentHashDir, 'win'), 'win', {
+    channel: 'official',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789',
+    mutateRecords: recs => { recs[0].sha256 = 'f'.repeat(64); }
+  });
   assert.throws(
-    () => prepareReleasePublication({ downloadsDir: divergentDir, outputDir: path.join(tempRoot, 'out-div-hash'), pkg }),
+    () => prepareReleasePublication({
+      downloadsDir: divergentHashDir,
+      outputDir: path.join(tempRoot, 'out-div-hash'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
     /Hash SHA-256 físico divergente/
   );
 
-  // ---------------------------------------------------------------------------
-  // REGRESSÃO 5: Colisão de nomes e target duplicado reprovam
-  // ---------------------------------------------------------------------------
-  const collisionDir = path.join(tempRoot, 'collision');
-  fs.mkdirSync(collisionDir, { recursive: true });
-  fs.writeFileSync(path.join(collisionDir, 'build-run.json'), JSON.stringify(winIdentity, null, 2));
-  const duplicateTargetRecords = [winRecords[0], winRecords[0]];
-  fs.writeFileSync(path.join(collisionDir, 'artifacts.json'), JSON.stringify(duplicateTargetRecords, null, 2));
+  // Colisão / target duplicado
+  const dupTargetDir = path.join(tempRoot, 'duplicate-target');
+  createPlatformFixture(path.join(dupTargetDir, 'win'), 'win', {
+    channel: 'official',
+    commit: 'commit-official-456',
+    workflowRunId: 'run-actions-789',
+    mutateRecords: recs => { recs[1] = { ...recs[0] }; }
+  });
   assert.throws(
-    () => prepareReleasePublication({ downloadsDir: collisionDir, outputDir: path.join(tempRoot, 'out-dup'), pkg }),
-    /Target duplicado na mesma plataforma|Arquivo duplicado/
-  );
-
-  // ---------------------------------------------------------------------------
-  // REGRESSÃO 6: Artefato obrigatório ausente reprova
-  // ---------------------------------------------------------------------------
-  const missingArtifactDir = path.join(tempRoot, 'missing');
-  fs.mkdirSync(missingArtifactDir, { recursive: true });
-  fs.writeFileSync(path.join(missingArtifactDir, 'build-run.json'), JSON.stringify(winIdentity, null, 2));
-  // Apenas 1 target em vez de 2
-  fs.writeFileSync(path.join(missingArtifactDir, 'artifacts.json'), JSON.stringify([winRecords[0]], null, 2));
-  assert.throws(
-    () => prepareReleasePublication({ downloadsDir: missingArtifactDir, outputDir: path.join(tempRoot, 'out-miss'), pkg }),
-    /Quantidade de targets divergente/
+    () => prepareReleasePublication({
+      downloadsDir: dupTargetDir,
+      outputDir: path.join(tempRoot, 'out-dup'),
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Target duplicado na mesma plataforma|Arquivo duplicado na mesma plataforma/
   );
 
   // Plataforma obrigatória ausente
   assert.throws(
-    () => prepareReleasePublication({ downloadsDir, outputDir: path.join(tempRoot, 'out-req-mac'), requiredPlatforms: ['win', 'mac'], pkg }),
-    /Plataforma obrigatória ausente/
-  );
-
-  // ---------------------------------------------------------------------------
-  // REGRESSÃO 7: Mistura indevida de versão, plataforma ou arquitetura reprova
-  // ---------------------------------------------------------------------------
-  const mixedDir = path.join(tempRoot, 'mixed');
-  const winMixedDir = path.join(mixedDir, 'win');
-  const macMixedDir = path.join(mixedDir, 'mac');
-  fs.mkdirSync(winMixedDir, { recursive: true });
-  fs.mkdirSync(macMixedDir, { recursive: true });
-
-  fs.writeFileSync(path.join(winMixedDir, 'build-run.json'), JSON.stringify(winIdentity, null, 2));
-  fs.writeFileSync(path.join(winMixedDir, 'artifacts.json'), JSON.stringify(winRecords, null, 2));
-  for (const rec of winRecords) {
-    fs.writeFileSync(path.join(winMixedDir, rec.file), Buffer.alloc(1_500_000, 'w'));
-  }
-
-  // Mac com versão divergente
-  const macIdentityDivergentVersion: BuildIdentity = {
-    ...winIdentity,
-    version: '0.0.99',
-    platform: 'mac'
-  };
-  fs.writeFileSync(path.join(macMixedDir, 'build-run.json'), JSON.stringify(macIdentityDivergentVersion, null, 2));
-  fs.writeFileSync(path.join(macMixedDir, 'artifacts.json'), JSON.stringify([], null, 2));
-  assert.throws(
-    () => prepareReleasePublication({ downloadsDir: mixedDir, outputDir: path.join(tempRoot, 'out-mix'), pkg }),
-    /Versão divergente em build-run\.json|Mistura indevida de versões/
+    () => prepareReleasePublication({
+      downloadsDir,
+      outputDir: path.join(tempRoot, 'out-req-mac'),
+      requiredPlatforms: ['win', 'mac'],
+      pkg,
+      channel: 'official',
+      expectedCommit: 'commit-official-456',
+      expectedWorkflowRunId: 'run-actions-789'
+    }),
+    /Plataforma obrigatória ausente.*mac/
   );
 
   console.log('Publication asset selection regressions passed:');
@@ -208,7 +507,12 @@ try {
   console.log(' - Divergent hash and size rejected');
   console.log(' - Target and file duplicates rejected');
   console.log(' - Missing required platforms and targets rejected');
-  console.log(' - Version, platform, and architecture mixing rejected');
+  console.log(' - Internal package presented to official mode rejected');
+  console.log(' - Divergent commit and workflowRunId rejected');
+  console.log(' - Missing or failed evidence (smoke, journey, journey-negative, installers, distribution) rejected');
+  console.log(' - Missing native signature validation on win/mac rejected');
+  console.log(' - Validate-only strictness preserved for official mode');
+  console.log(' - Explicit internal rehearsal mode approved');
   console.log(' - Clean staging and strict SHA256SUMS.txt manifest validated');
 
 } finally {

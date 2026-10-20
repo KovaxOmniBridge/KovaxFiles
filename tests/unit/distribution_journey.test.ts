@@ -16,4 +16,14 @@ const negativeRecoveryStages = ['ImportRecovery', 'ProcessRecovery', 'SaveRecove
 assert.equal(positiveStages.length, 5, 'Jornada positiva deve conter 5 etapas');
 assert.equal(negativeRecoveryStages.length, 5, 'Jornada negativa deve cobrir os 4 cenários + conclusão com recuperação');
 
+// Contratos de tipagem e integridade de provas de jornada
+function validateProofContract(expectedMode: 'smoke' | 'journey' | 'journey-negative', proof: any) {
+  if (proof.mode !== expectedMode) throw new Error(`Tipo de prova incorreto para ${expectedMode}: obtido ${proof.mode}`);
+  if (proof.status !== 'passed') throw new Error(`Prova ${expectedMode} não passou`);
+}
+validateProofContract('journey-negative', { mode: 'journey-negative', status: 'passed' });
+assert.throws(() => validateProofContract('journey-negative', { mode: 'smoke', status: 'passed' }), /Tipo de prova incorreto/);
+assert.throws(() => validateProofContract('journey', { mode: 'smoke', status: 'passed' }), /Tipo de prova incorreto/);
+assert.throws(() => validateProofContract('journey-negative', { mode: 'journey-negative', status: 'failed' }), /não passou/);
+
 console.log('Journey contracts: pages, ordered content, failures, observable readiness and negative recovery stages passed');

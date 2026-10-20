@@ -130,6 +130,12 @@ jobs:
         env:
           DISTRIBUTION_CHANNEL: ${{ (startsWith(github.ref, 'refs/tags/') || inputs.allow_unsigned_dev != true) && 'official' || 'internal' }}
           ALLOW_UNSIGNED_INTERNAL: ${{ inputs.allow_unsigned_dev }}
+      - name: Jornada negativa no aplicativo empacotado
+        shell: bash
+        run: if [ "${{ runner.os }}" = "Linux" ]; then xvfb-run -a npm run test:journey:negative; else npm run test:journey:negative; fi
+        env:
+          DISTRIBUTION_CHANNEL: ${{ (startsWith(github.ref, 'refs/tags/') || inputs.allow_unsigned_dev != true) && 'official' || 'internal' }}
+          ALLOW_UNSIGNED_INTERNAL: ${{ inputs.allow_unsigned_dev }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -182,7 +188,7 @@ jobs:
         with:
           path: release-downloads
       - name: Consolidar e Validar Artefatos Selecionados para Publicação
-        run: npx tsx scripts/prepare_release_publication.ts --downloads=release-downloads --output=release --require=win,mac,linux
+        run: npx tsx scripts/prepare_release_publication.ts --downloads=release-downloads --output=release --require=win,mac,linux --channel=official --expected-commit=${{ github.sha }} --expected-run-id=${{ github.run_id }}
       - name: Publicar Release Oficial no GitHub
         uses: softprops/action-gh-release@v2
         env:
@@ -192,7 +198,5 @@ jobs:
             release/*.exe
             release/*.dmg
             release/*.AppImage
-            release/*.deb
-            release/*.rpm
             release/*.zip
             release/SHA256SUMS.txt

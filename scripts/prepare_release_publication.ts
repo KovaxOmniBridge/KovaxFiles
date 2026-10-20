@@ -17,6 +17,9 @@ export interface PreparePublicationOptions {
   requiredPlatforms?: DistributionPlatform[];
   pkg?: DistributionPackage;
   validateOnly?: boolean;
+  channel?: 'official' | 'internal';
+  expectedCommit?: string;
+  expectedWorkflowRunId?: string;
 }
 
 export interface PreparedPublicationResult {
@@ -46,9 +49,20 @@ export function prepareReleasePublication(options: PreparePublicationOptions): P
   const outputDir = path.resolve(options.outputDir);
   const pkg: DistributionPackage = options.pkg || JSON.parse(fs.readFileSync('package.json', 'utf8'));
   const requiredPlatforms = options.requiredPlatforms || [];
+  const channel = options.channel || 'official';
 
   if (!fs.existsSync(downloadsDir)) {
     throw new Error(`[ERRO DE PUBLICAÇÃO] Diretório de downloads de release ausente: ${downloadsDir}`);
+  }
+
+  // No modo oficial, commit esperado e identidade do workflow são mandatórios
+  if (channel === 'official') {
+    if (!options.expectedCommit || typeof options.expectedCommit !== 'string' || options.expectedCommit.trim().length === 0) {
+      throw new Error('[ERRO DE PUBLICAÇÃO] Commit esperado é obrigatório no modo oficial (--expected-commit)');
+    }
+    if (!options.expectedWorkflowRunId || typeof options.expectedWorkflowRunId !== 'string' || options.expectedWorkflowRunId.trim().length === 0) {
+      throw new Error('[ERRO DE PUBLICAÇÃO] Identidade da execução do workflow é obrigatória no modo oficial (--expected-run-id)');
+    }
   }
 
   const artifactsJsonPaths = findArtifactsJsonFiles(downloadsDir);
@@ -72,29 +86,28 @@ export function prepareReleasePublication(options: PreparePublicationOptions): P
     assert.ok(['win', 'mac', 'linux'].includes(identity.platform), `Plataforma inválida: ${identity.platform}`);
     assert.ok(['x64', 'arm64'].includes(identity.architecture), `Arquitetura inválida: ${identity.architecture}`);
 
+    // Validação de canal
+    if (channel === 'official' && identity.channel !== 'official') {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Pacote com canal "${identity.channel}" rejeitado no modo de publicação oficial`);
+    }
+
+    // Validação de commit esperado
+    if (options.expectedCommit && identity.commit !== options.expectedCommit) {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Commit da execução (${identity.commit}) diverge do commit esperado (${options.expectedCommit})`);
+    }
+
+    // Validação de workflow run ID
+    if (options.expectedWorkflowRunId && identity.workflowRunId && identity.workflowRunId !== options.expectedWorkflowRunId) {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Identidade do workflow (${identity.workflowRunId}) diverge da esperada (${options.expectedWorkflowRunId})`);
+    }
+    if (channel === 'official' && options.expectedWorkflowRunId && !identity.workflowRunId) {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Identidade do workflow ausente no registro de ${identity.platform}`);
+    }
+
     if (platformIdentities.has(identity.platform)) {
       throw new Error(`[ERRO DE PUBLICAÇÃO] Registro duplicado para a plataforma ${identity.platform}`);
     }
     platformIdentities.set(identity.platform, identity);
-
-    // Conferir evidências caso presentes no diretório de execução
-    const evidenceDir = path.join(runDir, 'evidence');
-    if (fs.existsSync(evidenceDir)) {
-      const smokeResultPath = path.join(evidenceDir, 'smoke', 'result.json');
-      if (fs.existsSync(smokeResultPath)) {
-        const smoke = JSON.parse(fs.readFileSync(smokeResultPath, 'utf8'));
-        if (smoke.status !== 'passed') {
-          throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de smoke reprovada em ${smokeResultPath}`);
-        }
-      }
-      const journeyResultPath = path.join(evidenceDir, 'journey', 'result.json');
-      if (fs.existsSync(journeyResultPath)) {
-        const journey = JSON.parse(fs.readFileSync(journeyResultPath, 'utf8'));
-        if (journey.status !== 'passed') {
-          throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de jornada reprovada em ${journeyResultPath}`);
-        }
-      }
-    }
 
     const records: ArtifactRecord[] = JSON.parse(fs.readFileSync(artifactsPath, 'utf8'));
     assert.ok(Array.isArray(records), 'artifacts.json deve conter um array de registros');
@@ -122,6 +135,9 @@ export function prepareReleasePublication(options: PreparePublicationOptions): P
       assert.equal(record.runId, identity.runId, `Identidade de run divergente no registro: ${record.file}`);
       assert.equal(record.commit, identity.commit, `Commit divergente no registro: ${record.file}`);
       assert.equal(record.sourceDigest, identity.sourceDigest, `Digest de fontes divergente no registro: ${record.file}`);
+      if (channel === 'official') {
+        assert.equal(record.channel, 'official', `Canal divergente no registro: ${record.file}`);
+      }
 
       // 3. Targets válidos e sem duplicação
       assert.ok(expected.some(e => e.target === record.target && e.file === record.file), `Target inesperado ou incompatível: ${record.target}/${record.file}`);
@@ -148,13 +164,107 @@ export function prepareReleasePublication(options: PreparePublicationOptions): P
 
       allRecords.push({ record, physicalPath });
     }
+
+    // 5. Exigir evidências completas e aprovadas da plataforma
+    const evidenceDir = path.join(runDir, 'evidence');
+    if (!fs.existsSync(evidenceDir)) {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Diretório de evidências ausente para ${identity.platform}: ${evidenceDir}`);
+    }
+
+    // 5a. Smoke aprovado
+    const smokeResultPath = path.join(evidenceDir, 'smoke', 'result.json');
+    if (!fs.existsSync(smokeResultPath)) {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de smoke ausente para ${identity.platform}: ${smokeResultPath}`);
+    }
+    const smoke = JSON.parse(fs.readFileSync(smokeResultPath, 'utf8'));
+    assert.equal(smoke.mode, 'smoke', `Tipo de evidência incorreto em smoke para ${identity.platform}`);
+    assert.equal(smoke.status, 'passed', `Evidência de smoke reprovada para ${identity.platform}`);
+    assert.equal(smoke.runId, identity.runId, `Smoke pertence a outra execução para ${identity.platform}`);
+    assert.equal(smoke.commit, identity.commit, `Commit divergente em smoke para ${identity.platform}`);
+    assert.equal(smoke.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em smoke para ${identity.platform}`);
+    assert.equal(smoke.platform, identity.platform, `Plataforma divergente em smoke para ${identity.platform}`);
+    assert.equal(smoke.architecture, identity.architecture, `Arquitetura divergente em smoke para ${identity.platform}`);
+    assert.deepEqual(smoke.artifacts, records, `Artefatos de smoke divergem dos declarados para ${identity.platform}`);
+
+    // 5b. Jornada positiva aprovada
+    const journeyResultPath = path.join(evidenceDir, 'journey', 'result.json');
+    if (!fs.existsSync(journeyResultPath)) {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de jornada positiva ausente para ${identity.platform}: ${journeyResultPath}`);
+    }
+    const journey = JSON.parse(fs.readFileSync(journeyResultPath, 'utf8'));
+    assert.equal(journey.mode, 'journey', `Tipo de evidência incorreto em jornada para ${identity.platform}`);
+    assert.equal(journey.status, 'passed', `Evidência de jornada positiva reprovada para ${identity.platform}`);
+    assert.equal(journey.runId, identity.runId, `Jornada pertence a outra execução para ${identity.platform}`);
+    assert.equal(journey.commit, identity.commit, `Commit divergente em jornada para ${identity.platform}`);
+    assert.equal(journey.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em jornada para ${identity.platform}`);
+    assert.equal(journey.platform, identity.platform, `Plataforma divergente em jornada para ${identity.platform}`);
+    assert.equal(journey.architecture, identity.architecture, `Arquitetura divergente em jornada para ${identity.platform}`);
+    assert.deepEqual(journey.artifacts, records, `Artefatos de jornada divergem dos declarados para ${identity.platform}`);
+
+    // 5c. Jornada negativa com recuperação aprovada
+    const journeyNegResultPath = path.join(evidenceDir, 'journey-negative', 'result.json');
+    if (!fs.existsSync(journeyNegResultPath)) {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de jornada negativa ausente para ${identity.platform}: ${journeyNegResultPath}`);
+    }
+    const journeyNeg = JSON.parse(fs.readFileSync(journeyNegResultPath, 'utf8'));
+    assert.equal(journeyNeg.mode, 'journey-negative', `Tipo de evidência incorreto em jornada negativa para ${identity.platform}`);
+    assert.equal(journeyNeg.status, 'passed', `Evidência de jornada negativa reprovada para ${identity.platform}`);
+    assert.equal(journeyNeg.runId, identity.runId, `Jornada negativa pertence a outra execução para ${identity.platform}`);
+    assert.equal(journeyNeg.commit, identity.commit, `Commit divergente em jornada negativa para ${identity.platform}`);
+    assert.equal(journeyNeg.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em jornada negativa para ${identity.platform}`);
+    assert.equal(journeyNeg.platform, identity.platform, `Plataforma divergente em jornada negativa para ${identity.platform}`);
+    assert.equal(journeyNeg.architecture, identity.architecture, `Arquitetura divergente em jornada negativa para ${identity.platform}`);
+    assert.deepEqual(journeyNeg.artifacts, records, `Artefatos de jornada negativa divergem dos declarados para ${identity.platform}`);
+
+    // 5d. Validação de instaladores e assinaturas oficiais
+    const installersPath = path.join(evidenceDir, 'installers.json');
+    if (!fs.existsSync(installersPath)) {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de instaladores ausente para ${identity.platform}: ${installersPath}`);
+    }
+    const installers = JSON.parse(fs.readFileSync(installersPath, 'utf8'));
+    assert.equal(installers.runId, identity.runId, `Instaladores pertencem a outra execução para ${identity.platform}`);
+    assert.equal(installers.commit, identity.commit, `Commit divergente em instaladores para ${identity.platform}`);
+    assert.equal(installers.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em instaladores para ${identity.platform}`);
+    assert.equal(installers.platform, identity.platform, `Plataforma divergente em instaladores para ${identity.platform}`);
+    assert.equal(installers.architecture, identity.architecture, `Arquitetura divergente em instaladores para ${identity.platform}`);
+    assert.deepEqual(installers.records, records, `Registros de instaladores divergem para ${identity.platform}`);
+    if (channel === 'official' && ['win', 'mac'].includes(identity.platform)) {
+      if (installers.classification !== 'OFFICIAL_SIGNATURE_VERIFIED') {
+        throw new Error(`[ERRO DE PUBLICAÇÃO] Validação nativa de assinatura oficial ausente ou reprovada para ${identity.platform}: ${installers.classification}`);
+      }
+    }
+
+    // 5e. Finalização e manifesto da distribuição
+    const distPath = path.join(evidenceDir, 'distribution.json');
+    if (!fs.existsSync(distPath)) {
+      throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de finalização da distribuição ausente para ${identity.platform}: ${distPath}`);
+    }
+    const dist = JSON.parse(fs.readFileSync(distPath, 'utf8'));
+    assert.equal(dist.runId, identity.runId, `Finalização da distribuição pertence a outra execução para ${identity.platform}`);
+    assert.equal(dist.commit, identity.commit, `Commit divergente na finalização para ${identity.platform}`);
+    assert.equal(dist.sourceDigest, identity.sourceDigest, `Digest de fontes divergente na finalização para ${identity.platform}`);
+    assert.equal(dist.smoke, 'passed', `Finalização sem smoke aprovado para ${identity.platform}`);
+    assert.equal(dist.journey, 'passed', `Finalização sem jornada aprovada para ${identity.platform}`);
+    assert.equal(dist.negativeJourney, 'passed', `Finalização sem jornada negativa aprovada para ${identity.platform}`);
+    assert.equal(dist.installers, 'identified-and-verified', `Finalização sem instaladores verificados para ${identity.platform}`);
+    assert.deepEqual(dist.artifacts, records, `Artefatos em distribution.json divergem para ${identity.platform}`);
+    if (channel === 'official') {
+      assert.equal(dist.channel, 'official', `Canal divergente em distribution.json para ${identity.platform}`);
+      if (['win', 'mac'].includes(identity.platform)) {
+        assert.equal(dist.classification, 'SIGNED_ARTIFACTS_VERIFIED', `Classificação não homologada em distribution.json para ${identity.platform}`);
+      }
+    }
   }
 
-  // 5. Coerência entre plataformas e prevenção de colisões/misturas
+  // 6. Coerência entre plataformas e prevenção de colisões/misturas
   const firstIdentity = platformIdentities.values().next().value as BuildIdentity;
   for (const [platform, id] of platformIdentities.entries()) {
     assert.equal(id.version, firstIdentity.version, `Mistura indevida de versões entre plataformas (${platform}: ${id.version} vs ${firstIdentity.version})`);
     assert.equal(id.commit, firstIdentity.commit, `Mistura indevida de commits de execução entre plataformas (${platform}: ${id.commit} vs ${firstIdentity.commit})`);
+    assert.equal(id.sourceDigest, firstIdentity.sourceDigest, `Mistura indevida de código-fonte entre plataformas (${platform}: ${id.sourceDigest} vs ${firstIdentity.sourceDigest})`);
+    if (firstIdentity.workflowRunId) {
+      assert.equal(id.workflowRunId, firstIdentity.workflowRunId, `Mistura de workflow run ID entre plataformas (${platform}: ${id.workflowRunId} vs ${firstIdentity.workflowRunId})`);
+    }
   }
 
   const globalFiles = new Set<string>();
@@ -165,14 +275,14 @@ export function prepareReleasePublication(options: PreparePublicationOptions): P
     globalFiles.add(record.file);
   }
 
-  // 6. Verificação de plataformas obrigatórias
+  // 7. Verificação de plataformas obrigatórias
   for (const reqPlatform of requiredPlatforms) {
     if (!platformIdentities.has(reqPlatform)) {
       throw new Error(`[ERRO DE PUBLICAÇÃO] Plataforma obrigatória ausente nos downloads de release: "${reqPlatform}". Plataformas encontradas: ${[...platformIdentities.keys()].join(', ')}`);
     }
   }
 
-  // 7. Cópia segura para diretório limpo de publicação e geração exclusiva de manifesto
+  // 8. Cópia segura para diretório limpo de publicação e geração exclusiva de manifesto
   const copiedFiles: string[] = [];
   let manifestPath = '';
 
@@ -216,7 +326,7 @@ export function prepareReleasePublication(options: PreparePublicationOptions): P
     }
   }
 
-  console.log(`[Publicação Preparada] ${allRecords.length} instaladores homologados selecionados.`);
+  console.log(`[Publicação Preparada] ${allRecords.length} instaladores homologados selecionados (canal: ${channel}).`);
   for (const { record } of allRecords) {
     console.log(` - [${record.platform.toUpperCase()} / ${record.target}] ${record.file} (${(record.size / (1024 * 1024)).toFixed(2)} MB) SHA-256: ${record.sha256}`);
   }
@@ -237,13 +347,19 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve('scripts/p
   const requireArg = args.find(a => a.startsWith('--require='))?.split('=')[1];
   const requiredPlatforms = (requireArg ? requireArg.split(',') : []) as DistributionPlatform[];
   const validateOnly = args.includes('--validate-only');
+  const channelArg = (args.find(a => a.startsWith('--channel='))?.split('=')[1] || 'official') as 'official' | 'internal';
+  const expectedCommit = args.find(a => a.startsWith('--expected-commit='))?.split('=')[1] || process.env.GITHUB_SHA;
+  const expectedWorkflowRunId = args.find(a => a.startsWith('--expected-run-id='))?.split('=')[1] || args.find(a => a.startsWith('--expected-workflow-run-id='))?.split('=')[1] || process.env.GITHUB_RUN_ID;
 
   try {
     const result = prepareReleasePublication({
       downloadsDir: downloadsArg,
       outputDir: outputArg,
       requiredPlatforms,
-      validateOnly
+      validateOnly,
+      channel: channelArg,
+      expectedCommit,
+      expectedWorkflowRunId
     });
     console.log(`Sucesso: Consolidação de publicação finalizada em ${result.outputDir}`);
   } catch (err: any) {

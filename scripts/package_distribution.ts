@@ -19,7 +19,11 @@ const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).
 const runId = `${Date.now()}-${commit.slice(0, 8)}-${crypto.randomUUID().slice(0, 8)}`;
 const output = path.resolve(process.env.RELEASE_DIR || args.find(a => a.startsWith('--config.directories.output='))?.split('=')[1] || path.join('release/runs', runId));
 reserveDistributionDirectory(output);
-const identity: BuildIdentity = { runId, commit, sourceDigest: sourceDigest(), product: pkg.build.productName, version: pkg.version, platform, architecture, channel };
+const workflowRunId = process.env.GITHUB_RUN_ID || process.env.WORKFLOW_RUN_ID || undefined;
+const identity: BuildIdentity = {
+  runId, commit, sourceDigest: sourceDigest(), product: pkg.build.productName, version: pkg.version, platform, architecture, channel,
+  ...(workflowRunId ? { workflowRunId } : {})
+};
 fs.writeFileSync(path.join(output, 'build-run.json'), JSON.stringify(identity, null, 2));
 const records: ArtifactRecord[] = [];
 const expected = expectedArtifacts(pkg, platform, architecture);

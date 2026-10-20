@@ -84,6 +84,12 @@ jobs:
         env:
           DISTRIBUTION_CHANNEL: internal
           ALLOW_UNSIGNED_INTERNAL: 'true'
+      - name: Jornada negativa no aplicativo empacotado
+        shell: bash
+        run: if [ "${{ runner.os }}" = "Linux" ]; then xvfb-run -a npm run test:journey:negative; else npm run test:journey:negative; fi
+        env:
+          DISTRIBUTION_CHANNEL: internal
+          ALLOW_UNSIGNED_INTERNAL: 'true'
       - name: Validar instaladores e assinaturas
         run: npm run test:installers
         env:

@@ -34,26 +34,27 @@ export function validateWorkflow(source: string, scripts: Record<string, string>
       assert.ok([job.needs].flat().includes('build_installers'), 'Publicação exige instaladores validados');
     } else assert.ok(noWrite(job.permissions), `Job interno ${id} não pode adquirir escrita`);
     let packaged = false;
-    let smoked = false, journey = false, installers = false, finalized = false;
+    let smoked = false, journey = false, journeyNegative = false, installers = false, finalized = false;
     for (const step of job.steps || []) {
       const run = step.run || '';
       const publishes = /(?:action-gh-release|release-action)@/.test(step.uses || '') || /\bgh\s+release\s+(?:create|upload)|\bcurl\b[^\n]*\/releases\b/.test(run);
       assert.ok(!publishes || publishing, `Publicação interna proibida: ${id}`);
       for (const line of run.split(/\r?\n/)) {
         validateBuilderScripts({ step: line });
-        const commands = [...line.matchAll(/\bnpm\s+run\s+(package:[\w:-]+|test:(?:release|journey|installers)|distribution:finalize)\b|\belectron-builder\b/g)];
+        const commands = [...line.matchAll(/\bnpm\s+run\s+(package:[\w:-]+|test:(?:release|journey(?::negative)?|installers)|distribution:finalize)\b|\belectron-builder\b/g)];
         for (const command of commands) {
           if (command[1]?.startsWith('test:') || command[1] === 'distribution:finalize') {
             assert.ok(packaged, `${id}: smoke/jornada antes do pacote`);
             assert.ok(!/\|\|\s*true\b/.test(line), 'Falhas obrigatórias não podem ser ignoradas');
             if (command[1] === 'test:release') smoked = true;
             if (command[1] === 'test:journey') { assert.ok(smoked, 'Jornada deve seguir smoke'); journey = true; }
-            if (command[1] === 'test:installers') { assert.ok(smoked && journey, 'Instaladores exigem smoke e jornada'); installers = true; }
+            if (command[1] === 'test:journey:negative') { assert.ok(journey, 'Jornada negativa deve seguir jornada positiva'); journeyNegative = true; }
+            if (command[1] === 'test:installers') { assert.ok(smoked && journey && journeyNegative, 'Instaladores exigem smoke, jornada positiva e jornada negativa'); installers = true; }
             if (command[1] === 'distribution:finalize') { assert.ok(installers, 'Manifesto exige validação de instaladores/assinaturas'); finalized = true; }
-          } else { packaged = true; smoked = journey = installers = finalized = false; }
+          } else { packaged = true; smoked = journey = journeyNegative = installers = finalized = false; }
         }
       }
     }
-    if (packaged) assert.ok(smoked && journey && installers && finalized, `${id}: pacote exige todos os gates posteriores`);
+    if (packaged) assert.ok(smoked && journey && journeyNegative && installers && finalized, `${id}: pacote exige todos os gates posteriores`);
   }
 }

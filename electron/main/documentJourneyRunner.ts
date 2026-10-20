@@ -126,45 +126,64 @@ export async function runDocumentJourney(win: BrowserWindow): Promise<void> {
       console.log('[DocumentJourney:Negative:SaveRecovery]');
 
       // --- CENÁRIO 4: REABERTURA DE SAÍDA CORROMPIDA E RECUPERAÇÃO ---
-      await evaluate("document.querySelector('[data-testid=merge-reset]').click()");
+      // Rejeição observável durante o processamento de arquivo reimportado corrompido
+      await evaluate("document.querySelector('[data-testid=merge-reset]')?.click() || document.querySelector('[data-testid=clear-file-list]')?.click()");
       await waitForCondition(async () => await evaluate("document.querySelector('[data-testid=pdf-manipulator]')?.getAttribute('data-file-count') === '0'"), 'limpeza antes da reabertura');
 
-      const corruptedOutput = path.join(temp, 'corrupted-output.pdf');
-      fs.writeFileSync(corruptedOutput, 'CORRUPTED_PHYSICAL_PDF_OUTPUT_BYTES');
-      await importFiles([corruptedOutput]);
-      await waitForCondition(async () => await evaluate("document.querySelector('[data-testid=pdf-manipulator]')?.getAttribute('data-file-count') === '1'"), 'entrega de arquivo corrompido ao input');
+      const corruptedReopened = path.join(temp, 'corrupted-reopened.pdf');
+      fs.writeFileSync(corruptedReopened, 'CORRUPTED_PDF_REOPENED_BYTES_NOT_A_VALID_HEADER');
+      await importFiles([corruptedReopened, ref0]);
+      await waitForCondition(async () => await evaluate("document.querySelector('[data-testid=pdf-manipulator]')?.getAttribute('data-file-count') === '2'"), 'entrega de saída corrompida e referência ao input');
 
-      const inspectResult: { ok: boolean; error?: string } = await evaluate(`
-        (async () => {
-          try {
-            const data = await window.inspectReopenedJourneyFile();
-            return { ok: true, data };
-          } catch (err) {
-            return { ok: false, error: String(err?.message || err) };
-          }
-        })()
-      `);
-      assert.equal(inspectResult.ok, false, 'Leitura de arquivo corrompido na reabertura deve falhar');
-      assert.ok(Boolean(inspectResult.error), 'Mensagem de erro de estrutura PDF deve ser retornada na inspeção');
+      // Acionar operação normal da ferramenta que lê o documento
+      await evaluate("document.querySelector('[data-testid=merge-process]').click()");
 
-      // Recuperação: limpar lista e entregar o output legítimo gerado no cenário 3
-      await evaluate("document.querySelector('[data-testid=clear-file-list]')?.click() || document.querySelector('[data-testid=clear-file-list-bottom]')?.click()");
-      await waitForCondition(async () => await evaluate("document.querySelector('[data-testid=pdf-manipulator]')?.getAttribute('data-file-count') === '0'"), 'limpeza pós-rejeição de reabertura');
+      // Verificar erro visível na interface e ausência de resultado exportável indevido
+      await waitForCondition(async () => {
+        const errorText = await evaluate("document.querySelector('[data-testid=pdf-error]')?.textContent");
+        const hasExport = await evaluate("Boolean(document.querySelector('[data-testid=merge-export]'))");
+        return Boolean(errorText && (errorText.includes('Erro ao unir arquivos PDF') || errorText.includes('corrompido'))) && !hasExport;
+      }, 'rejeição observável durante o processamento do arquivo reimportado corrompido com erro visível');
 
+      const countAfterCorruptProcess = await evaluate("document.querySelector('[data-testid=pdf-manipulator]')?.getAttribute('data-file-count')");
+      assert.equal(countAfterCorruptProcess, '2', 'Estado consistente: arquivos originais preservados na lista após falha de leitura');
+
+      // Remover o arquivo inválido pelos controles normais da ferramenta
+      await evaluate("document.querySelector('[data-testid=remove-file-0]').click()");
+      await waitForCondition(async () => await evaluate("document.querySelector('[data-testid=pdf-manipulator]')?.getAttribute('data-file-count') === '1'"), 'remoção de arquivo corrompido via controle normal');
+
+      // Descartar banner de erro
+      await evaluate("document.querySelector('[data-testid=dismiss-error]')?.click()");
+
+      // Adicionar o arquivo de saída legítimo gerado na etapa 3
       await importFiles([output]);
-      await waitForCondition(async () => await evaluate("document.querySelector('[data-testid=pdf-manipulator]')?.getAttribute('data-file-count') === '1'"), 'entrega de output legítimo ao input');
+      await waitForCondition(async () => await evaluate("document.querySelector('[data-testid=pdf-manipulator]')?.getAttribute('data-file-count') === '2'"), 'substituição por arquivo legítimo no input');
 
-      const validInspectResult = await evaluate(`
-        (async () => {
-          try {
-            return { ok: true, data: await window.inspectReopenedJourneyFile() };
-          } catch (err) {
-            return { ok: false, error: String(err?.message || err) };
-          }
-        })()
-      `);
-      assert.equal(validInspectResult.ok, true, 'Inspeção do output legítimo deve ter sucesso');
-      assertJourneyContent(validInspectResult.data);
+      // Concluir operação válida normal
+      await evaluate("document.querySelector('[data-testid=merge-process]').click()");
+      await waitForCondition(async () => Boolean(await evaluate("document.querySelector('[data-testid=merge-export]')")), 'processamento concluído com sucesso após substituição');
+
+      // Configurar diálogo para gravação final da reabertura
+      const reopenedFinalOutput = path.join(temp, 'reopened-recovery-output.pdf');
+      dialog.showSaveDialog = (async () => {
+        saveCalls++;
+        return { canceled: false, filePath: reopenedFinalOutput };
+      }) as typeof dialog.showSaveDialog;
+
+      await evaluate("document.querySelector('[data-testid=merge-export]').click()");
+      await waitForCondition(async () => {
+        const state = await evaluate("document.querySelector('[data-testid=pdf-manipulator]')?.getAttribute('data-export-state')");
+        return state === 'saved';
+      }, 'gravação finalizada com sucesso após recuperação de reabertura');
+
+      assert.ok(fs.existsSync(reopenedFinalOutput) && fs.statSync(reopenedFinalOutput).size > 0, 'Arquivo final gravado fisicamente');
+      const finalDoc = await PDFDocument.load(fs.readFileSync(reopenedFinalOutput));
+      assert.ok(finalDoc.getPageCount() >= 2, 'Arquivo resultante da reabertura possui páginas íntegras');
+
+      // Verificação diagnóstica adicional do conteúdo inspecionado
+      const diagInspect = await evaluate('window.inspectReopenedJourneyFile()');
+      assert.ok(diagInspect && diagInspect.pages >= 2, 'Inspeção diagnóstica adicional confirma integridade');
+
       console.log('[DocumentJourney:Negative:ReopenRecovery]');
       console.log('[DocumentJourney:Negative:Complete]');
     } catch (error) {

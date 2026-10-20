@@ -284,7 +284,87 @@ O procedimento abaixo destina-se a uma máquina virtual Windows 10/11 x64 limpa,
 ### Limites e Próximos Bloqueios Concretos
 
 1. **Assinatura digital institucional:** O executável e os instaladores gerados são internos e não assinados (`NotSigned`). A distribuição oficial para tribunais, prefeituras e advocacia permanece bloqueada até a integração formal com certificado digital Authenticode corporativo (A1/HSM) no Windows e Apple Developer ID no macOS.
-2. **Pacotes nativos macOS e Linux:** O ambiente local executou e homologou os instaladores e o runtime Windows x64. As compilações nativas de macOS (`.dmg`, `.zip`) e Linux (`.AppImage`, `.deb`, `.rpm`) continuam dependentes dos respectivos runners do GitHub Actions com os certificados aplicáveis.
+2. **Pacotes nativos macOS e Linux:** O ambiente local executou e homologou os instaladores e o runtime Windows x64. As compilações nativas de macOS (`.dmg`, `.zip`) e Linux (`.AppImage` — target configurado em `package.json`) continuam dependentes dos respectivos runners do GitHub Actions com os certificados aplicáveis.
 3. **Dívida técnica de tipagem legada:** Permanece isolada a auditoria ampla de scripts e testes legados (`tsconfig.tools-audit.json`, 48 diagnósticos preexistentes). O escopo do produto e das ferramentas de distribuição vigentes (`tsconfig.tools.json`) possui 0 erros de tipagem.
 4. **Encerramento da rodada:** M01 não é declarada como integralmente homologada para lançamento público institucional, permanecendo os gates de assinatura e máquina limpa como pendências explícitas.
+
+## Rodada 4 — base ab66a3f, 20/10/2026
+
+Nesta rodada, a baseline inspecionada foi o commit `ab66a3fc74d37b32811af77ab9f295b5b11fc18e`. Foram corrigidas as fragilidades contratuais da preparação de publicação, a obrigatoriedade da jornada negativa em todas as esteiras e a validação de reabertura corrompida via comportamento normal da interface do produto.
+
+### Diferenciação Metodológica Obrigatória
+
+Para preservar a honestidade técnica exigida pelo repositório (`AGENTS.md`):
+- **Implementação e Teste Local:** Execução em ambiente de desenvolvimento Windows x64 com binários empacotados reais, automação CDP e asserções criptográficas. Demonstra viabilidade e ausência de regressões no código.
+- **Integração Contínua (CI):** Execução remota no GitHub Actions em runners Ubuntu, macOS e Windows. Demonstra portabilidade e conformidade estrutural.
+- **Homologação Formal:** Requer máquina limpa (VM isolada sem Node/Python) e assinatura digital oficial (Authenticode/Apple Developer ID). **Permanece PENDENTE**. Os pacotes gerados continuam estritamente como **NÃO HOMOLOGADO**.
+
+### Problemas confirmados e causas raízes
+
+1. **Evidências opcionais e falta de vínculo com a execução oficial em `prepare_release_publication.ts`:**
+   - *Causa:* As provas de smoke e jornada eram inspecionadas apenas condicionalmente (`if (fs.existsSync(smokeResultPath))`). Não se exigia canal `official` nem vínculo com o commit ou a identidade da execução do workflow fornecida pelo contexto seguro do CI.
+   - *Impacto:* Um pacote interno não assinado ou evidências incompletas poderiam ser aceitos pelo preparador de publicação se apresentados diretamente.
+2. **Jornada negativa opcional em `finalize_distribution.ts`:**
+   - *Causa:* A prova de jornada negativa era anexada apenas se o arquivo existisse (`negativeJourney: exists ? 'passed' : 'not-run'`), sem verificação do campo `mode` contra substituição de provas.
+   - *Impacto:* Permitir `not-run` abria brecha para que artefatos fossem finalizados sem comprovar capacidade de recuperação de erros pelo produto.
+3. **Cenário de reabertura dependente de função diagnóstica interna:**
+   - *Causa:* O teste negativo de reabertura inspecionava a rejeição exclusivamente via `window.inspectReopenedJourneyFile()`, sem acionar a operação de processamento normal nem comprovar banner visível de erro ao usuário.
+   - *Impacto:* Não havia prova de que um documento corrompido reimportado gerava mensagem compreensível na interface e impedia a exportação.
+
+### Implementação e correções realizadas
+
+1. **Contrato Estrito de Publicação Oficial (`scripts/prepare_release_publication.ts`):**
+   - Exigência de canal `official`, parâmetro `--expected-commit` e identidade de workflow `--expected-run-id` fornecidos pelo contexto confiável do GitHub Actions (`${{ github.sha }}` e `${{ github.run_id }}`).
+   - Confrontação mandatória de todas as 5 evidências da plataforma: `smoke/result.json`, `journey/result.json`, `journey-negative/result.json`, `installers.json` e `distribution.json`.
+   - Exigência de `OFFICIAL_SIGNATURE_VERIFIED` em `installers.json` e `SIGNED_ARTIFACTS_VERIFIED` em `distribution.json` para Windows e macOS.
+   - Rejeição expressa de pacotes internos (`channel: internal`), divergências de hash, tamanho, commit, arquitetura, targets ou run ID.
+   - Criação de modo explícito de ensaio interno (`--channel=internal`) para testes locais sem publicação.
+   - `--validate-only` atua exclusivamente como trava de escrita em disco, sem relaxar as regras do modo oficial.
+2. **Obrigatoriedade da Jornada Negativa (`scripts/finalize_distribution.ts` e Workflows):**
+   - Inclusão incondicional de `journey-negative` no array de provas obrigatórias. Provas ausentes ou com status diferente de `'passed'` abortam a finalização com erro fatal.
+   - Verificação do tipo de prova (`proof.mode === mode`), impedindo a substituição de uma prova por outra (ex.: reaproveitar smoke no lugar de jornada).
+   - Atualização da política estrutural (`scripts/workflow_policy.ts`) e dos workflows (`build-release.yml` e `ci.yml`), exigindo a sequência rigorosa: `package:*` -> `test:release` -> `test:journey` -> `test:journey:negative` -> `test:installers` -> `distribution:finalize`.
+3. **Validação de Reabertura pelo Comportamento Normal do Produto (`electron/main/documentJourneyRunner.ts`):**
+   - Entrega do PDF corrompido ao input real `[data-testid="merge-input"]` junto com referência válida.
+   - Disparo da operação normal de leitura e processamento (`[data-testid="merge-process"]`).
+   - Verificação observável do banner de erro em `[data-testid="pdf-error"]` e comprovação de que o botão de exportação `[data-testid="merge-export"]` NÃO é liberado.
+   - Remoção do arquivo corrompido pelo botão normal da interface (`[data-testid="remove-file-0"]`), dispensa do alerta e inserção do PDF legítimo.
+   - Reprocessamento bem-sucedido, exportação atômica pelo IPC e validação física das páginas do documento gerado.
+4. **Alinhamento dos Targets Linux:**
+   - Alinhamento de todos os contratos e referências ao único formato Linux configurado no `package.json`: `AppImage`.
+
+### Resultados Comprovados na Rodada
+
+- **Tipagem Estática:** `npx tsc --noEmit` e `npm run typecheck:tools` aprovados com 0 erros.
+- **Regressões de Distribuição:** 7/7 suítes aprovadas (`npm run test:distribution`), cobrindo as 12 regressões de publicação e integridade de jornada.
+- **Bateria de PR:** 11/11 suítes aprovadas com 100% de sucesso (`npm test`).
+- **Bundle de Produção:** Compilado e verificado com sucesso (`npm run build`).
+- **Pacote Interno:** Gerado em diretório exclusivo `release/runs/1792531030001-ab66a3fc-66323a64`.
+- **Smoke no Aplicativo Real:** 6/6 fases aprovadas (`npm run test:release`).
+- **Jornada Positiva Real:** 5/5 estágios aprovados (`npm run test:journey`).
+- **Jornada Negativa e Recuperação Real:** 5/5 estágios aprovados (`npm run test:journey:negative`): `ImportRecovery`, `ProcessRecovery`, `SaveRecovery`, `ReopenRecovery`, `Complete`.
+- **Diagnósticos de Falha:** Os 4 cenários (`import`, `process`, `save`, `reopen`) confirmaram retorno de código 1.
+- **Instaladores e Finalização:** `test:installers` e `distribution:finalize` homologaram os artefatos com `negativeJourney: passed`.
+- **Ensaio de Publicação Interno:** `prepare_release_publication.ts --validate-only --channel=internal` aprovado.
+- **Rejeição do Contrato Oficial:** Execução de `prepare_release_publication.ts` com `--channel=official` sobre o pacote interno foi imediatamente abortada com `[ERRO DE PUBLICAÇÃO] Pacote com canal "internal" rejeitado no modo de publicação oficial`.
+
+### Artefatos e Evidências da Rodada 4
+
+- Diretório exclusivo: `release/runs/1792531030001-ab66a3fc-66323a64`
+- Commit-base: `ab66a3fc74d37b32811af77ab9f295b5b11fc18e`
+- Versão: `1.0.0` | Arquitetura: `x64` | Canal: `internal`
+- Classificação: **NÃO HOMOLOGADO**
+- Digest de fontes (`sourceDigest`): `37c95574c83fa9c90ebba4dafead7fb3b2554746f38efd8eb83713054f4ba0d1`
+
+| Artefato Interno | Tamanho Físico | Digest SHA-256 (FIPS 180-4) |
+| :--- | :---: | :--- |
+| `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` | 137.19 MB (143.856.126 bytes) | `b13707930e723f603672c5e93c8b3c10bd89ad354fa3b7eacb148b6206233d95` |
+| `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` | 136.97 MB (143.626.658 bytes) | `7cc98bbde3307cb3f9edfc6a7b3f34ce3d97c84396d680b1c4a873d45a6fecd7` |
+
+### Pendências Formais e Próximos Bloqueios
+
+1. **Assinatura Digital Corporativa (Authenticode / Apple Developer ID):** Sem credenciais de assinatura comercial provisionadas, os instaladores permanecem classificados como `NAO_HOMOLOGADO`. O canal oficial de release bloqueia publicações não assinadas.
+2. **Homologação em Máquina Limpa (VM Isolada):** O roteiro de 7 passos definido na Rodada 3 permanece pendente de realização pelo operador técnico em VM Windows x64 sem ferramentas de desenvolvimento.
+3. **Distribuição Nativa Multiplataforma:** As esteiras para geração de pacotes em macOS (`.dmg`, `.zip`) e Linux (`.AppImage`) dependem dos certificados e runners adequados no GitHub Actions.
+
 
