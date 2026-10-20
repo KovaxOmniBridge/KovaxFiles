@@ -19,7 +19,8 @@ export function expectedArtifacts(pkg: DistributionPackage, platform: Distributi
     const ext = ({ nsis: 'exe', portable: 'exe', dmg: 'dmg', zip: 'zip', AppImage: 'AppImage', deb: 'deb', rpm: 'rpm' } as Record<string, string>)[target];
     assert.ok(ext, `Target sem identificação explícita: ${target}`);
     const template = target === 'nsis' ? pkg.build.nsis.artifactName : target === 'portable' ? pkg.build.portable.artifactName : pkg.build.artifactName;
-    const values: Record<string, string> = { productName: pkg.build.productName, name: pkg.name, version: pkg.version, os: platform, arch: architecture, ext };
+    const archLabel = platform === 'linux' && architecture === 'x64' ? 'x86_64' : architecture;
+    const values: Record<string, string> = { productName: pkg.build.productName, name: pkg.name, version: pkg.version, os: platform, arch: archLabel, ext };
     const file = template.replace(/\$\{(\w+)\}/g, (_, key: string) => { assert.ok(values[key], `Macro desconhecida: ${key}`); return values[key]; });
     assert.equal(path.basename(file), file, 'Nome de artefato deve ser local');
     return { target, file };

@@ -37,8 +37,9 @@ await build({
       if (!event.target || !/\.(exe|dmg|zip|AppImage|deb|rpm)$/i.test(event.file)) return;
       if (event.arch === null || Arch[event.arch] !== architecture || event.packager.platform.buildConfigurationKey !== platform || event.packager.appInfo.version !== pkg.version) throw new Error('Metadados reais do builder divergem da execução');
       const file = path.basename(event.file);
-      if (!expected.some(e => e.target === event.target!.name && e.file === file)) throw new Error(`Target inesperado do empacotador: ${event.target.name}/${file}`);
-      records.push({ ...identity, target: event.target.name, file, size: fs.statSync(event.file).size, sha256: hashFile(event.file) });
+      const targetMatch = expected.find(e => e.target.toLowerCase() === event.target!.name.toLowerCase() && e.file === file);
+      if (!targetMatch) throw new Error(`Target inesperado do empacotador: ${event.target.name}/${file}`);
+      records.push({ ...identity, target: targetMatch.target, file, size: fs.statSync(event.file).size, sha256: hashFile(event.file) });
     }
   }
 });
