@@ -139,3 +139,19 @@ Saída final interna: `release/runs/1792488999373-6b3c6868-65772dfe`, classifica
 | `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` | `22bc229fb2ca264e2d519d4a085873b4750a24e5f4df3d09fa583d97b8748609` |
 
 O próximo passo após a verificação do CI do commit enviado é executar pacote nativo em macOS/Linux e a homologação de instalação em VM limpa, usando artefatos oficialmente assinados quando aplicável. A rodada não autoriza lançamento público nem encerra integralmente a homologação M01.
+
+### Resultado remoto de 38caad5 e correção do gatilho de Pages
+
+O commit `38caad5c337d00ed9e36afa3494fdc9fd80e1084` foi enviado e os jobs de qualidade Windows (`118562611353`), Linux (`118562611111`) e macOS (`118562610850`) passaram na execução `39403168110`. A nightly de pacote ficou pulada nesse evento de push; não é evidência de pacote nativo nessas outras plataformas.
+
+O mesmo push acionou indevidamente o workflow preexistente de GitHub Pages, que aceitava `docs/**` e publicava a pasta inteira. O deploy `39403168065`, job `118562611045`, foi concluído, contrariando a restrição desta tarefa. Esse resultado permanece registrado; não houve release de instaladores ou tag. O deploy de Pages já concluído não é apresentado como inexistente ou revertido.
+
+A correção adicional restringe o gatilho automático aos quatro arquivos da landing page: `docs/index.html`, `docs/app.js`, `docs/style.css` e `docs/favicon.svg`. Alterações do próprio workflow, relatórios e evidências internas ficam fora desse gatilho. `prepare_landing_artifact.ts` prepara somente esses quatro arquivos para publicações futuras, preservando a opção manual de Pages. A regressão falhou com a configuração anterior e passou após o ajuste; também confere que relatórios e a pasta de evidências não entram no artefato do site. O próximo push desta correção deve produzir CI de código sem execução de Pages.
+
+### Validação final da proteção de Pages
+
+A rodada adicional usa `release/runs/1792489903110-38caad5c-929fac36`, commit-base `38caad5`, impressão de fonte `a6a7064faaa66e5cfab5734df10fb82f789642e998d31d0fb029c194b395d350`. Evidências separadas estão em `docs/evidence/m01/round2-pages-followup/`; as rodadas anteriores foram preservadas.
+
+Passaram a tipagem do aplicativo e das ferramentas, `npm test` (11/11), smoke e jornada documental no pacote Windows, verificação dos dois instaladores e geração de manifesto. Os quatro cenários negativos retornaram código 1. A verificação Authenticode nativa rejeitou executável e instaladores com `NotSigned`. `npm run test:release` passou com as variáveis explícitas do canal interno; a tentativa sem essas variáveis foi corretamente recusada pelo contrato de distribuição.
+
+SHA-256 portable: `a2e82bdabcbcaca858c649d0e0adc05972e194282e58c2921949b863ca578957`. SHA-256 NSIS: `b439d78e1cc7d4c0f59e19bdc96a7ee4282e097cc3b3735014b6e0cfcacdbac6`. Permanecem a classificação **NÃO HOMOLOGADO**, os limites de instalação em máquina limpa, assinatura oficial/notarização e pacotes nativos macOS/Linux. O acompanhamento remoto do commit adicional será associado à execução local em `evidence/remote-ci.json`, sem alterar esta evidência histórica ou provocar um novo push apenas documental.

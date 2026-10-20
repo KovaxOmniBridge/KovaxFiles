@@ -1,0 +1,10 @@
+{
+  "runId": "1792489903110-38caad5c-929fac36",
+  "commit": "38caad5c337d00ed9e36afa3494fdc9fd80e1084",
+  "sourceDigest": "a6a7064faaa66e5cfab5734df10fb82f789642e998d31d0fb029c194b395d350",
+  "product": "KovaxFiles Desktop",
+  "version": "1.0.0",
+  "platform": "win",
+  "architecture": "x64",
+  "channel": "internal"
+}

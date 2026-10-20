@@ -1,23 +1,21 @@
 name: Deploy Landing Page to GitHub Pages
-
-on:
+'on':
   push:
     branches:
       - main
     paths:
-      - 'docs/**'
-      - '.github/workflows/deploy-pages.yml'
-  workflow_dispatch:
-
+      - docs/index.html
+      - docs/app.js
+      - docs/style.css
+      - docs/favicon.svg
+  workflow_dispatch: null
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
-  group: 'pages'
+  group: pages
   cancel-in-progress: true
-
 jobs:
   deploy:
     environment:
@@ -27,15 +25,18 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Prepare only landing page files
+        run: node scripts/prepare_landing_artifact.ts
       - name: Setup Pages
         uses: actions/configure-pages@v5
-
       - name: Upload Static Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'docs'
-
+          path: release/pages-artifact
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

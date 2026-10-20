@@ -1,0 +1,17 @@
+[
+  {
+    "file": "KovaxFiles Desktop.exe",
+    "nativeStatus": "NotSigned",
+    "officialGate": "rejected"
+  },
+  {
+    "file": "KovaxFiles Desktop-1.0.0-win-x64-setup.exe",
+    "nativeStatus": "NotSigned",
+    "officialGate": "rejected"
+  },
+  {
+    "file": "KovaxFiles Desktop-1.0.0-win-x64-portable.exe",
+    "nativeStatus": "NotSigned",
+    "officialGate": "rejected"
+  }
+]

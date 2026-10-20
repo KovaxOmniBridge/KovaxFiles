@@ -1,0 +1,5 @@
+
+> kovax-files-desktop@1.0.0 test:installers
+> tsx scripts/verify_packaged_installers.ts
+
+Targets verificados: nsis, portable; NÃO HOMOLOGADO

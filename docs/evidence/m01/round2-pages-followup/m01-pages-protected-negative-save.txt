@@ -1,0 +1,20 @@
+
+> kovax-files-desktop@1.0.0 test:journey
+> tsx tests/suites/desktop_packaged.test.ts --journey --fault=save
+
+Canal internal: NÃO HOMOLOGADO
+Error: Smoke falhou: 1
+
+[DocumentJourney:Import]
+[DocumentJourney:Process]
+
+[DocumentJourney:Failure] Error: exportação IPC: Erro ao exportar PDF: Falha na gravação atômica: ENOENT: no such file or directory, open 'C:\Users\diniz\AppData\Local\Temp\kovax-package-uJyehn\kovax-journey-Z6jBXw\missing-directory\.merged.pdf.tmp.1792508978594.hkepbd'×
+    at file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:23102:62
+    at async yd (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:23089:11)
+    at async C2 (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:23118:945)
+    at async WebContents.<anonymous> (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:23207:12)
+
+    at <anonymous> (D:\KovaxOminiBridge\KovaxFilesApp\tests\suites\desktop_packaged.test.ts:34:44)
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+    at async node:internal/modules/esm/loader:647:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)

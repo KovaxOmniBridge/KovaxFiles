@@ -1,0 +1,16 @@
+# ==============================================================================
+# MANIFESTO DE INTEGRIDADE CRIPTOGRÁFICA (SHA-256) — KOVAXFILES DESKTOP
+# ==============================================================================
+# DATA DE GERAÇÃO: 2026-10-20T15:11:16.258Z
+# NOTA DE SEGURANÇA INSTITUCIONAL:
+# 1. Os hashes abaixo atestam exclusivamente a INTEGRIDADE DE TRANSPORTE dos
+#    arquivos contra corrupção física ou truncamento acidental de download.
+# 2. Hashes SHA-256 NÃO ATESTAM AUTORIA, NÃO COMPROVAM IDENTIDADE DO PUBLICADOR
+#    E NÃO SUBSTITUEM ASSINATURA DIGITAL (Authenticode / Apple Developer ID / PKI).
+# 3. Em ambientes institucionais (Tribunais, Prefeituras e Escritórios Jurídicos),
+#    valide OBRIGATORIAMENTE a assinatura digital embutida no binário executável:
+#      PowerShell: Get-AuthenticodeSignature .\KovaxFiles-Setup-*.exe
+#      macOS:      codesign -dv --verbose=4 ./KovaxFiles-*.dmg
+# ==============================================================================
+a2e82bdabcbcaca858c649d0e0adc05972e194282e58c2921949b863ca578957  KovaxFiles Desktop-1.0.0-win-x64-portable.exe
+b439d78e1cc7d4c0f59e19bdc96a7ee4282e097cc3b3735014b6e0cfcacdbac6  KovaxFiles Desktop-1.0.0-win-x64-setup.exe

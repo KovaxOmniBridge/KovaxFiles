@@ -1,0 +1,27 @@
+
+> kovax-files-desktop@1.0.0 test:journey
+> tsx tests/suites/desktop_packaged.test.ts --journey --fault=reopen
+
+Canal internal: NÃO HOMOLOGADO
+Error: Smoke falhou: 1
+
+[DocumentJourney:Import]
+[DocumentJourney:Process]
+[DocumentJourney:SaveIPC]
+
+[DocumentJourney:Failure] Error: Failed to parse PDF document (line:0 col:26 offset=13): No PDF header found
+    at t [as constructor] (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:14655:20)
+    at new t (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:14725:20)
+    at t.parseHeader (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:19930:13)
+    at t.<anonymous> (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:19899:67)
+    at f (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:12309:13)
+    at Object.next (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:12269:14)
+    at file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:12256:28
+    at new Promise (<anonymous>)
+    at pe (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:12238:10)
+    at t.parseDocument (file:///D:/KovaxOminiBridge/KovaxFilesApp/release/runs/1792489903110-38caad5c-929fac36/win-unpacked/resources/app.asar/dist-electron/main-DCgUkNds.js:19892:14)
+
+    at <anonymous> (D:\KovaxOminiBridge\KovaxFilesApp\tests\suites\desktop_packaged.test.ts:34:44)
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+    at async node:internal/modules/esm/loader:647:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)

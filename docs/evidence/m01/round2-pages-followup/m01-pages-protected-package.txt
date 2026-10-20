@@ -1,0 +1,8 @@
+  • electron-builder  version=24.13.3 os=10.0.19045
+  • loaded configuration  file=package.json ("build" field)
+  • packaging       platform=win32 arch=x64 electron=42.11.14 appOutDir=release\runs\1792489903110-38caad5c-929fac36\win-unpacked
+  • default Electron icon is used  reason=application icon is not set
+  • building        target=nsis file=release\runs\1792489903110-38caad5c-929fac36\KovaxFiles Desktop-1.0.0-win-x64-setup.exe archs=x64 oneClick=false perMachine=false
+  • building block map  blockMapFile=release\runs\1792489903110-38caad5c-929fac36\KovaxFiles Desktop-1.0.0-win-x64-setup.exe.blockmap
+  • building        target=portable file=release\runs\1792489903110-38caad5c-929fac36\KovaxFiles Desktop-1.0.0-win-x64-portable.exe archs=x64
+DISTRIBUTION_OUTPUT=D:\KovaxOminiBridge\KovaxFilesApp\release\runs\1792489903110-38caad5c-929fac36

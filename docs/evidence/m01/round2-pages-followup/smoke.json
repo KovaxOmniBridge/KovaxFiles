@@ -1,0 +1,48 @@
+{
+  "runId": "1792489903110-38caad5c-929fac36",
+  "commit": "38caad5c337d00ed9e36afa3494fdc9fd80e1084",
+  "sourceDigest": "a6a7064faaa66e5cfab5734df10fb82f789642e998d31d0fb029c194b395d350",
+  "product": "KovaxFiles Desktop",
+  "version": "1.0.0",
+  "platform": "win",
+  "architecture": "x64",
+  "channel": "internal",
+  "status": "passed",
+  "mode": "smoke",
+  "artifacts": [
+    {
+      "runId": "1792489903110-38caad5c-929fac36",
+      "commit": "38caad5c337d00ed9e36afa3494fdc9fd80e1084",
+      "sourceDigest": "a6a7064faaa66e5cfab5734df10fb82f789642e998d31d0fb029c194b395d350",
+      "product": "KovaxFiles Desktop",
+      "version": "1.0.0",
+      "platform": "win",
+      "architecture": "x64",
+      "channel": "internal",
+      "target": "nsis",
+      "file": "KovaxFiles Desktop-1.0.0-win-x64-setup.exe",
+      "size": 143282385,
+      "sha256": "b439d78e1cc7d4c0f59e19bdc96a7ee4282e097cc3b3735014b6e0cfcacdbac6"
+    },
+    {
+      "runId": "1792489903110-38caad5c-929fac36",
+      "commit": "38caad5c337d00ed9e36afa3494fdc9fd80e1084",
+      "sourceDigest": "a6a7064faaa66e5cfab5734df10fb82f789642e998d31d0fb029c194b395d350",
+      "product": "KovaxFiles Desktop",
+      "version": "1.0.0",
+      "platform": "win",
+      "architecture": "x64",
+      "channel": "internal",
+      "target": "portable",
+      "file": "KovaxFiles Desktop-1.0.0-win-x64-portable.exe",
+      "size": 143054445,
+      "sha256": "a2e82bdabcbcaca858c649d0e0adc05972e194282e58c2921949b863ca578957"
+    }
+  ],
+  "executable": "D:\\KovaxOminiBridge\\KovaxFilesApp\\release\\runs\\1792489903110-38caad5c-929fac36\\win-unpacked\\KovaxFiles Desktop.exe",
+  "executableSha256": "8972b5e0c2ce6e643638fb278b4a56563c0ab6a466f2e956af7d6fad79c71a6f",
+  "payloadPath": "D:\\KovaxOminiBridge\\KovaxFilesApp\\release\\runs\\1792489903110-38caad5c-929fac36\\win-unpacked\\resources\\app.asar",
+  "payloadSha256": "0e71cb76493143647d9a2a1763c44174b9fcd1fa091825a29cc59ac4dcc1c262",
+  "automatedPackagedSmoke": "smoke",
+  "cleanMachineAcceptance": "pending"
+}

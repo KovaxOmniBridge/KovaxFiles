@@ -15,7 +15,8 @@
     "scripts/package_distribution.ts",
     "scripts/finalize_distribution.ts",
     "scripts/verify_distribution_security.ts",
-    "scripts/verify_distribution_prerequisites.ts"
+    "scripts/verify_distribution_prerequisites.ts",
+    "scripts/prepare_landing_artifact.ts"
   ],
   "exclude": []
 }
