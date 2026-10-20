@@ -1,20 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-for (const file of ['.github/workflows/build-release.yml', '.github/workflows/ci.yml']) {
-  const workflow = fs.readFileSync(file, 'utf8');
-  const jobs = workflow.split(/^  [\w-]+:\s*$/m).slice(1);
-  for (const job of jobs.filter(j => j.includes('npm run test:release'))) {
-    assert.ok(job.indexOf('npm run package:') >= 0 && job.indexOf('npm run package:') < job.indexOf('npm run test:release'), `${file}: pacote deve preceder smoke`);
-  }
-}
+import { validateWorkflow } from '../../scripts/workflow_policy.ts';
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-for (const command of Object.values(pkg.scripts).filter((s): s is string => typeof s === 'string' && s.includes('electron-builder'))) {
-  assert.ok(command.includes('--publish never'), 'empacotamento deve impedir publicação implícita');
-}
-const release = fs.readFileSync('.github/workflows/build-release.yml', 'utf8');
-assert.ok(release.includes('permissions:\n  contents: read'), 'Jobs internos não devem receber permissão global de publicação');
-assert.ok(release.includes("if: startsWith(github.ref, 'refs/tags/') && (inputs.allow_unsigned_dev != true)"), 'Publicação restrita a tags oficiais, sem opção unsigned');
+for (const file of ['.github/workflows/build-release.yml', '.github/workflows/ci.yml']) validateWorkflow(fs.readFileSync(file,'utf8'), pkg.scripts);
 for (const platform of ['win', 'mac']) {
   assert.ok(pkg.scripts[`package:release:${platform}`].includes(`--config.${platform}.forceCodeSigning=true`));
 }

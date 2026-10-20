@@ -1,94 +1,76 @@
 name: Continuous Integration & Tiered Quality Gates
-
-on:
+'on':
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
   schedule:
-    # Execução diária/periódica às 03:00 UTC (Testes de Desempenho, Carga e Stress)
-    - cron: '0 3 * * *'
-  workflow_dispatch:
-
+    - cron: 0 3 * * *
+  workflow_dispatch: null
 permissions:
   contents: read
-
 jobs:
-  # ============================================================================
-  # TIER 1: FAST PR BATTERY (Executado em todo commit e Pull Request)
-  # ============================================================================
   pr-quality-gates:
     name: PR Quality Gates (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-
+          node-version: 24
+          cache: npm
       - name: Install Dependencies
         run: npm ci
-
       - name: Typecheck tools and regression gates
         run: npm run prepare:tessdata && npm run typecheck:tools && npm run test:distribution
-
       - name: Verify Offline OCR Assets & Tessdata
         run: npm run prepare:tessdata
-
       - name: Run Complete PR Battery (11 Critical Suites)
         run: npm run test:pr
-
-  # ============================================================================
-  # TIER 2: NIGHTLY & DISPATCH (Desempenho, Carga, Estresse e Memória)
-  # ============================================================================
   nightly-performance-stress:
-    needs: [pr-quality-gates]
+    needs:
+      - pr-quality-gates
     name: Performance, Load & Memory Stress (${{ matrix.os }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
-
+        os:
+          - ubuntu-latest
+          - windows-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-
+          node-version: 24
+          cache: npm
       - name: Install Dependencies
         run: npm ci
-
       - name: Typecheck tools and regression gates
         run: npm run prepare:tessdata && npm run typecheck:tools && npm run test:distribution
-
       - name: Build Application Assets
         run: npm run build
-
       - name: Run Performance, Load & Recovery Suite
         run: npm run test:load
-
       - name: Run Reproducible Resource Benchmarks (CPU, RAM, Throughput)
         run: npm run benchmark
-
       - name: Build internal desktop (NÃO HOMOLOGADO)
         run: npm run package:internal
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-
       - name: Run Packaged Desktop Pre-Release Audit
         shell: bash
         run: |
@@ -96,19 +78,27 @@ jobs:
         env:
           DISTRIBUTION_CHANNEL: internal
           ALLOW_UNSIGNED_INTERNAL: 'true'
-
+      - name: Jornada documental no aplicativo empacotado
+        shell: bash
+        run: if [ "${{ runner.os }}" = "Linux" ]; then xvfb-run -a npm run test:journey; else npm run test:journey; fi
+        env:
+          DISTRIBUTION_CHANNEL: internal
+          ALLOW_UNSIGNED_INTERNAL: 'true'
       - name: Validar instaladores e assinaturas
         run: npm run test:installers
         env:
           DISTRIBUTION_CHANNEL: internal
           ALLOW_UNSIGNED_INTERNAL: 'true'
-
       - name: Manifesto dos bytes finais
-        run: npx tsx scripts/generate_release_manifest.ts --dir=release
-
+        run: npm run distribution:finalize
+        env:
+          DISTRIBUTION_CHANNEL: internal
+          ALLOW_UNSIGNED_INTERNAL: 'true'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: internal-NÃO-HOMOLOGADO-${{ matrix.os }}
-          path: release/
+          path: ${{ env.RELEASE_DIR }}/**
           retention-days: 7
+    env:
+      RELEASE_DIR: release/runs/${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}

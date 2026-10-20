@@ -1,0 +1,22 @@
+[
+  {
+    "scenario": "import",
+    "exitCode": 1,
+    "expectedFailure": true
+  },
+  {
+    "scenario": "process",
+    "exitCode": 1,
+    "expectedFailure": true
+  },
+  {
+    "scenario": "save",
+    "exitCode": 1,
+    "expectedFailure": true
+  },
+  {
+    "scenario": "reopen",
+    "exitCode": 1,
+    "expectedFailure": true
+  }
+]

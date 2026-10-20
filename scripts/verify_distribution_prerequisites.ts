@@ -19,6 +19,7 @@
  */
 
 import fs from 'fs';
+import { validateWorkflow } from './workflow_policy';
 import path from 'path';
 import os from 'os';
 import { spawnSync } from 'child_process';
@@ -81,15 +82,8 @@ assert(
 const buildWorkflowPath = path.join(rootDir, '.github/workflows/build-release.yml');
 const workflowSrc = fs.readFileSync(buildWorkflowPath, 'utf8');
 
-assert(
-  workflowSrc.includes('IS_OFFICIAL_RELEASE="${{ startsWith(github.ref, \'refs/tags/\') }}"'),
-  'Workflow de CI identifica expressamente se o gatilho é uma tag oficial de release'
-);
-
-assert(
-  workflowSrc.includes('exit 1') && workflowSrc.includes('WIN_CSC_LINK'),
-  'Workflow aborta com erro fatal (exit 1) caso certificados estejam ausentes em release oficial'
-);
+try { validateWorkflow(workflowSrc, pkg.scripts); assert(true, 'Política YAML estrutural: assinatura obrigatória, permissões e sequência dos gates'); }
+catch (error) { assert(false, 'Política estrutural do workflow', String(error)); }
 
 // ============================================================================
 // FASE 2: Validação de Pré-requisitos de Assinatura Digital no SO (Authenticode / Gatekeeper)

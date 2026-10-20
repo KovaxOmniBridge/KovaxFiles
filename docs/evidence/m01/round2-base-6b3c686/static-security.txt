@@ -1,0 +1,29 @@
+
+> kovax-files-desktop@1.0.0 test:dist-security
+> npx tsx scripts/verify_distribution_security.ts
+
+======================================================================
+Iniciando Verificação de Segurança de Distribuição e Assinatura Digital
+======================================================================
+
+[1/4] Verificando configurações do package.json...
+  [PASS] Script package:release:win deve exigir --config.win.forceCodeSigning=true
+  [PASS] Script package:release deve exigir forceCodeSigning=true
+  [PASS] Configuração win.verifyUpdateCodeSignature deve ser true no electron-builder
+  [PASS] Configuração win.signAndEditExecutable deve ser true no electron-builder
+
+[2/4] Verificando integridade do workflow .github/workflows/build-release.yml...
+  [PASS] Política estrutural: permissões, canais assinados e todos os gates de distribuição
+
+[3/4] Verificando cabeçalho de esclarecimento de segurança do SHA256SUMS...
+  [PASS] Manifesto SHA-256 gerado no pipeline/script de release deve esclarecer que hashes não substituem assinatura digital
+
+[4/4] Verificando documentação em docs/SECURITY_DISTRIBUTION.md e README.md...
+  [PASS] docs/SECURITY_DISTRIBUTION.md deve detalhar a distinção técnica entre SHA-256 e Assinatura Digital
+  [PASS] README.md deve destacar a obrigatoriedade de assinatura digital em release e a distinção do SHA-256
+
+======================================================================
+Resultado da Verificação de Segurança de Distribuição:
+  Sucessos: 8
+  Falhas:   0
+======================================================================

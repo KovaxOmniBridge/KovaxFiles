@@ -1,0 +1,1 @@
+Native Authenticode gate rejected current packaged executable: NotSigned.

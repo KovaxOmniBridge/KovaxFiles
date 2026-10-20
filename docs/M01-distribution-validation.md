@@ -1,5 +1,7 @@
 # M01 — Empacotamento e validação interna
 
+Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. A seção “Rodada 2” registra as correções posteriores e o procedimento vigente; os registros anteriores não foram substituídos.
+
 Baseline inspecionada: `main`, `c23754d018c792b49f5daa659431f93014c87409`, checkout sem alterações rastreadas. A pasta ignorada `release/` já continha artefatos antigos; eles não comprovam a implementação atual.
 
 ## Achados confirmados e alterações
@@ -71,3 +73,69 @@ Permanecem pendentes: homologação de instalação em Windows limpo, execução
 6. Reiniciar aplicativo, verificar persistência, desinstalar e registrar logs/capturas e resultados por etapa.
 
 O smoke automatizado do executável não atesta instalação em máquina limpa. Segurança de dependências, acervo jurídico e continuidade de dados continuam frentes próprias; M01 não declara prontidão para lançamento.
+
+## Rodada 2 — base 6b3c686, 20/10/2026
+
+A execução remota `39353737562` confirmou falha Windows no job `118403680777` antes das 11 suítes; Linux e macOS passaram naquela execução. O comparador literal de permissões aceitava LF e rejeitava CRLF para o mesmo documento YAML (`round2-base-6b3c686/crlf-before.json`). Essa aprovação local anterior não comprovava portabilidade Windows no CI.
+
+### Alterações desta rodada
+
+- `scripts/workflow_policy.ts` interpreta YAML com `js-yaml`, agora dependência de desenvolvimento explícita, com tipos e lockfile. A política valida permissões globais, permissões de cada job, publicação restrita ao job autorizado, dependências e ordem dos comandos de pacote/smoke/jornada. Fixtures incluem CRLF, LF, reordenação de propriedades, indentação, publicação indevida e falhas mascaradas.
+- `scripts/package_distribution.ts` cria uma saída nova por execução, impede reuso de diretório e chama o builder com `publish: never`. Configuração e metadados reais do callback `artifactBuildCompleted` identificam produto, versão, arquitetura e targets. `distribution_artifacts.ts` rejeita ausência, duplicação, mistura, versões/arquiteturas divergentes, truncamento e hashes alterados. Dois EXEs arbitrários não são aceitos como NSIS e portable.
+- Os workflows preservam macOS/Linux, usam Node 24 compatível com o Electron instalado e executam jornada depois do pacote. Instalação em máquina limpa, assinatura e notarização não são inferidas dessas configurações.
+- A fusão em `PdfManipulator` usa `LocalPdfEngine.mergePdfs` e o `fileSystemAdapter` existente. No desktop, o botão de exportação agora percorre o mesmo IPC seguro e a gravação atômica usados pelo editor. Falhas de gravação são apresentadas como erro, sem fallback silencioso para download.
+- `documentJourneyRunner.ts` importa dois PDFs pelo input real, aciona o botão de fusão, exporta pela interface/IPC, lê a saída física e a reimporta. O parser PDF.js confere duas páginas e os textos `M01 REFERENCE ALPHA` e `M01 REFERENCE BETA`, na ordem. A automação utiliza CDP somente no diagnóstico e substitui somente a escolha do destino no diálogo nativo; remetente IPC, validações e escrita continuam no código de produção.
+- Esperas acompanham condições observáveis com timeout. O smoke rápido existente continua separado da jornada. Cenários de diagnóstico negativos cobrem importação, processamento, gravação e reabertura.
+- `distribution:finalize` exige provas de smoke e jornada da mesma execução, verifica novamente o executável e `app.asar`, compara hashes dos instaladores e então gera o manifesto final. O relatório distingue commit-base da compilação e impressão SHA-256 dos arquivos-fonte efetivamente usados; a associação ao commit enviado é registrada nas evidências finais.
+
+### Procedimento vigente
+
+```powershell
+npm ci
+npm run prepare:tessdata
+npx tsc --noEmit
+npm run typecheck:tools
+npm run test:distribution
+npm test
+$env:DISTRIBUTION_CHANNEL = 'internal'
+$env:ALLOW_UNSIGNED_INTERNAL = 'true'
+npm run package:internal -- --x64
+# A saída exclusiva está indicada em release/last-run.json.
+npm run test:release
+npm run test:journey
+npm run test:installers
+npm run distribution:finalize
+```
+
+O diretório exclusivo contém `build-run.json`, `artifacts.json`, `SHA256SUMS.txt` e `evidence/`. Os novos registros textuais ficam em `docs/evidence/m01/round2-base-6b3c686/`; os arquivos da rodada anterior permanecem históricos. A auditoria ampla de tipagem legada continua sendo dívida separada, sem supressão de diagnósticos nem aprovação presumida.
+
+### Verificações adicionais da rodada
+
+Os auditores `verify_distribution_security.ts`, `verify_distribution_prerequisites.ts` e `verify_release_distribution_package.ts` usam a mesma política estrutural. Os dois primeiros passaram; o terceiro expôs um probe nativo afetado pelo `PSModulePath` herdado/vazio sob tsx. O ambiente isolado foi centralizado em `nativeSignatureEnvironment`, com regressões para valores vazios, herdados e variação de caixa. O auditor passou em 16/16 verificações após a correção; sua falha anterior permanece em `static-release-before-native-fix.txt` e `native-probe-before-fix.txt`.
+
+A identificação da saída por plataforma usa `matrix.os` em `env` do job. A regressão rejeita `runner.os` nesse nível, onde esse contexto ainda não está disponível ([referência de contextos do GitHub](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts)). Expressões nos steps continuam usando os contextos permitidos nessa fase.
+
+Os arquivos na raiz de `round2-base-6b3c686/` documentam as reproduções e a primeira execução de pacote aprovada. As evidências definitivas são identificadas separadamente em `final-run/`. Os reempacotamentos para vincular a versão final dos auditores reutilizaram o bundle de aplicativo já compilado e verificado, sem mudanças no runtime; `payload-continuity.json` registra a igualdade dos bytes de `app.asar`. Isso não transforma os resultados locais em aprovação de CI: após o envio, o resultado de cada job deve ser consultado na execução do commit e preservado em `evidence/remote-ci.json` junto ao pacote.
+
+### Resultado local definitivo da rodada 2
+
+| Camada | Resultado e limite da prova |
+| --- | --- |
+| Verificações estáticas | Tipagem do aplicativo, `typecheck:tools`, bundle e auditores estruturais aprovados. YAML LF/CRLF e estilos equivalentes passam; permissões, publicação, contexto inválido e gates fora de ordem são rejeitados. |
+| Testes unitários e PR | `npm test`: 11/11 suítes, com as regressões de distribuição. Fixtures de instaladores são exclusivamente testes do verificador. |
+| Smoke do pacote | Aprovado no executável Windows x64 final: React, preload isolado, IPC, OCR offline e operações sintéticas. |
+| Jornada documental real | Aprovada: dois arquivos no input da ferramenta, fusão por `LocalPdfEngine`, exportação pelo adaptador/IPC com escrita atômica, reimportação e conferência independente de páginas/textos via PDF.js. |
+| Falhas obrigatórias | Os quatro cenários reais de importação, processamento, gravação e reabertura retornaram código 1. A saída positiva permanece em evidência separada. |
+| Instaladores | NSIS e portable atuais identificados pelo builder; metadados, targets, versão, arquitetura e hashes finais conferidos. Essa prova não é teste de instalação. |
+| Instalação em máquina limpa | Pendente; roteiro acima. Nenhuma VM limpa foi homologada nesta rodada. |
+| Assinatura/notarização oficiais | Pendente. O executável e os dois instaladores internos retornaram `NotSigned` e foram rejeitados pelo gate Authenticode nativo. Não há aprovação de cadeia oficial nem de notarização Apple. |
+| Tipagem legada ampla | Dívida separada; a reprovação histórica com 48 diagnósticos continua registrada, sem supressões ou alegação de aprovação. |
+
+Saída final interna: `release/runs/1792488999373-6b3c6868-65772dfe`, classificação **NÃO HOMOLOGADO**. `final-run/distribution.json` e `final-run/SHA256SUMS.txt` contêm a associação à execução, commit-base `6b3c686`, versão `1.0.0`, arquitetura `x64`, canal interno e impressão de fonte `03652ac5c3ecd489c46b6877880fb4a99ab37e4d4cd755582c73566422d4d5af`.
+
+| Artefato final | SHA-256 |
+| --- | --- |
+| `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` | `ecff94fbfee0699896af5cf80c1f4e1594ad23f18a3e809023bc998a7bf0c647` |
+| `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` | `22bc229fb2ca264e2d519d4a085873b4750a24e5f4df3d09fa583d97b8748609` |
+
+O próximo passo após a verificação do CI do commit enviado é executar pacote nativo em macOS/Linux e a homologação de instalação em VM limpa, usando artefatos oficialmente assinados quando aplicável. A rodada não autoriza lançamento público nem encerra integralmente a homologação M01.

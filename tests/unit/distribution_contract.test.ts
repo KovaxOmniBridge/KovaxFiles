@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolvePackagedExecutable, requireSmokeEvidence, distributionChannel, verifyOfficialSignature } from '../../scripts/distribution_contract.ts';
+import { resolvePackagedExecutable, requireSmokeEvidence, distributionChannel, verifyOfficialSignature, nativeSignatureEnvironment } from '../../scripts/distribution_contract.ts';
 import { generateReleaseManifest } from '../../scripts/generate_release_manifest.ts';
 import { assertRendererReady, assertOcrAssets, assertPdfExport } from '../../electron/main/packagedSmokeChecks.ts';
 import { PDFDocument } from 'pdf-lib';
@@ -14,6 +14,10 @@ for (const missing of ['por.traineddata', 'worker.min.js', 'tesseract-core-lstm.
 assert.throws(() => assertPdfExport(1), /PDF/);
 await assert.rejects(() => PDFDocument.load(Buffer.from('invalid PDF')));
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kovax-contract-'));
+for (const inherited of ['', 'invalid-module-path']) {
+  const nativeEnv = nativeSignatureEnvironment({ PSModulePath: inherited, PSMODULEPATH: inherited });
+  assert.ok(!Object.keys(nativeEnv).some(key => key.toLowerCase() === 'psmodulepath'));
+}
 try {
   const pkg = { name: 'kovax-files-desktop', version: '9.8.7', build: { productName: 'KovaxFiles Desktop' } };
   assert.throws(() => resolvePackagedExecutable(dir, pkg, 'win32', 'x64'), /obrigatório ausente/);

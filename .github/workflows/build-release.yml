@@ -1,89 +1,69 @@
 name: Build & Release Desktop Installers
-
-on:
+'on':
   push:
     tags:
-      - 'v*'
+      - v*
   workflow_dispatch:
     inputs:
       allow_unsigned_dev:
-        description: 'Permitir compilação de desenvolvimento não assinada (APENAS para testes internos; NUNCA publicado como release oficial)'
+        description: Permitir compilação de desenvolvimento não assinada (APENAS para testes internos; NUNCA publicado como release oficial)
         required: false
         default: false
         type: boolean
-
 permissions:
   contents: read
-
 jobs:
-  # ============================================================================
-  # ETAPA 1: Pré-Voo e Portão de Qualidade Obrigatório (CI Gate)
-  # ============================================================================
   preflight_ci:
     name: 🛡️ Portão de CI & Auditoria Pré-Release Obrigatório
     runs-on: ubuntu-latest
     steps:
       - name: Checkout do Repositório
         uses: actions/checkout@v4
-
-      - name: Setup Node.js (v20)
+      - name: Setup Node.js (v24)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-
+          node-version: 24
+          cache: npm
       - name: Instalar Dependências Limpas
         run: npm ci
-
       - name: Typecheck tools and regression gates
         run: npm run prepare:tessdata && npm run typecheck:tools && npm run test:distribution
-
       - name: Compilar Frontend Web e Processo Principal
         run: npm run build
-
       - name: Executar Bateria Completa de Pull Request (11 Suítes)
         run: npm run test:pr
-
       - name: Executar Testes de Carga, Desempenho e Memória (Suíte 13)
         run: npm run test:load
-
       - name: Coletar Evidências de Benchmark Reprodutível de Desempenho
         run: npm run benchmark
-
       - name: Executar Auditoria Estrita de Estabilização de Release
         run: npx tsx scripts/verify_release_distribution_package.ts
-
-  # ============================================================================
-  # ETAPA 2: Compilação Multiplataforma dos Instaladores Desktop
-  # ============================================================================
   build_installers:
     name: 📦 Compilar Instalador (${{ matrix.os }})
-    needs: [preflight_ci]
+    needs:
+      - preflight_ci
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-
+        os:
+          - windows-latest
+          - macos-latest
+          - ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-
+          node-version: 24
+          cache: npm
       - name: Install Dependencies
         run: npm ci
-
       - name: Typecheck tools and regression gates
         run: npm run prepare:tessdata && npm run typecheck:tools && npm run test:distribution
-
       - name: Build Web Dist & Electron Assets
         run: npm run build
-
       - name: Build Desktop Executables com Assinatura Obrigatória
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,6 +76,8 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DISTRIBUTION_CHANNEL: ${{ (startsWith(github.ref, 'refs/tags/') || inputs.allow_unsigned_dev != true) && 'official' || 'internal' }}
+          ALLOW_UNSIGNED_INTERNAL: ${{ inputs.allow_unsigned_dev }}
         run: |
           IS_OFFICIAL_RELEASE="${{ startsWith(github.ref, 'refs/tags/') }}"
           ALLOW_UNSIGNED="${{ inputs.allow_unsigned_dev }}"
@@ -130,13 +112,11 @@ jobs:
             npm run package:linux
           fi
         shell: bash
-
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: failure-evidence-${{ matrix.os }}
-          path: release/evidence/
-
+          path: ${{ env.RELEASE_DIR }}/**
       - name: Smoke do executável empacotado
         shell: bash
         run: |
@@ -144,83 +124,73 @@ jobs:
         env:
           DISTRIBUTION_CHANNEL: ${{ (startsWith(github.ref, 'refs/tags/') || inputs.allow_unsigned_dev != true) && 'official' || 'internal' }}
           ALLOW_UNSIGNED_INTERNAL: ${{ inputs.allow_unsigned_dev }}
-
+      - name: Jornada documental no aplicativo empacotado
+        shell: bash
+        run: if [ "${{ runner.os }}" = "Linux" ]; then xvfb-run -a npm run test:journey; else npm run test:journey; fi
+        env:
+          DISTRIBUTION_CHANNEL: ${{ (startsWith(github.ref, 'refs/tags/') || inputs.allow_unsigned_dev != true) && 'official' || 'internal' }}
+          ALLOW_UNSIGNED_INTERNAL: ${{ inputs.allow_unsigned_dev }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: smoke-failure-${{ matrix.os }}
-          path: release/evidence/
-
+          path: ${{ env.RELEASE_DIR }}/**
       - name: Validar instaladores e assinaturas
         run: npm run test:installers
         env:
           DISTRIBUTION_CHANNEL: ${{ (startsWith(github.ref, 'refs/tags/') || inputs.allow_unsigned_dev != true) && 'official' || 'internal' }}
           ALLOW_UNSIGNED_INTERNAL: ${{ inputs.allow_unsigned_dev }}
-
       - name: Validar e Gerar Manifesto Local da Plataforma
-        run: npx tsx scripts/generate_release_manifest.ts --dir=release
+        run: npm run distribution:finalize
         shell: bash
-
+        env:
+          DISTRIBUTION_CHANNEL: ${{ (startsWith(github.ref, 'refs/tags/') || inputs.allow_unsigned_dev != true) && 'official' || 'internal' }}
+          ALLOW_UNSIGNED_INTERNAL: ${{ inputs.allow_unsigned_dev }}
       - name: Upload de Artefatos Temporários
         uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.os }}
-          path: |
-            release/*.exe
-            release/*.dmg
-            release/*.AppImage
-            release/*.deb
-            release/*.rpm
-            release/*.zip
-            release/latest*.yml
-            release/SHA256SUMS.txt
-            release/evidence/**
+          path: ${{ env.RELEASE_DIR }}/**
           retention-days: 1
           if-no-files-found: error
-
-  # ============================================================================
-  # ETAPA 3: Consolidação do Manifesto SHA-256 e Publicação Oficial
-  # ============================================================================
+    env:
+      RELEASE_DIR: release/runs/${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}
   publish_release:
     permissions:
       contents: write
     name: 🚀 Homologação do Manifesto e Publicação
-    needs: [build_installers]
+    needs:
+      - build_installers
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') && (inputs.allow_unsigned_dev != true)
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-
+          node-version: 24
+          cache: npm
       - name: Install Dependencies
         run: npm ci
-
       - name: Typecheck tools and regression gates
         run: npm run prepare:tessdata && npm run typecheck:tools && npm run test:distribution
-
       - name: Criar Diretório de Consolidação
         run: mkdir -p release
-
       - name: Baixar Todos os Instaladores Compilados
         uses: actions/download-artifact@v4
         with:
           path: release-downloads
-
       - name: Mover Artefatos para Diretório de Release
-        run: |
-          find release-downloads -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.zip" -o -name "latest*.yml" \) -exec cp {} release/ \;
-          echo "Conteúdo consolidado de release:"
-          ls -la release/
+        run: >
+          find release-downloads -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name
+          "*.zip" -o -name "latest*.yml" \) -exec cp {} release/ \;
 
+          echo "Conteúdo consolidado de release:"
+
+          ls -la release/
       - name: Gerar Manifesto Consolidado SHA256SUMS.txt (Estrito para Win, Mac e Linux)
         run: npx tsx scripts/generate_release_manifest.ts --dir=release --require=win,mac,linux
-
       - name: Publicar Release Oficial no GitHub
         uses: softprops/action-gh-release@v2
         env:

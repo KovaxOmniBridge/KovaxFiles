@@ -8,7 +8,14 @@
     "tests/suites/desktop_packaged.test.ts",
     "tests/unit/distribution*.test.ts",
     "scripts/verify_packaged_installers.ts",
-    "scripts/verify_distribution_bundle.ts"
+    "scripts/verify_distribution_bundle.ts",
+    "scripts/workflow_policy.ts",
+    "scripts/distribution_artifacts.ts",
+    "scripts/distribution_provenance.ts",
+    "scripts/package_distribution.ts",
+    "scripts/finalize_distribution.ts",
+    "scripts/verify_distribution_security.ts",
+    "scripts/verify_distribution_prerequisites.ts"
   ],
   "exclude": []
 }

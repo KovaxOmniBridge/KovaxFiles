@@ -1,0 +1,3 @@
+
+> kovax-files-desktop@1.0.0 typecheck:tools
+> tsc -p tsconfig.tools.json

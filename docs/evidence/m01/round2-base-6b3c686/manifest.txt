@@ -1,0 +1,19 @@
+
+> kovax-files-desktop@1.0.0 distribution:finalize
+> tsx scripts/finalize_distribution.ts
+
+================================================================================
+  GERAÇÃO E VALIDAÇÃO ESTREITA DE MANIFESTO CRIPTOGRÁFICO SHA-256
+================================================================================
+Diretório de verificação: D:\KovaxOminiBridge\KovaxFilesApp\release\runs\1792487805698-6b3c6868-2b9a1da4
+Plataformas obrigatórias: win
+
+Manifesto SHA256SUMS.txt gerado e validado com sucesso:
+
+| Plataforma | Arquivo | Tamanho | SHA-256 |
+| :---: | :--- | :---: | :--- |
+| WIN | `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` | 136.43 MB | `57f4c8c2a58e65dc...` |
+| WIN | `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` | 136.64 MB | `31b0bab2fbf616f1...` |
+
+Total de artefatos homologados no manifesto: 2
+Manifesto final associado à execução, código-fonte, commit-base, versão, arquitetura, canal e provas reais.

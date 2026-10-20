@@ -2,6 +2,7 @@ import { BrowserWindow, app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PDFDocument } from 'pdf-lib';
+import { waitForCondition } from './journeyChecks';
 import { assertRendererReady, assertOcrAssets, assertPdfExport } from './packagedSmokeChecks';
 
 /** Automated packaged diagnostic. Clean-machine installer acceptance is separate. */
@@ -21,9 +22,9 @@ export async function runCleanEnvironmentPackagedTest(win: BrowserWindow): Promi
       const button = [...document.querySelectorAll('#root button')].find(b => b.textContent.includes('Editor de Documentos'));
       if (!button) throw new Error('Navegação React ausente');
       button.click();
-      await new Promise(r => setTimeout(r, 300));
-      if (!document.querySelector('[contenteditable="true"]')) throw new Error('Navegação React não funcionou');
+
     })()`);
+    await waitForCondition(() => win.webContents.executeJavaScript(`Boolean(document.querySelector('[contenteditable="true"]'))`), 'navegação React');
     const snapshot = await win.webContents.executeJavaScript(`({
       mounted: !!document.querySelector('#root main'),
       interactive: !!document.querySelector('[contenteditable="true"]'),

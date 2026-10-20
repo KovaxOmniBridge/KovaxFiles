@@ -1,0 +1,15 @@
+
+> kovax-files-desktop@1.0.0 test:release
+> npx tsx tests/suites/desktop_packaged.test.ts
+
+Canal internal: NÃO HOMOLOGADO
+
+[PackagedSmoke:Interface]
+[PackagedSmoke:Preload]
+[PackagedSmoke:IPC]
+[PackagedSmoke:OCR]
+[PackagedSmoke:PDF-IO]
+[PackagedSmoke:Complete]
+
+(node:7232) [DEP0180] DeprecationWarning: fs.Stats constructor is deprecated.
+(Use `KovaxFiles Desktop --trace-deprecation ...` to show where the warning was created)

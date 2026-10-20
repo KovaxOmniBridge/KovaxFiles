@@ -1,0 +1,30 @@
+[
+  {
+    "runId": "1792488999373-6b3c6868-65772dfe",
+    "commit": "6b3c68685fcb81b8086aacd35c2edb159e9b9991",
+    "sourceDigest": "03652ac5c3ecd489c46b6877880fb4a99ab37e4d4cd755582c73566422d4d5af",
+    "product": "KovaxFiles Desktop",
+    "version": "1.0.0",
+    "platform": "win",
+    "architecture": "x64",
+    "channel": "internal",
+    "target": "nsis",
+    "file": "KovaxFiles Desktop-1.0.0-win-x64-setup.exe",
+    "size": 143282385,
+    "sha256": "ecff94fbfee0699896af5cf80c1f4e1594ad23f18a3e809023bc998a7bf0c647"
+  },
+  {
+    "runId": "1792488999373-6b3c6868-65772dfe",
+    "commit": "6b3c68685fcb81b8086aacd35c2edb159e9b9991",
+    "sourceDigest": "03652ac5c3ecd489c46b6877880fb4a99ab37e4d4cd755582c73566422d4d5af",
+    "product": "KovaxFiles Desktop",
+    "version": "1.0.0",
+    "platform": "win",
+    "architecture": "x64",
+    "channel": "internal",
+    "target": "portable",
+    "file": "KovaxFiles Desktop-1.0.0-win-x64-portable.exe",
+    "size": 143054444,
+    "sha256": "22bc229fb2ca264e2d519d4a085873b4750a24e5f4df3d09fa583d97b8748609"
+  }
+]

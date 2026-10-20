@@ -1,0 +1,11 @@
+
+> kovax-files-desktop@1.0.0 test:journey
+> tsx tests/suites/desktop_packaged.test.ts --journey
+
+Canal internal: NÃO HOMOLOGADO
+
+[DocumentJourney:Import]
+[DocumentJourney:Process]
+[DocumentJourney:SaveIPC]
+[DocumentJourney:Reopen]
+[DocumentJourney:Complete]

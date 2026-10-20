@@ -16,11 +16,16 @@ export function requireSmokeEvidence(output: string): void {
     if (!output.includes(`[PackagedSmoke:${stage}]`)) throw new Error(`Evidência obrigatória ausente: ${stage}`);
   }
 }
+export function nativeSignatureEnvironment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const nativeEnv: NodeJS.ProcessEnv = { ...process.env, ...overrides };
+  // An empty/inherited module path can hide Windows PowerShell's security cmdlet.
+  delete nativeEnv.PSModulePath;
+  for (const key of Object.keys(nativeEnv)) if (key.toLowerCase() === 'psmodulepath') delete nativeEnv[key];
+  return nativeEnv;
+}
 export function verifyOfficialSignature(file: string, platform = process.platform): void {
   if (platform === 'win32') {
-    const nativeEnv: NodeJS.ProcessEnv = { ...process.env, KOVAX_SIGNATURE_FILE: path.resolve(file) };
-    // PowerShell 7 module paths must not shadow the Windows PowerShell security module.
-    delete nativeEnv.PSModulePath;
+    const nativeEnv = nativeSignatureEnvironment({ KOVAX_SIGNATURE_FILE: path.resolve(file) });
     execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "$ErrorActionPreference = 'Stop'; $s = Get-AuthenticodeSignature -LiteralPath $env:KOVAX_SIGNATURE_FILE; if ($s.Status -ne 'Valid') { throw ('Authenticode inválido: ' + $s.Status) }"], { env: nativeEnv, stdio: 'pipe' });
   } else if (platform === 'darwin') {
     const target = file.includes('.app/') ? file.slice(0, file.indexOf('.app/') + 4) : file;

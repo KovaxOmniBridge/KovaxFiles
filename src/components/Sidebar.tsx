@@ -140,6 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onSelectTab }) => {
             return (
               <button
                 key={tab.id}
+                data-tool-id={tab.id}
                 onClick={() => onSelectTab(tab.id)}
                 className={`w-full text-left px-3 py-3 rounded-xl transition-all duration-200 flex items-center justify-between group ${
                   isActive

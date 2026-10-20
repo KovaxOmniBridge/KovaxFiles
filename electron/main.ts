@@ -11,6 +11,7 @@ import { WindowManager } from './main/windowManager';
 import { configureSessionSecurity } from './main/sessionSecurity';
 import { registerAllIpcHandlers } from './ipc';
 import { runPadesE2eRealElectronTest } from './main/padesE2eRunner';
+import { runDocumentJourney } from './main/documentJourneyRunner';
 import { runCleanEnvironmentPackagedTest } from './main/cleanEnvironmentRunner';
 
 export * from './pathSecurity';
@@ -20,6 +21,7 @@ const __dirname = path.dirname(__filename);
 
 const preloadPath = path.join(__dirname, 'preload.cjs');
 const windowManager = new WindowManager(preloadPath);
+const isJourneyTest = process.argv.includes('--document-journey');
 const isSmokeTest = process.argv.includes('--smoke-test') || process.argv.includes('--test-clean-environment');
 const isPadesE2eTest = process.argv.includes('--test-pades-e2e');
 
@@ -31,7 +33,7 @@ app.whenReady().then(() => {
   registerAllIpcHandlers(() => windowManager.getMainWindow());
 
   // 3. Suporte a Smoke Test / Teste de Execução em Ambiente Limpo (CI / Testes Automatizados)
-  if (isSmokeTest) {
+  if (isSmokeTest || isJourneyTest) {
     const timer = setTimeout(() => { console.error('Packaged smoke timeout'); app.exit(1); }, 150000);
     const fail = (_event: unknown, ...detail: unknown[]) => { console.error('Packaged smoke runtime failure', ...detail); app.exit(1); };
     process.on('uncaughtException', e => { console.error(e); app.exit(1); });
@@ -42,7 +44,8 @@ app.whenReady().then(() => {
     win.webContents.on('render-process-gone', fail);
     win.webContents.on('console-message', (_event, level, message) => { if (level === 3) { console.error(message); app.exit(1); } });
     win.webContents.once('did-finish-load', async () => {
-      await runCleanEnvironmentPackagedTest(win);
+      if (isJourneyTest) await runDocumentJourney(win);
+      else await runCleanEnvironmentPackagedTest(win);
       clearTimeout(timer);
     });
     return;

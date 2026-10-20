@@ -5,6 +5,9 @@
  */
 
 import fs from 'fs';
+import { load } from 'js-yaml';
+import { validateWorkflow } from './workflow_policy';
+import { nativeSignatureEnvironment } from './distribution_contract';
 import path from 'path';
 import os from 'os';
 import { spawnSync } from 'child_process';
@@ -55,10 +58,11 @@ assert(
 if (process.platform === 'win32') {
   const psExe = path.join(process.env.WINDIR || 'C:\\Windows', 'System32\\WindowsPowerShell\\v1.0\\powershell.exe');
   if (fs.existsSync(psExe)) {
-    const probe = spawnSync(psExe, ['-NoProfile', '-Command', 'Get-Command Get-AuthenticodeSignature'], { encoding: 'utf8' });
+    const probe = spawnSync(psExe, ['-NoProfile', '-NonInteractive', '-Command', "$ErrorActionPreference = 'Stop'; Get-Command Get-AuthenticodeSignature"], { encoding: 'utf8', env: nativeSignatureEnvironment() });
     assert(
       probe.status === 0,
-      'Cmdlet nativo Get-AuthenticodeSignature disponível para validação de integridade no Windows'
+      'Cmdlet nativo Get-AuthenticodeSignature disponível para validação de integridade no Windows',
+      probe.error?.message || probe.stderr
     );
   }
 }
@@ -156,26 +160,13 @@ console.log('\n[5/5] Validando Regras de Geração do Manifesto SHA256SUMS.txt..
 const buildWorkflowPath = path.join(rootDir, '.github/workflows/build-release.yml');
 const workflowSrc = fs.readFileSync(buildWorkflowPath, 'utf8');
 
-assert(
-  !workflowSrc.includes('>> SHA256SUMS.txt || true'),
-  'Workflow de release não mascara erros na geração de SHA256SUMS.txt com "|| true"'
-);
-
-assert(
-  workflowSrc.includes('generate_release_manifest.ts') ||
-  workflowSrc.includes('Generate SHA-256 Integrity Manifest'),
-  'Geração do manifesto SHA-256 formalmente declarada no pipeline'
-);
-
-// ============================================================================
-// PILAR 6: Evidências Mandatórias de Desempenho e Carga Pré-Release
-// ============================================================================
-console.log('\n[6/6] Validando Exigência de Testes de Carga e Benchmarks Pré-Release...');
-
-assert(
-  workflowSrc.includes('npm run test:load') && workflowSrc.includes('npm run benchmark'),
-  'Workflow de release oficial exige execução de testes de carga e benchmarks antes da compilação'
-);
+const workflow = load(workflowSrc) as { jobs: Record<string, { steps: { run?: string }[] }> };
+try { validateWorkflow(workflowSrc, pkg.scripts); assert(true, 'Política estrutural de permissões, ordem e publicação'); }
+catch (error) { assert(false, 'Política estrutural de workflows', String(error)); }
+const packageSteps = workflow.jobs.build_installers.steps;
+assert(packageSteps.some(step => /npm\s+run\s+distribution:finalize/.test(step.run || '')), 'Manifesto final e evidências obrigatórios');
+const preflight = workflow.jobs.preflight_ci.steps.map(step => step.run || '');
+assert(preflight.some(run => /npm\s+run\s+test:load/.test(run)) && preflight.some(run => /npm\s+run\s+benchmark/.test(run)), 'Carga e benchmark antes do empacotamento');
 
 assert(
   typeof pkg.scripts['test:load'] === 'string' && typeof pkg.scripts['benchmark'] === 'string',

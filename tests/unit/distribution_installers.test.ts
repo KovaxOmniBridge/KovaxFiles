@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { expectedArtifacts, validateArtifactInventory, verifyArtifactDirectory, hashFile, reserveDistributionDirectory, assertNoPublication, type BuildIdentity, type ArtifactRecord } from '../../scripts/distribution_artifacts.ts';
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const identity: BuildIdentity = { runId: 'unit-run', commit: 'abc', sourceDigest: 'def', product: pkg.build.productName, version: pkg.version, platform: 'win', architecture: 'x64', channel: 'internal' };
+const expected = expectedArtifacts(pkg, 'win', 'x64');
+const records: ArtifactRecord[] = expected.map(e => ({ ...identity, ...e, size: 2_000_000, sha256: 'a'.repeat(64) }));
+const verify = (items: ArtifactRecord[], files = items.map(i => i.file)) => validateArtifactInventory(expected, identity, items, files);
+verify(records);
+assert.throws(() => verify(records.map((r, i) => ({ ...r, file: `arbitrary-${i}.exe` }))));
+assert.throws(() => verify(records.slice(1)));
+for (const field of ['version', 'architecture', 'runId', 'commit', 'sourceDigest'] as const) assert.throws(() => verify(records.map(r => ({ ...r, [field]: 'old-or-wrong' }))));
+assert.throws(() => verify([records[0], records[0]]));
+assert.throws(() => verify(records, [...records.map(r => r.file), 'old-version.exe']));
+assert.throws(() => verify(records.map(r => ({ ...r, file: r.file.replace(pkg.version, '0.0.1') }))));
+assert.throws(() => verify(records.map(r => ({ ...r, size: 10 }))));
+const newer = { ...pkg, version: '9.8.7' };
+assert.ok(expectedArtifacts(newer, 'win', 'arm64').every(e => e.file.includes('9.8.7') && e.file.includes('arm64')));
+assert.throws(() => assertNoPublication(['--publish', 'always', '--publish', 'never']));
+assert.throws(() => assertNoPublication(['--publish=always']));
+assertNoPublication(['--publish', 'never']);
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'm01-exclusive-'));
+try {
+  const output = path.join(temp, 'build');
+  reserveDistributionDirectory(output);
+  assert.throws(() => reserveDistributionDirectory(output), /exclusiva/);
+  const physicalRecords = expected.map(item => {
+    const file = path.join(output, item.file);
+    fs.writeFileSync(file, Buffer.alloc(1_000_000, 1));
+    return { ...identity, ...item, size: fs.statSync(file).size, sha256: hashFile(file) };
+  });
+  fs.writeFileSync(path.join(output, 'build-run.json'), JSON.stringify(identity));
+  fs.writeFileSync(path.join(output, 'artifacts.json'), JSON.stringify(physicalRecords));
+  verifyArtifactDirectory(output, pkg, { architecture: 'x64' });
+  assert.throws(() => verifyArtifactDirectory(output, pkg, { architecture: 'arm64' }));
+  const first = path.join(output, physicalRecords[0].file);
+  fs.writeFileSync(first, Buffer.alloc(1_000_000, 2));
+  assert.throws(() => verifyArtifactDirectory(output, pkg, {}), /Hash final divergente/);
+  fs.writeFileSync(first, 'truncated');
+  assert.throws(() => verifyArtifactDirectory(output, pkg, {}), /Tamanho final divergente/);
+} finally { fs.rmSync(temp, { recursive: true, force: true }); }
+console.log('Installer identity: expected targets, version, architecture, duplicates, mixing and truncation passed');

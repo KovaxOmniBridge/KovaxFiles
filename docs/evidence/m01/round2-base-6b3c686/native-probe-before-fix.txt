@@ -1,0 +1,6 @@
+{
+  "psExe": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+  "status": 1,
+  "stdout": "",
+  "stderr": "Get-Command : O termo 'Get-AuthenticodeSignature' não é reconhecido como nome de cmdlet, função, arquivo de script ou \r\nprograma operável. Verifique a grafia do nome ou, se um caminho tiver sido incluído, veja se o caminho está correto e \r\ntente novamente.\r\nNo linha:1 caractere:1\r\n+ Get-Command Get-AuthenticodeSignature\r\n+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [Get-Command], CommandNotFoundExcepti \r\n   on\r\n    + FullyQualifiedErrorId : CommandNotFoundException,Microsoft.PowerShell.Commands.GetCommandCommand\r\n \r\n"
+}

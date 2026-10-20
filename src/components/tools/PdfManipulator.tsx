@@ -18,6 +18,7 @@ import {
   FileCheck,
   AlertCircle
 } from 'lucide-react';
+import { fileSystemAdapter } from '../../infrastructure/filesystem/fileSystemAdapter';
 import { LocalPdfEngine } from '../../services/pdfEngine';
 import { CompressionEngine } from '../../services/compressionEngine';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -60,6 +61,7 @@ export const PdfManipulator: React.FC = () => {
   const [isLoadingThumbnails, setIsLoadingThumbnails] = useState<boolean>(false);
   const [organizeResult, setOrganizeResult] = useState<{ data: Uint8Array; fileName: string } | null>(null);
 
+  const [exportState, setExportState] = useState('idle');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -308,16 +310,17 @@ export const PdfManipulator: React.FC = () => {
   // =========================================================================
   // DOWNLOADS
   // =========================================================================
-  const downloadFile = (data: Uint8Array, fileName: string) => {
-    const blob = new Blob([new Uint8Array(data)], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const downloadFile = async (data: Uint8Array, fileName: string) => {
+    setExportState('saving');
+    try {
+      const result = await fileSystemAdapter.saveExportedFile(fileName, data);
+      if (result.canceled) { setExportState('canceled'); return; }
+      if (!result.success) throw new Error(result.error || 'Falha ao salvar PDF');
+      setExportState('saved');
+    } catch (error) {
+      setExportState('error');
+      setErrorMessage('Erro ao exportar PDF: ' + (error instanceof Error ? error.message : String(error)));
+    }
   };
 
   const downloadAllSplitZip = () => {
@@ -340,7 +343,7 @@ export const PdfManipulator: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto font-sans">
+    <div data-testid="pdf-manipulator" data-file-count={fileList.length} data-export-state={exportState} className="space-y-6 max-w-5xl mx-auto font-sans">
       {/* Tool Header */}
       <div className="flex flex-wrap items-center justify-between pb-4 border-b border-slate-800 gap-4">
         <div>
@@ -394,7 +397,7 @@ export const PdfManipulator: React.FC = () => {
 
       {/* Global Error Banner */}
       {errorMessage && (
-        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center justify-between">
+        <div data-testid="pdf-error" className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <span>{errorMessage}</span>
@@ -428,7 +431,7 @@ export const PdfManipulator: React.FC = () => {
               <label className="btn-action px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center gap-2 cursor-pointer transition-all">
                 <Plus className="w-4 h-4" />
                 <span>Adicionar PDFs</span>
-                <input type="file" accept=".pdf" multiple onChange={handleAddFiles} className="hidden" />
+                <input data-testid="merge-input" type="file" accept=".pdf" multiple onChange={handleAddFiles} className="hidden" />
               </label>
             </div>
           </div>
@@ -494,7 +497,7 @@ export const PdfManipulator: React.FC = () => {
               </button>
 
               <button
-                onClick={handleMerge}
+                data-testid="merge-process" onClick={handleMerge}
                 disabled={isProcessing}
                 className="btn-action px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-blue-600/25 disabled:opacity-50 transition-all"
               >
@@ -525,14 +528,14 @@ export const PdfManipulator: React.FC = () => {
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-800">
                 <button
-                  onClick={() => { setFileList([]); setMergeResult(null); }}
+                  data-testid="merge-reset" onClick={() => { setFileList([]); setMergeResult(null); setExportState('idle'); }}
                   className="text-xs text-slate-400 hover:text-slate-200 underline"
                 >
                   Mesclar Outros Arquivos
                 </button>
 
                 <button
-                  onClick={() => downloadFile(mergeResult.data, mergeResult.fileName)}
+                  data-testid="merge-export" onClick={() => downloadFile(mergeResult.data, mergeResult.fileName)}
                   className="btn-action px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-blue-600/25 transition-all"
                 >
                   <Download className="w-4 h-4" />

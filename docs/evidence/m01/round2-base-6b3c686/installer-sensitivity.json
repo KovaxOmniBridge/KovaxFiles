@@ -1,0 +1,5 @@
+{
+  "baseline": "6b3c686",
+  "legacyInstallerPredicateAcceptsTwoArbitraryExecutables": true,
+  "newVerifierRejectsArbitraryExecutables": "automated assertion in distribution_installers.test.ts"
+}
