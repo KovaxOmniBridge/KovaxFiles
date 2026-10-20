@@ -505,17 +505,96 @@ Para garantir que o instalador funcione perfeitamente para advogados e servidore
 
 **Status:** **PENDENTE** de execução pelo operador em ambiente de VM isolada.
 
+
+
 ---
 
-### Pendências Formais e Próximos Bloqueios da Plataforma
+## Rodada 6 — base c10d767, 20/10/2026: Contrato Obrigatório de Commit, Execução Remota Multiplataforma e Auditoria por Plataforma
 
-1. **Assinatura Digital Comercial Authenticode e Apple Developer ID:**
-   - Sem chaves de assinatura comercial provisionadas, os instaladores permanecem classificados estritamente como **NÃO HOMOLOGADO**.
-   - O canal oficial de release do CI rejeita compilações sem assinatura válida.
-2. **Homologação em Máquina Limpa (VM Isolada):**
-   - O roteiro acima deve ser executado e documentado com snapshots e logs da VM antes de qualquer promoção do instalador.
-3. **Pipeline Multiplataforma Nativo:**
-   - Os jobs de empacotamento em macOS (`.dmg`, `.zip`) e Linux (`.AppImage`) no GitHub Actions devem ser acionados e monitorados em runners nativos.
+Esta rodada consolida a implementação estrita do campo obrigatório de commit nas provas de distribuição, a execução e acompanhamento do fluxo interno de empacotamento via `workflow_dispatch` (Run `39516147493`), a auditoria detalhada dos resultados por plataforma (Windows, macOS e Linux) e o diagnóstico e roteiro para homologação em VM Windows limpa.
+
+### 1. Ponto 1: Commit Obrigatório nas Provas de Distribuição
+
+- **Regra e Contrato Estrito:** Em `scripts/distribution_contract.ts`, as interfaces `DistributionProof` e `InstallersProof` agora exigem estritamente `commit: string;`. Tanto `validateDistributionProof` quanto `validateInstallersProof` foram atualizados para rejeitar sumariamente:
+  - Campo ausente (`undefined` ou omitido do JSON de evidência).
+  - Campo vazio (`""` ou `"   "` com espaços em branco).
+  - Campo divergente (commit presente, mas não idêntico ao `expected.commit`).
+- **Validação com o Validador Real (Testes Unitários):**
+  - Em `tests/unit/distribution_contract.test.ts`: Adicionadas baterias de testes testando diretamente o validador real contra provas reais de smoke, jornada, jornada negativa e instaladores, comprovando a rejeição com erro descritivo em todos os cenários negativos (ausente, vazio e divergente).
+  - Em `tests/unit/distribution_journey.test.ts`: Adicionada verificação cruzada de rejeição em contratos de jornada documental.
+- **Homologação:** Execução de `npm run test:distribution` aprovada com 100% de sucesso em todos os gates.
+
+### 2. Ponto 2: Workflow Interno Completo (`workflow_dispatch`)
+
+- **Workflow:** `.github/workflows/build-release.yml`.
+- **Garantia de Isolamento Prévio:** Confirmado previamente que o acionamento interno via `workflow_dispatch` com `allow_unsigned_dev: true` não cria nem publica qualquer release no GitHub (0 releases existentes), não cria tags Git (0 tags existentes) e não aciona o deploy do GitHub Pages (o job `🚀 Homologação do Manifesto e Publicação` é protegido por `if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.allow_unsigned != 'true'`).
+- **Acompanhamento da Execução até a Conclusão:**
+  - **Run ID:** [`39516147493`](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39516147493)
+  - **Commit-base:** `c10d7670bdbb25d0a4ceb3d92b262869e7fd1380`
+  - **Job Pré-vôo / Portão de CI:** [118948657800](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39516147493/job/118948657800) — **SUCESSO** (executou as 11 suítes de PR, load test, benchmark e auditoria de redação).
+  - **Job Publicação:** [118952052018](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39516147493/job/118952052018) — **SKIPPED** (nenhuma tag, release ou deploy de Pages criado).
+
+### 3. Ponto 3: Resultados por Plataforma (Windows, macOS e Linux)
+
+Os resultados do workflow `39516147493` foram inspecionados individualmente via API e logs brutos de execução:
+
+| Plataforma | Runner GitHub | Job ID & Link | Geração Pacote | Smoke Test | Jornada Positiva | Jornada Negativa | Instaladores | Manifesto SHA-256 | Status Consolidado |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Windows** | `windows-latest` | [118949377899](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39516147493/job/118949377899) | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | **CONCLUÍDO (NÃO HOMOLOGADO)** |
+| **macOS** | `macos-latest` | [118949377738](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39516147493/job/118949377738) | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | **CONCLUÍDO (NÃO HOMOLOGADO)** |
+| **Linux** | `ubuntu-latest` | [118949377779](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39516147493/job/118949377779) | ✅ APROVADO | ❌ FALHOU | ⏳ PENDENTE | ⏳ PENDENTE | ⏳ PENDENTE | ⏳ PENDENTE | **PENDENTE (Falha no Smoke)** |
+
+#### Detalhamento Técnico Comprovado:
+
+1. **Windows (`windows-latest`):**
+   - **Artefatos Gerados:**
+     - `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` (142.537.487 bytes | 135.93 MB) — SHA-256: `d18e3fb1c960a085f54ba0a8799aec0646398f024125449bedd6e5a746418758`
+     - `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` (142.309.577 bytes | 135.72 MB) — SHA-256: `fea7ddf44822a5f857dc60ed70093496118363e7c71e5d6ba72006bd8ba96131`
+   - **Provas de Execução:** `evidence/smoke/result.json`, `evidence/journey/result.json`, `evidence/journey-negative/result.json`, `evidence/installers.json` e `evidence/distribution.json` validados com `status: "passed"` e `commit: "c10d7670bdbb25d0a4ceb3d92b262869e7fd1380"`.
+   - **Classificação:** **NÃO HOMOLOGADO** (canal interno, sem assinatura comercial Authenticode).
+
+2. **macOS (`macos-latest`):**
+   - **Artefatos Gerados:**
+     - `KovaxFiles Desktop-1.0.0-mac-arm64.dmg` (172.854.769 bytes | 164.85 MB) — SHA-256: `c7d7cdf0f54c3b71ef24c2e29d4dcfa0c9cc72cea6e4f77352e6d443cf6ce2f0`
+     - `KovaxFiles Desktop-1.0.0-mac-arm64.zip` (166.818.739 bytes | 159.09 MB) — SHA-256: `6d7fba1c55ff26f5a2e6f154c8f66653a886c643807c7618f65e38e808a2f87b`
+   - **Provas de Execução:** Smoke, jornada documental, jornada negativa, instaladores e manifesto validados com sucesso no runner ARM64.
+   - **Classificação:** **NÃO HOMOLOGADO** (canal interno, sem assinatura Apple Developer ID / Notarização).
+
+3. **Linux (`ubuntu-latest`):**
+   - **Geração do Pacote:** Concluída com sucesso (`KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage` e `linux-unpacked/kovax-files-desktop`).
+   - **Falha no Smoke:** O Chromium/Electron abortou com erro de setuid sandbox:
+     `FATAL:setuid_sandbox_host.cc:166] The SUID sandbox helper binary was found, but is not configured correctly. You need to make sure that /home/runner/work/KovaxFiles/KovaxFiles/release/runs/39516147493-1-ubuntu-latest/linux-unpacked/chrome-sandbox is owned by root and has mode 4755.`
+   - **Etapas Seguintes:** Conforme a regra mandatória ("Job pulado ou não executado deve permanecer pendente"), jornadas positiva, negativa, instaladores e manifesto permanecem estritamente como **PENDENTES**.
+
+### 4. Ponto 4: Homologação em Windows em VM Limpa
+
+- **Diagnóstico do Ambiente Local:**
+  - Foi verificado que o sistema host de desenvolvimento possui ferramentas instaladas (Node.js v24.22.0, Python 3.15, Git, VS Code).
+  - O host não possui motor de virtualização disponível ou configurado: Hyper-V (`Get-VM`) inativo, VirtualBox (`VBoxManage`) ausente, VMware (`vmrun`) ausente e Windows Sandbox (`WindowsSandbox.exe`) não instalado na edição do Windows local.
+  - **O que falta para execução automatizada:**
+    1. Instalação e habilitação do recurso Windows Sandbox (`Enable-WindowsOptionalFeature -FeatureName "Containers-DisposableClientVM" -All`) ou provisionamento de uma VM Hyper-V/VirtualBox isolada.
+    2. Provisionamento de imagem Windows 10/11 limpa (sem PATH de Node, Python ou compiladores).
+    3. Mecanismo de isolamento de rede (virtual switch offline).
+
+- **Roteiro Curto de Execução Manual em VM Limpa (8 Passos):**
+  1. **Conferência de Hash:** Na VM limpa, verificar o digest SHA-256 do instalador baixado:
+     ```powershell
+     (Get-FileHash "KovaxFiles Desktop-1.0.0-win-x64-setup.exe" -Algorithm SHA256).Hash
+     ```
+     Conferir se é exatamente `d18e3fb1c960a085f54ba0a8799aec0646398f024125449bedd6e5a746418758`.
+  2. **Instalação:** Executar o instalador com usuário comum (não-elevado), instalar no `%LOCALAPPDATA%` padrão e verificar criação dos atalhos no Menu Iniciar e Desktop.
+  3. **Abertura Offline:** Desconectar os adaptadores de rede da VM. Iniciar o KovaxFiles Desktop pelo atalho. Confirmar que a janela abre sem exigir conexões externas e sem erros de dependências ausentes (ex.: VCRedist).
+  4. **Operação PDF:** Importar dois PDFs de teste, executar a fusão/numeração e salvar/exportar o arquivo resultante.
+  5. **OCR Documental:** Carregar uma imagem contendo texto em português e disparar o reconhecimento. Confirmar que o worker Tesseract local embutido conclui o OCR offline com sucesso.
+  6. **Recuperação de Erros:** Fornecer um arquivo PDF truncado/corrompido. Confirmar que o aplicativo exibe toast/alerta de erro na UI e desabilita exportação sem travamento da aplicação.
+  7. **Reinício do Aplicativo:** Fechar o KovaxFiles Desktop, reiniciar o sistema operacional da VM, reabrir o aplicativo e verificar integridade da interface e retenção de configurações locais.
+  8. **Desinstalação Limpa:** Acessar "Configurações > Aplicativos > Aplicativos Instalados", desinstalar o KovaxFiles Desktop e verificar a remoção completa de executáveis, pastas em `%LOCALAPPDATA%\Programs` e atalhos.
+
+### 5. Auditoria de Governança e Regressões
+
+- **Bateria Local (`npm test`):** 11 de 11 suítes de PR homologadas com 100% de aprovação (Build, Segurança Electron, PDF, LGPD, Criptografia AES-GCM, DOCX, OCR, PAdES, Protocolo Judicial, Acervo Jurídico e Testes Adversariais).
+- **Classificação Mandatória:** Todos os pacotes internos gerados nesta rodada continuam classificados expressamente como **NÃO HOMOLOGADOS**. Nenhuma prontidão para lançamento oficial é declarada.
+
 
 
 
