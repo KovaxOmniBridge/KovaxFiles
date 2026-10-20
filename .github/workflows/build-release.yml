@@ -44,7 +44,7 @@ jobs:
       - preflight_ci
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         os:
           - windows-latest
@@ -161,6 +161,7 @@ jobs:
           if-no-files-found: error
     env:
       RELEASE_DIR: release/runs/${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}
+      NODE_OPTIONS: --max-old-space-size=4096
   publish_release:
     permissions:
       contents: write
