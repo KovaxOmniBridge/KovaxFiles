@@ -91,7 +91,13 @@ try {
   // 8. Arquitetura divergente
   assert.throws(() => validateDistributionProof({ ...validProof, architecture: 'arm64' }, 'journey-negative', mockIdentity), /Arquitetura divergente/);
 
-  // 9. Commit divergente
+  // 9. Validação estrita de commit no contrato de prova real (ausente, vazio e divergente)
+  assert.throws(() => validateDistributionProof({ ...validProof, commit: undefined as any }, 'journey-negative', mockIdentity), /Commit ausente/);
+  const proofWithoutCommit = { ...validProof };
+  delete (proofWithoutCommit as any).commit;
+  assert.throws(() => validateDistributionProof(proofWithoutCommit, 'journey-negative', mockIdentity), /Commit ausente/);
+  assert.throws(() => validateDistributionProof({ ...validProof, commit: '' }, 'journey-negative', mockIdentity), /Commit vazio/);
+  assert.throws(() => validateDistributionProof({ ...validProof, commit: '   ' }, 'journey-negative', mockIdentity), /Commit vazio/);
   assert.throws(() => validateDistributionProof({ ...validProof, commit: 'other-commit' }, 'journey-negative', mockIdentity), /Commit divergente/);
 
   // 10. Registros ou hashes incompatíveis

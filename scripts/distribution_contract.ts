@@ -55,7 +55,7 @@ export interface DistributionProof {
   platform: DistributionPlatform;
   architecture: string;
   artifacts?: ArtifactRecord[];
-  commit?: string;
+  commit: string;
   executable?: string;
   executableSha256?: string;
   payloadPath?: string;
@@ -84,9 +84,13 @@ export function validateDistributionProof(
   assert.equal(p.mode, expectedMode, `Tipo de prova incorreto para ${expectedMode}: esperado ${expectedMode}, obtido ${p.mode}`);
   assert.equal(p.status, 'passed', `Evidência de ${modeLabel} reprovada para ${identity.platform}: status "${p.status}"`);
   assert.equal(p.runId, identity.runId, `${capLabel} pertence a outra execução para ${identity.platform}: ${p.runId} vs ${identity.runId}`);
-  if (identity.commit && p.commit) {
-    assert.equal(p.commit, identity.commit, `Commit divergente em ${modeLabel} para ${identity.platform}: ${p.commit} vs ${identity.commit}`);
+  if (p.commit === undefined || p.commit === null) {
+    throw new Error(`Commit ausente em ${modeLabel} para ${identity.platform}`);
   }
+  if (typeof p.commit !== 'string' || p.commit.trim().length === 0) {
+    throw new Error(`Commit vazio em ${modeLabel} para ${identity.platform}`);
+  }
+  assert.equal(p.commit, identity.commit, `Commit divergente em ${modeLabel} para ${identity.platform}: ${p.commit} vs ${identity.commit}`);
   assert.equal(p.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em ${modeLabel} para ${identity.platform}: ${p.sourceDigest} vs ${identity.sourceDigest}`);
   assert.equal(p.platform, identity.platform, `Plataforma divergente em ${modeLabel} para ${identity.platform}`);
   assert.equal(p.architecture, identity.architecture, `Arquitetura divergente em ${modeLabel} para ${identity.platform}`);
@@ -130,7 +134,7 @@ export interface InstallersProof {
   platform: DistributionPlatform;
   architecture: string;
   records: ArtifactRecord[];
-  commit?: string;
+  commit: string;
   classification?: string;
   [key: string]: unknown;
 }
@@ -145,9 +149,13 @@ export function validateInstallersProof(
   }
   const inst = installers as InstallersProof;
   assert.equal(inst.runId, identity.runId, `Instaladores pertencem a outra execução para ${identity.platform}`);
-  if (identity.commit && inst.commit) {
-    assert.equal(inst.commit, identity.commit, `Commit divergente em instaladores para ${identity.platform}`);
+  if (inst.commit === undefined || inst.commit === null) {
+    throw new Error(`Commit ausente em instaladores para ${identity.platform}`);
   }
+  if (typeof inst.commit !== 'string' || inst.commit.trim().length === 0) {
+    throw new Error(`Commit vazio em instaladores para ${identity.platform}`);
+  }
+  assert.equal(inst.commit, identity.commit, `Commit divergente em instaladores para ${identity.platform}: ${inst.commit} vs ${identity.commit}`);
   assert.equal(inst.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em instaladores para ${identity.platform}`);
   assert.equal(inst.platform, identity.platform, `Plataforma divergente em instaladores para ${identity.platform}`);
   assert.equal(inst.architecture, identity.architecture, `Arquitetura divergente em instaladores para ${identity.platform}`);
