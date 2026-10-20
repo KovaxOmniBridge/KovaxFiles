@@ -69,22 +69,35 @@ export const PdfManipulator: React.FC = () => {
   // FUSÃO (MERGE)
   // =========================================================================
   const handleAddFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const filesArray = Array.from(e.target.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
-      const newItems: SelectedPdfItem[] = filesArray.map((f, idx) => ({
-        id: Math.random().toString(36).substring(7) + idx,
-        file: f,
-        name: f.name,
-        size: f.size
-      }));
-      setFileList(prev => [...prev, ...newItems]);
-      setMergeResult(null);
-      setErrorMessage(null);
+    if (e.target.files && e.target.files.length > 0) {
+      const allFiles = Array.from(e.target.files);
+      const pdfFiles = allFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      const invalidCount = allFiles.length - pdfFiles.length;
+      if (invalidCount > 0) {
+        setErrorMessage(
+          invalidCount === 1
+            ? 'Apenas arquivos PDF são aceitos. 1 arquivo inválido foi ignorado.'
+            : `Apenas arquivos PDF são aceitos. ${invalidCount} arquivos inválidos foram ignorados.`
+        );
+      } else {
+        setErrorMessage(null);
+      }
+      if (pdfFiles.length > 0) {
+        const newItems: SelectedPdfItem[] = pdfFiles.map((f, idx) => ({
+          id: Math.random().toString(36).substring(7) + idx,
+          file: f,
+          name: f.name,
+          size: f.size
+        }));
+        setFileList(prev => [...prev, ...newItems]);
+        setMergeResult(null);
+      }
     }
   };
 
   const handleRemoveFile = (id: string) => {
     setFileList(prev => prev.filter(item => item.id !== id));
+    setErrorMessage(null);
   };
 
   const handleClearFileList = () => {
@@ -402,7 +415,7 @@ export const PdfManipulator: React.FC = () => {
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <span>{errorMessage}</span>
           </div>
-          <button onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-red-200">
+          <button data-testid="dismiss-error" onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-red-200">
             ×
           </button>
         </div>
@@ -420,6 +433,7 @@ export const PdfManipulator: React.FC = () => {
             <div className="flex items-center gap-2">
               {fileList.length > 0 && (
                 <button
+                  data-testid="clear-file-list"
                   onClick={handleClearFileList}
                   className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 font-semibold text-xs flex items-center gap-1.5 transition-all"
                 >
@@ -468,6 +482,7 @@ export const PdfManipulator: React.FC = () => {
                       <ArrowDown className="w-4 h-4" />
                     </button>
                     <button
+                      data-testid={`remove-file-${idx}`}
                       onClick={() => handleRemoveFile(item.id)}
                       className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10"
                       title="Excluir da lista"
@@ -489,6 +504,7 @@ export const PdfManipulator: React.FC = () => {
           {fileList.length >= 2 && !mergeResult && (
             <div className="flex justify-between items-center pt-2">
               <button
+                data-testid="clear-file-list-bottom"
                 onClick={handleClearFileList}
                 className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs flex items-center gap-1.5 transition-all"
               >

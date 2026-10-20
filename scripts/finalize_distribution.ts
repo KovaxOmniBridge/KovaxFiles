@@ -9,7 +9,8 @@ import { generateReleaseManifest } from './generate_release_manifest';
 const root = distributionRoot();
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const { identity, records } = verifyArtifactDirectory(root, pkg, { channel: distributionChannel(), sourceDigest: sourceDigest() });
-const proofs = ['smoke', 'journey'].map(mode => JSON.parse(fs.readFileSync(path.join(root, 'evidence', mode, 'result.json'), 'utf8')));
+const proofModes = ['smoke', 'journey', ...(fs.existsSync(path.join(root, 'evidence', 'journey-negative', 'result.json')) ? ['journey-negative'] : [])];
+const proofs = proofModes.map(mode => JSON.parse(fs.readFileSync(path.join(root, 'evidence', mode, 'result.json'), 'utf8')));
 for (const proof of proofs) {
   assert.equal(proof.status, 'passed', 'Smoke e jornada devem passar');
   assert.equal(proof.runId, identity.runId); assert.equal(proof.sourceDigest, identity.sourceDigest);
@@ -21,5 +22,15 @@ const installers = JSON.parse(fs.readFileSync(path.join(root, 'evidence', 'insta
 assert.equal(installers.runId, identity.runId); assert.deepEqual(installers.records, records);
 const manifest = generateReleaseManifest({ dir: root, requiredPlatforms: [identity.platform] });
 for (const artifact of records) assert.equal(manifest.entries.find(e => e.file === artifact.file)?.sha256, artifact.sha256);
-fs.writeFileSync(path.join(root, 'evidence', 'distribution.json'), JSON.stringify({ ...identity, classification: identity.channel === 'internal' ? 'NAO_HOMOLOGADO' : 'SIGNED_ARTIFACTS_VERIFIED', artifacts: records, smoke: 'passed', journey: 'passed', installers: 'identified-and-verified', cleanMachineAcceptance: 'pending', manifest: path.basename(manifest.manifestPath) }, null, 2));
+fs.writeFileSync(path.join(root, 'evidence', 'distribution.json'), JSON.stringify({
+  ...identity,
+  classification: identity.channel === 'internal' ? 'NAO_HOMOLOGADO' : 'SIGNED_ARTIFACTS_VERIFIED',
+  artifacts: records,
+  smoke: 'passed',
+  journey: 'passed',
+  negativeJourney: fs.existsSync(path.join(root, 'evidence', 'journey-negative', 'result.json')) ? 'passed' : 'not-run',
+  installers: 'identified-and-verified',
+  cleanMachineAcceptance: 'pending',
+  manifest: path.basename(manifest.manifestPath)
+}, null, 2));
 console.log('Manifesto final associado à execução, código-fonte, commit-base, versão, arquitetura, canal e provas reais.');

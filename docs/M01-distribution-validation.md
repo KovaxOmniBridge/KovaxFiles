@@ -1,6 +1,6 @@
 # M01 — Empacotamento e validação interna
 
-Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. A seção “Rodada 2” registra as correções posteriores e o procedimento vigente; os registros anteriores não foram substituídos.
+Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. A seção “Rodada 2” registra as correções posteriores e o procedimento da base `38caad5`/`471971f`; a seção “Rodada 3” consolida a correção de seleção de artefatos de publicação e os cenários negativos da jornada real na base `471971f`. Os registros anteriores não foram substituídos.
 
 Baseline inspecionada: `main`, `c23754d018c792b49f5daa659431f93014c87409`, checkout sem alterações rastreadas. A pasta ignorada `release/` já continha artefatos antigos; eles não comprovam a implementação atual.
 
@@ -155,3 +155,136 @@ A rodada adicional usa `release/runs/1792489903110-38caad5c-929fac36`, commit-ba
 Passaram a tipagem do aplicativo e das ferramentas, `npm test` (11/11), smoke e jornada documental no pacote Windows, verificação dos dois instaladores e geração de manifesto. Os quatro cenários negativos retornaram código 1. A verificação Authenticode nativa rejeitou executável e instaladores com `NotSigned`. `npm run test:release` passou com as variáveis explícitas do canal interno; a tentativa sem essas variáveis foi corretamente recusada pelo contrato de distribuição.
 
 SHA-256 portable: `a2e82bdabcbcaca858c649d0e0adc05972e194282e58c2921949b863ca578957`. SHA-256 NSIS: `b439d78e1cc7d4c0f59e19bdc96a7ee4282e097cc3b3735014b6e0cfcacdbac6`. Permanecem a classificação **NÃO HOMOLOGADO**, os limites de instalação em máquina limpa, assinatura oficial/notarização e pacotes nativos macOS/Linux. O acompanhamento remoto do commit adicional será associado à execução local em `evidence/remote-ci.json`, sem alterar esta evidência histórica ou provocar um novo push apenas documental.
+
+## Rodada 3 — base 471971f, 20/10/2026
+
+Nesta rodada, a baseline inspecionada foi o commit `471971f5258f3ba4f556411b708bc336464b6862`. Os achados anteriores foram reconfirmados e duas frentes críticas foram corrigidas e homologadas: a seleção segura e orientada por manifesto dos artefatos de publicação e a complementação dos cenários negativos com tratamento observável de erros e recuperação real pela interface.
+
+### Problemas confirmados e causas raízes
+
+1. **Seleção genérica de artefatos de publicação (`publish_release`):**
+   - *Causa:* O step `Baixar Todos os Instaladores Compilados` baixava a árvore completa dos artefatos de cada job (`installers-${{ matrix.os }}`), contendo os diretórios de executáveis descompactados (`win-unpacked/`, etc.). Em seguida, o step `Mover Artefatos para Diretório de Release` executava uma busca recursiva ampla por extensões (`find release-downloads -type f \( -name "*.exe" ... \)`).
+   - *Impacto:* Esse comando copiava indevidamente o executável descompactado interno `win-unpacked/KovaxFiles Desktop.exe` e quaisquer arquivos auxiliares com extensões permitidas para o diretório de publicação pública, corrompendo o manifesto SHA-256 e violando a política de publicação estrita.
+2. **Cenários negativos incompletos na jornada documental:**
+   - *Causa:* Os testes negativos de importação e reabertura terminavam prematuramente no processo runner antes de exercitar o produto: o teste de importação verificava `!fs.statSync(file).isFile()` e falhava no Node antes de entregar o arquivo ao input DOM; e o teste de reabertura invocava `PDFDocument.load` diretamente no runner, detectando corrupção antes de entregar a saída corrompida à interface da aplicação.
+   - *Impacto:* Os testes comprovavam apenas que o runner interceptava anomalias, mas não demonstravam o tratamento de erros do próprio produto (banner de erro visível, ausência de falso sucesso, preservação de arquivos e possibilidade de recuperação/retry pelo usuário).
+
+### Implementação e correções realizadas
+
+1. **Seleção orientada por manifesto (`scripts/prepare_release_publication.ts`):**
+   - Substituição da busca genérica por leitura estrita e estruturada dos registros `artifacts.json` gerados pelo processo de empacotamento.
+   - Validação prévia de inventário: confrontação de produto (`pkg.build.productName`), versão (`pkg.version`), plataforma, arquitetura (`x64`/`arm64`) e alinhamento exato com `expectedArtifacts`.
+   - Sanitização de caminhos: rejeição mandatória de caminhos absolutos, travessia de diretório (`..`) e separadores de pasta (`/` e `\`). O nome deve ser estritamente local (`path.basename(file) === file`).
+   - Confrontação física estrita: após localizar o arquivo declarado, o tamanho e o hash SHA-256 são recalculados contra o arquivo físico em disco. Divergências reprovam imediatamente a preparação.
+   - Prevenção de misturas e colisões: rejeição de colisões de nomes globais, duplicação de targets e divergência de commits/versões entre plataformas.
+   - Isolamento de publicação: apenas os instaladores declarados e validados são copiados para a pasta limpa de release. `win-unpacked/`, evidências, logs e arquivos extras permanecem estritamente fora da publicação.
+   - Geração de manifesto: o arquivo `SHA256SUMS.txt` é gerado exclusivamente sobre os instaladores validados e sua leitura de volta é verificada de ponta a ponta.
+   - Suporte ao modo `--validate-only` para ensaios locais sem mutação de arquivos.
+   - Atualização do workflow `.github/workflows/build-release.yml` para utilizar `npx tsx scripts/prepare_release_publication.ts --downloads=release-downloads --output=release --require=win,mac,linux`.
+2. **Tratamento de erros e recuperação real no aplicativo empacotado:**
+   - `src/components/tools/PdfManipulator.tsx`: aprimoramento de `handleAddFiles` para identificar arquivos com formato inválido e apresentar mensagem de erro visível em `[data-testid="pdf-error"]` (`Apenas arquivos PDF são aceitos...`), sem aceitar itens espúrios e sem confirmação falsa de sucesso. Inclusão de `data-testid="dismiss-error"`, `data-testid="clear-file-list"` e `data-testid="remove-file-${idx}"` para permitir limpeza, substituição e redefinição cirúrgica pelo usuário.
+   - Preservação de arquivos: em falhas de processamento (`LocalPdfEngine.mergePdfs`) ou gravação (`saveExportedFile`), a lista de arquivos originais permanece intacta, o estado de exportação transiciona para `'error'`, nenhuma mensagem de sucesso indevido é disparada, e o botão de exportação é mantido ativo para tentativas posteriores.
+   - `electron/main/documentJourneyRunner.ts`: implementação da suíte `--document-journey-negative` no executável empacotado real, utilizando automação CDP via depurador Chromium com condições observáveis (`waitForCondition`) e timeout, sem esperas fixas frágeis:
+     - *Cenário 1 (Importação Inválida & Recuperação):* entrega arquivo `.txt` real ao input `[data-testid="merge-input"]`, verifica erro visível na interface, comprova ausência de sucesso, aciona botão de dispensa de erro, entrega dois PDFs de referência válidos e conclui a fusão com sucesso (`[DocumentJourney:Negative:ImportRecovery]`).
+     - *Cenário 2 (Processamento Corrompido & Recuperação):* entrega um PDF válido e um arquivo corrompido em sintaxe binária, dispara `merge-process`, verifica erro de processamento visível, comprova que a exportação não foi liberada e que os arquivos originais foram preservados, remove o arquivo inválido pelo botão de exclusão unitária, insere substituto válido e conclui a fusão (`[DocumentJourney:Negative:ProcessRecovery]`).
+     - *Cenário 3 (Gravação/IPC com Falha & Retry):* injeta falha de caminho no diálogo de gravação do sistema operacional, clica em exportar, verifica transição observável para `data-export-state="error"` e erro visível, confirma ausência de arquivo físico espúrio e preservação do botão de exportação, restaura caminho válido, retenta e obtém `data-export-state="saved"` com gravação física atômica comprovada (`[DocumentJourney:Negative:SaveRecovery]`).
+     - *Cenário 4 (Reabertura Corrompida & Recuperação):* limpa a interface, entrega arquivo de saída corrompido ao input real, comprova que a inspeção na camada de leitura/PDF.js rejeita o documento com erro estrutural, remove o item, entrega o PDF legítimo gerado na etapa 3 e valida duas páginas com os textos `M01 REFERENCE ALPHA` e `M01 REFERENCE BETA` (`[DocumentJourney:Negative:ReopenRecovery]`).
+   - Os quatro diagnósticos de falha originais (`--journey-fault=import`, `process`, `save`, `reopen`) continuam preservados e retornam código 1.
+
+### Resultados comprovados
+
+- `npm run typecheck:tools` e `npx tsc --noEmit`: 100% aprovados sem qualquer erro ou supressão de tipos.
+- `npm test`: 11/11 suítes de Pull Request aprovadas com 100% de sucesso.
+- Suíte de regressão de publicação (`tests/unit/distribution_publication.test.ts`): 8/8 regressões aprovadas:
+  1. Executável dentro de `win-unpacked` rejeitado e excluído da publicação.
+  2. Arquivos extras com extensões permitidas (`.exe`, `.zip`) rejeitados.
+  3. Caminhos absolutos e travessia de diretórios (`..`) estritamente rejeitados.
+  4. Tamanho ou hash divergentes reprovam a preparação.
+  5. Colisões de nomes e targets duplicados reprovam.
+  6. Artefatos obrigatórios ou plataformas ausentes reprovam.
+  7. Mistura indevida de versões ou execuções reprova.
+  8. Conjunto válido gera exatamente os assets esperados e o manifesto estrito.
+- Suíte de contratos de jornada (`tests/unit/distribution_journey.test.ts`): contratos positivos e de recuperação negativa aprovados.
+- Isolamento de Pages (`tests/unit/distribution_pages.test.ts`): aprovado; alterações internas não tocam os arquivos do site nem acionam o workflow.
+- Empacotamento Windows x64: executado com sucesso em diretório novo e exclusivo.
+- Smoke do executável empacotado (`npm run test:release`): 6/6 estágios aprovados.
+- Jornada documental positiva (`npm run test:journey`): 5/5 estágios aprovados.
+- Jornada documental negativa com recuperação (`npm run test:journey:negative`): 5/5 estágios aprovados no aplicativo empacotado real.
+- Diagnósticos de falha: os quatro cenários (`import`, `process`, `save`, `reopen`) confirmaram código 1.
+- Instaladores e assinaturas (`npm run test:installers`): targets NSIS e Portable validados no canal interno. Authenticode: `NotSigned` (**NÃO HOMOLOGADO**).
+- Finalização e manifesto (`npm run distribution:finalize`): aprovado com consolidação de provas de smoke, jornada positiva e jornada negativa.
+- Ensaio de publicação em modo validação (`npx tsx scripts/prepare_release_publication.ts --validate-only`): executado com sucesso sobre a saída da rodada.
+
+### Artefatos e evidências da rodada
+
+- Diretório exclusivo da execução: `release/runs/1792511955599-471971f5-68a75582`
+- Commit-base: `471971f5258f3ba4f556411b708bc336464b6862`
+- Versão: `1.0.0`
+- Arquitetura: `x64`
+- Canal: `internal`
+- Classificação: **NÃO HOMOLOGADO** (compilação de desenvolvimento não assinada)
+- Digest de fontes (`sourceDigest`): `3a685d92933656e120dbb96c338e57c2c9ee7d961137a92a4fb83739f07a39dd`
+
+| Artefato interno gerado | Tamanho físico | SHA-256 |
+| :--- | :---: | :--- |
+| `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` | 136.74 MB (143.385.799 bytes) | `628439aa60bdee2dff9b7538877b30ac12befb805e3ae5aaf05262f755fe2640` |
+| `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` | 136.53 MB (143.157.858 bytes) | `65be0371c3478edf74c4d14dc147d94479aecfe46741a4b5e346a5f83d80a2fd` |
+
+Evidências geradas no diretório da execução:
+- `evidence/distribution.json`
+- `evidence/installers.json`
+- `evidence/smoke/result.json` e `evidence/smoke/smoke.log`
+- `evidence/journey/result.json` e `evidence/journey/journey.log`
+- `evidence/journey-negative/result.json` e `evidence/journey-negative/journey-negative.log`
+- `evidence/journey-negative-import/`
+- `evidence/journey-negative-process/`
+- `evidence/journey-negative-save/`
+- `evidence/journey-negative-reopen/`
+- `SHA256SUMS.txt`
+
+### Roteiro de homologação em Windows limpo (VM Windows x64) — Procedimento formal
+
+O procedimento abaixo destina-se a uma máquina virtual Windows 10/11 x64 limpa, sem Node.js, Python, Visual Studio, Git ou ferramentas de desenvolvimento. O pacote interno não assinado (`1792511955599-471971f5-68a75582`) é classificado expressamente como **NÃO HOMOLOGADO** e serve para auditoria forense funcional pré-assinatura.
+
+1. **Recepção e integridade:**
+   - Transferir `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` e `SHA256SUMS.txt` por canal seguro.
+   - Abrir PowerShell nativo e confrontar o digest SHA-256:
+     ```powershell
+     Get-FileHash .\KovaxFiles\ Desktop-1.0.0-win-x64-setup.exe -Algorithm SHA256
+     ```
+   - Confirmar que o hash coincide estritamente com `628439aa60bdee2dff9b7538877b30ac12befb805e3ae5aaf05262f755fe2640`.
+2. **Instalação via NSIS:**
+   - Executar o instalador. Notar que o SmartScreen pode exibir alerta devido à ausência de certificado Authenticode comercial (pacote interno não assinado).
+   - Concluir o assistente de instalação padrão e registrar o diretório de destino (`%LocalAppData%\Programs\kovax-files-desktop` ou `Program Files`).
+3. **Inicialização e operação offline:**
+   - Desconectar a rede (modo avião ou desconexão do adaptador de rede da VM).
+   - Iniciar o KovaxFiles Desktop pelo atalho na Área de Trabalho ou Menu Iniciar.
+   - Confirmar carregamento imediato da interface sem erros de DLLs faltantes, dependências do Visual C++ ou mensagens de rede.
+4. **Jornada documental principal:**
+   - Navegar até o "Manipulador de PDF".
+   - Importar dois arquivos PDF legítimos.
+   - Executar a união ("Unir Todos os PDFs").
+   - Exportar o arquivo unificado e salvar no disco.
+   - Reabrir o PDF resultante na ferramenta e validar o número de páginas e visualização.
+5. **OCR Documental 100% local:**
+   - Importar imagem ou documento digitalizado contendo texto em português.
+   - Executar OCR e conferir que o reconhecimento textual ocorre localmente pelos workers WebAssembly offline sem qualquer tentativa de conexão externa.
+6. **Cenários negativos e recuperação:**
+   - Tentar importar arquivo com extensão inválida (`.txt`, `.docx`) e conferir o banner de erro visível.
+   - Dispensar o erro e confirmar estado íntegro da ferramenta.
+   - Tentar processar PDF propositalmente truncado e confirmar que a aplicação exibe mensagem de erro e não encerra abruptamente.
+   - Remover o arquivo com problema e concluir a operação com arquivo válido.
+7. **Persistência e desinstalação:**
+   - Fechar o aplicativo e reabri-lo; confirmar estabilidade de preferências locais.
+   - Executar o desinstalador via Painel de Controle / Configurações.
+   - Confirmar remoção completa dos binários em `Program Files` / `AppData`, verificando a política de preservação de dados do usuário em `%AppData%\kovax-files-desktop`.
+
+*Estado da homologação em máquina limpa:* **PENDENTE**. Não há VM limpa externa autorizada conectada nesta sessão de automação. A homologação em máquina limpa permanece pendente de execução pelo operador no ambiente de teste isolado.
+
+### Limites e Próximos Bloqueios Concretos
+
+1. **Assinatura digital institucional:** O executável e os instaladores gerados são internos e não assinados (`NotSigned`). A distribuição oficial para tribunais, prefeituras e advocacia permanece bloqueada até a integração formal com certificado digital Authenticode corporativo (A1/HSM) no Windows e Apple Developer ID no macOS.
+2. **Pacotes nativos macOS e Linux:** O ambiente local executou e homologou os instaladores e o runtime Windows x64. As compilações nativas de macOS (`.dmg`, `.zip`) e Linux (`.AppImage`, `.deb`, `.rpm`) continuam dependentes dos respectivos runners do GitHub Actions com os certificados aplicáveis.
+3. **Dívida técnica de tipagem legada:** Permanece isolada a auditoria ampla de scripts e testes legados (`tsconfig.tools-audit.json`, 48 diagnósticos preexistentes). O escopo do produto e das ferramentas de distribuição vigentes (`tsconfig.tools.json`) possui 0 erros de tipagem.
+4. **Encerramento da rodada:** M01 não é declarada como integralmente homologada para lançamento público institucional, permanecendo os gates de assinatura e máquina limpa como pendências explícitas.
+

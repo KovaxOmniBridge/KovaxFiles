@@ -65,7 +65,7 @@ export class WindowManager {
     } else {
       // Em produção carrega o build da pasta dist
       const distIndex = path.join(path.dirname(this.preloadPath), '../dist/index.html');
-      this.mainWindow.loadFile(distIndex, { query: process.argv.includes('--document-journey') ? { 'packaged-journey': '1' } : process.argv.includes('--smoke-test') ? { 'packaged-smoke': '1' } : {} });
+      this.mainWindow.loadFile(distIndex, { query: process.argv.includes('--document-journey') || process.argv.includes('--document-journey-negative') ? { 'packaged-journey': '1' } : process.argv.includes('--smoke-test') ? { 'packaged-smoke': '1' } : {} });
     }
 
     this.mainWindow.on('closed', () => {

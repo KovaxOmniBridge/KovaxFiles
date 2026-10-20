@@ -77,12 +77,14 @@
     "package:release:mac": "npm run build && tsx scripts/package_distribution.ts --mac --config.mac.forceCodeSigning=true --publish never --config.dmg.sign=true",
     "package:release:all": "npm run package:release:win && npm run package:release:mac && npm run package:linux",
     "package:internal": "npm run build && tsx scripts/package_distribution.ts --publish never --allow-unsigned-internal",
-    "test:distribution": "tsx tests/unit/distribution_gates.test.ts && tsx tests/unit/distribution_contract.test.ts && tsx tests/unit/distribution_workflows.test.ts && tsx tests/unit/distribution_installers.test.ts && tsx tests/unit/distribution_journey.test.ts && tsx tests/unit/distribution_pages.test.ts",
+    "test:distribution": "tsx tests/unit/distribution_gates.test.ts && tsx tests/unit/distribution_contract.test.ts && tsx tests/unit/distribution_workflows.test.ts && tsx tests/unit/distribution_installers.test.ts && tsx tests/unit/distribution_journey.test.ts && tsx tests/unit/distribution_pages.test.ts && tsx tests/unit/distribution_publication.test.ts",
     "typecheck:tools": "tsc -p tsconfig.tools.json",
     "typecheck:tools:all": "tsc -p tsconfig.tools-audit.json",
     "test:installers": "tsx scripts/verify_packaged_installers.ts",
     "test:bundle": "tsx scripts/verify_distribution_bundle.ts",
     "test:journey": "tsx tests/suites/desktop_packaged.test.ts --journey",
+    "test:journey:negative": "tsx tests/suites/desktop_packaged.test.ts --journey-negative",
+    "release:prepare": "tsx scripts/prepare_release_publication.ts",
     "distribution:finalize": "tsx scripts/finalize_distribution.ts"
   },
   "keywords": [

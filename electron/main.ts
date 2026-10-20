@@ -21,7 +21,7 @@ const __dirname = path.dirname(__filename);
 
 const preloadPath = path.join(__dirname, 'preload.cjs');
 const windowManager = new WindowManager(preloadPath);
-const isJourneyTest = process.argv.includes('--document-journey');
+const isJourneyTest = process.argv.includes('--document-journey') || process.argv.includes('--document-journey-negative');
 const isSmokeTest = process.argv.includes('--smoke-test') || process.argv.includes('--test-clean-environment');
 const isPadesE2eTest = process.argv.includes('--test-pades-e2e');
 

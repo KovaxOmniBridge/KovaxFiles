@@ -181,16 +181,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-downloads
-      - name: Mover Artefatos para Diretório de Release
-        run: >
-          find release-downloads -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name
-          "*.zip" -o -name "latest*.yml" \) -exec cp {} release/ \;
-
-          echo "Conteúdo consolidado de release:"
-
-          ls -la release/
-      - name: Gerar Manifesto Consolidado SHA256SUMS.txt (Estrito para Win, Mac e Linux)
-        run: npx tsx scripts/generate_release_manifest.ts --dir=release --require=win,mac,linux
+      - name: Consolidar e Validar Artefatos Selecionados para Publicação
+        run: npx tsx scripts/prepare_release_publication.ts --downloads=release-downloads --output=release --require=win,mac,linux
       - name: Publicar Release Oficial no GitHub
         uses: softprops/action-gh-release@v2
         env:
@@ -204,4 +196,3 @@ jobs:
             release/*.rpm
             release/*.zip
             release/SHA256SUMS.txt
-            release/latest*.yml
