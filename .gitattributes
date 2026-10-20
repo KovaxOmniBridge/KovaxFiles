@@ -1,0 +1,39 @@
+# Regras de normalização de finais de linha e preservação binária do KovaxFiles
+# Garante tratamento consistente entre Windows, Linux e macOS no Git
+
+* text=auto eol=lf
+
+# Código-fonte e scripts textuais (sempre LF no repositório)
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.plist text eol=lf
+*.svg text eol=lf
+*.sh text eol=lf
+
+# Scripts batch do Windows (exigem CRLF para interpretação do cmd.exe)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Arquivos binários que nunca devem sofrer conversão de finais de linha
+*.traineddata binary
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.otf binary
+*.wasm binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.icns binary
+*.pdf binary

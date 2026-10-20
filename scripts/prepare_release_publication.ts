@@ -10,6 +10,10 @@ import {
   type DistributionPackage,
   type DistributionPlatform
 } from './distribution_artifacts';
+import {
+  readAndValidateDistributionProof,
+  readAndValidateInstallersProof
+} from './distribution_contract';
 
 export interface PreparePublicationOptions {
   downloadsDir: string;
@@ -173,61 +177,19 @@ export function prepareReleasePublication(options: PreparePublicationOptions): P
 
     // 5a. Smoke aprovado
     const smokeResultPath = path.join(evidenceDir, 'smoke', 'result.json');
-    if (!fs.existsSync(smokeResultPath)) {
-      throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de smoke ausente para ${identity.platform}: ${smokeResultPath}`);
-    }
-    const smoke = JSON.parse(fs.readFileSync(smokeResultPath, 'utf8'));
-    assert.equal(smoke.mode, 'smoke', `Tipo de evidência incorreto em smoke para ${identity.platform}`);
-    assert.equal(smoke.status, 'passed', `Evidência de smoke reprovada para ${identity.platform}`);
-    assert.equal(smoke.runId, identity.runId, `Smoke pertence a outra execução para ${identity.platform}`);
-    assert.equal(smoke.commit, identity.commit, `Commit divergente em smoke para ${identity.platform}`);
-    assert.equal(smoke.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em smoke para ${identity.platform}`);
-    assert.equal(smoke.platform, identity.platform, `Plataforma divergente em smoke para ${identity.platform}`);
-    assert.equal(smoke.architecture, identity.architecture, `Arquitetura divergente em smoke para ${identity.platform}`);
-    assert.deepEqual(smoke.artifacts, records, `Artefatos de smoke divergem dos declarados para ${identity.platform}`);
+    readAndValidateDistributionProof(smokeResultPath, 'smoke', identity, records);
 
     // 5b. Jornada positiva aprovada
     const journeyResultPath = path.join(evidenceDir, 'journey', 'result.json');
-    if (!fs.existsSync(journeyResultPath)) {
-      throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de jornada positiva ausente para ${identity.platform}: ${journeyResultPath}`);
-    }
-    const journey = JSON.parse(fs.readFileSync(journeyResultPath, 'utf8'));
-    assert.equal(journey.mode, 'journey', `Tipo de evidência incorreto em jornada para ${identity.platform}`);
-    assert.equal(journey.status, 'passed', `Evidência de jornada positiva reprovada para ${identity.platform}`);
-    assert.equal(journey.runId, identity.runId, `Jornada pertence a outra execução para ${identity.platform}`);
-    assert.equal(journey.commit, identity.commit, `Commit divergente em jornada para ${identity.platform}`);
-    assert.equal(journey.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em jornada para ${identity.platform}`);
-    assert.equal(journey.platform, identity.platform, `Plataforma divergente em jornada para ${identity.platform}`);
-    assert.equal(journey.architecture, identity.architecture, `Arquitetura divergente em jornada para ${identity.platform}`);
-    assert.deepEqual(journey.artifacts, records, `Artefatos de jornada divergem dos declarados para ${identity.platform}`);
+    readAndValidateDistributionProof(journeyResultPath, 'journey', identity, records);
 
     // 5c. Jornada negativa com recuperação aprovada
     const journeyNegResultPath = path.join(evidenceDir, 'journey-negative', 'result.json');
-    if (!fs.existsSync(journeyNegResultPath)) {
-      throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de jornada negativa ausente para ${identity.platform}: ${journeyNegResultPath}`);
-    }
-    const journeyNeg = JSON.parse(fs.readFileSync(journeyNegResultPath, 'utf8'));
-    assert.equal(journeyNeg.mode, 'journey-negative', `Tipo de evidência incorreto em jornada negativa para ${identity.platform}`);
-    assert.equal(journeyNeg.status, 'passed', `Evidência de jornada negativa reprovada para ${identity.platform}`);
-    assert.equal(journeyNeg.runId, identity.runId, `Jornada negativa pertence a outra execução para ${identity.platform}`);
-    assert.equal(journeyNeg.commit, identity.commit, `Commit divergente em jornada negativa para ${identity.platform}`);
-    assert.equal(journeyNeg.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em jornada negativa para ${identity.platform}`);
-    assert.equal(journeyNeg.platform, identity.platform, `Plataforma divergente em jornada negativa para ${identity.platform}`);
-    assert.equal(journeyNeg.architecture, identity.architecture, `Arquitetura divergente em jornada negativa para ${identity.platform}`);
-    assert.deepEqual(journeyNeg.artifacts, records, `Artefatos de jornada negativa divergem dos declarados para ${identity.platform}`);
+    readAndValidateDistributionProof(journeyNegResultPath, 'journey-negative', identity, records);
 
     // 5d. Validação de instaladores e assinaturas oficiais
     const installersPath = path.join(evidenceDir, 'installers.json');
-    if (!fs.existsSync(installersPath)) {
-      throw new Error(`[ERRO DE PUBLICAÇÃO] Evidência de instaladores ausente para ${identity.platform}: ${installersPath}`);
-    }
-    const installers = JSON.parse(fs.readFileSync(installersPath, 'utf8'));
-    assert.equal(installers.runId, identity.runId, `Instaladores pertencem a outra execução para ${identity.platform}`);
-    assert.equal(installers.commit, identity.commit, `Commit divergente em instaladores para ${identity.platform}`);
-    assert.equal(installers.sourceDigest, identity.sourceDigest, `Digest de fontes divergente em instaladores para ${identity.platform}`);
-    assert.equal(installers.platform, identity.platform, `Plataforma divergente em instaladores para ${identity.platform}`);
-    assert.equal(installers.architecture, identity.architecture, `Arquitetura divergente em instaladores para ${identity.platform}`);
-    assert.deepEqual(installers.records, records, `Registros de instaladores divergem para ${identity.platform}`);
+    const installers = readAndValidateInstallersProof(installersPath, identity, records);
     if (channel === 'official' && ['win', 'mac'].includes(identity.platform)) {
       if (installers.classification !== 'OFFICIAL_SIGNATURE_VERIFIED') {
         throw new Error(`[ERRO DE PUBLICAÇÃO] Validação nativa de assinatura oficial ausente ou reprovada para ${identity.platform}: ${installers.classification}`);

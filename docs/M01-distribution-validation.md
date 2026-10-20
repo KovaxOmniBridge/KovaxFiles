@@ -1,6 +1,6 @@
 # M01 — Empacotamento e validação interna
 
-Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. A seção “Rodada 2” registra as correções posteriores e o procedimento da base `38caad5`/`471971f`; a seção “Rodada 3” consolida a correção de seleção de artefatos de publicação e os cenários negativos da jornada real na base `471971f`. Os registros anteriores não foram substituídos.
+Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. As seções “Rodada 2”, “Rodada 3” e “Rodada 4” registram as correções anteriores e evidências das bases `471971f` e `ab66a3f`. A seção “Rodada 5” consolida a identidade canônica das fontes multiplataforma, a extração do contrato de provas de produção e a validação interna completa na base `aed1309`. Os registros históricos anteriores foram rigorosamente preservados.
 
 Baseline inspecionada: `main`, `c23754d018c792b49f5daa659431f93014c87409`, checkout sem alterações rastreadas. A pasta ignorada `release/` já continha artefatos antigos; eles não comprovam a implementação atual.
 
@@ -361,10 +361,161 @@ Para preservar a honestidade técnica exigida pelo repositório (`AGENTS.md`):
 | `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` | 137.19 MB (143.856.126 bytes) | `b13707930e723f603672c5e93c8b3c10bd89ad354fa3b7eacb148b6206233d95` |
 | `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` | 136.97 MB (143.626.658 bytes) | `7cc98bbde3307cb3f9edfc6a7b3f34ce3d97c84396d680b1c4a873d45a6fecd7` |
 
-### Pendências Formais e Próximos Bloqueios
+### Pendências Formais e Próximos Bloqueios da Rodada 4
 
 1. **Assinatura Digital Corporativa (Authenticode / Apple Developer ID):** Sem credenciais de assinatura comercial provisionadas, os instaladores permanecem classificados como `NAO_HOMOLOGADO`. O canal oficial de release bloqueia publicações não assinadas.
 2. **Homologação em Máquina Limpa (VM Isolada):** O roteiro de 7 passos definido na Rodada 3 permanece pendente de realização pelo operador técnico em VM Windows x64 sem ferramentas de desenvolvimento.
 3. **Distribuição Nativa Multiplataforma:** As esteiras para geração de pacotes em macOS (`.dmg`, `.zip`) e Linux (`.AppImage`) dependem dos certificados e runners adequados no GitHub Actions.
+
+---
+
+## Rodada 5 — base aed1309, 20/10/2026: Identidade Canônica de Fontes, Contrato Compartilhado de Provas e Validação Multiplataforma
+
+A base inspecionada desta rodada é o commit `aed1309e6f5e24c41d9bd8c6c4372a8c248c7126`. As correções das rodadas anteriores (seleção guiada por manifesto, contrato estrito de publicação oficial, obrigatoriedade de jornada negativa e recuperação real na UI) permanecem íntegras e validadas.
+
+### Problemas Confirmados e Causas-Raízes
+
+1. **Sensibilidade do `sourceDigest` a Finais de Linha de Checkout (LF vs CRLF):**
+   - *Causa:* O cálculo de proveniência em `scripts/distribution_provenance.ts` lia os bytes brutos do checkout via `fs.readFileSync(file)`. Em ambientes Windows com checkout padrão do Git (conversão para CRLF), arquivos de código e configuração (`src/`, `electron/`, `scripts/`, etc.) apresentavam quebras de linha `\r\n`, enquanto no Linux e macOS tinham `\n`. Como a preparação de publicação exige identidade estrita do `sourceDigest` entre plataformas para o mesmo commit, builds legítimos de plataformas distintas eram indevidamente rejeitados. Além disso, arquivos críticos de build (como o `index.html` raiz e assets estáticos de `public/`) não estavam cobertos no regex de proveniência.
+   - *Impacto:* Risco de falsos positivos na rejeição de compilações multiplataforma limpas e lacuna na cobertura de arquivos que afetam diretamente o bundle gerado.
+2. **Duplicação e Desacoplamento do Contrato de Provas nos Testes Unitários:**
+   - *Causa:* O arquivo `tests/unit/distribution_journey.test.ts` continha uma função local isolada (`validateProofContract`) de apenas 3 linhas, em vez de importar e testar o código real de validação de provas de execução.
+   - *Impacto:* Caso uma verificação de segurança fosse enfraquecida ou removida em `finalize_distribution.ts` ou `prepare_release_publication.ts`, os testes continuariam passando falsamente sobre a cópia local, violando o princípio anti-regressão do `AGENTS.md`.
+
+---
+
+### Implementação Arquitetural e Governança Técnica
+
+#### 1. Dupla Garantia de Distribuição: Identidade Canônica vs Integridade Física
+
+Para resolver a portabilidade multiplataforma sem comprometer a segurança da distribuição, o KovaxFiles Desktop define duas garantias criptográficas distintas e complementares:
+
+1. **Identidade Canônica das Fontes (`sourceDigest`):**
+   - **Resistência a LF/CRLF:** Em arquivos textuais (`.ts`, `.tsx`, `.js`, `.jsx`, `.cjs`, `.mjs`, `.json`, `.html`, `.css`, `.yaml`, `.yml`, `.md`, `.plist`, `.svg`), o conteúdo é normalizado substituindo `\r\n` por `\n` antes do hash SHA-256.
+   - **Intocabilidade de Arquivos Binários:** Arquivos binários (`.traineddata`, `.woff2`, `.woff`, `.ttf`, `.otf`, `.wasm`, `.png`, `.jpg`, `.jpeg`, `.ico`, `.icns`, `.bin`, `.pdf`) e arquivos com bytes nulos (`0x00`) **NUNCA** são normalizados; seus bytes físicos exatos são alimentados diretamente no digest.
+   - **Cobertura Completa de Entradas de Build:** A proveniência rastreia todas as fontes que influenciam o produto: `src/`, `electron/`, `scripts/`, `.github/workflows/`, `public/`, `index.html`, `package.json`, `package-lock.json`, `vite.config.ts`, `tsconfig*.json`, `tailwind.config.js`, `postcss.config.js`, `.gitattributes` e `por.traineddata`.
+   - **Detecção de Alterações Locais, Adições, Remoções e Renomeações:** A listagem utiliza `git ls-files --cached --others --exclude-standard`, garantindo que alterações locais não comitadas, novos arquivos não rastreados e exclusões ou renomeações alterem imediatamente a identidade canônica.
+   - **Padronização Declarativa via `.gitattributes`:** Implementação de `.gitattributes` na raiz do repositório fixando `text=auto eol=lf` e declarando explicitamente binários e scripts, evitando qualquer renormalização massiva indiscriminada do repositório.
+   - **Versionamento de Esquema:** Identificado pelo prefixo canônico `kovax-canonical-source-v2\0`.
+2. **Integridade Exata dos Bytes Produzidos:**
+   - Os arquivos finais distribuíveis (`app.asar`, executável descompactado e instaladores `.exe`, `.portable.exe`, `.AppImage`, `.dmg`) são verificados por seus digests SHA-256 (FIPS 180-4) exatos e tamanhos físicos em bytes. Qualquer alteração pós-teste é detectada e rejeitada sumariamente.
+
+#### 2. Contrato Compartilhado de Provas de Produção (`scripts/distribution_contract.ts`)
+
+O módulo `scripts/distribution_contract.ts` agora centraliza as funções oficiais de validação de provas e instaladores:
+- `validateDistributionProof(proof, expectedMode, identity, expectedRecords, options)`: Valida modo (`smoke`, `journey`, `journey-negative`), status aprovado (`status: 'passed'`), identidade de execução (`runId`), commit, `sourceDigest`, plataforma, arquitetura, lista estrita de artefatos e integridade física de executável e payload (`checkExecutableAndPayload: true`).
+- `readAndValidateDistributionProof(resultPath, expectedMode, identity, expectedRecords, options)`: Garante leitura segura e rejeição imediata se o arquivo de prova estiver ausente.
+- `validateInstallersProof(installers, identity, expectedRecords)` e `readAndValidateInstallersProof(installersPath, identity, expectedRecords)`: Validam a prova unificada de instaladores.
+
+Essas funções são importadas e consumidas de forma compartilhada por:
+- `scripts/finalize_distribution.ts`: Bloqueia a consolidação e a geração do manifesto final caso qualquer evidência falhe.
+- `scripts/prepare_release_publication.ts`: Garante que a esteira de publicação rejeite qualquer evidência divergente ou adulterada.
+- `tests/unit/distribution_journey.test.ts`: Testa diretamente o código de produção contra todas as hipóteses de falha, demonstrando que enfraquecer o contrato real quebra a suíte de testes.
+
+---
+
+### Esclarecimentos Mandatórios de Governança e Segurança
+
+#### 1. Diferenciação dos Três Níveis de Verificação da Plataforma
+
+É terminantemente proibido confundir ou substituir estes três níveis:
+1. **Testes de Pull Request (`npm test`):** Bateria de 11 suítes unitárias, de integração e auditoria forense executadas no ambiente de desenvolvimento Node.js/JSDOM. Comprovam a conformidade do código, sandbox, CSP, LGPD, integridade criptográfica AES-GCM, PAdES, DOCX e acervo de custódia. Não comprovam o empacotador nem o instalador.
+2. **Testes de Pacote Nativo (`npm run test:release`, `test:journey`, `test:journey:negative`):** Execução do executável real gerado pelo Electron-Builder no diretório exclusivo da execução, sem runtimes de desenvolvimento no PATH. Testa a janela real do Chromium/Electron, IPC sanitizado, WebAssembly, OCR offline, gravação em disco e recuperação de erros na interface. Não atesta o comportamento de instalação no sistema operacional limpo.
+3. **Homologação em Máquina Limpa (VM Isolada sem Node/Python):** Ensaio de instalação do setup NSIS em máquina Windows x64 pura sem ferramentas de desenvolvimento. Testa criação de atalhos, isolamento de diretórios de usuário, execução em privilégios restritos, operação 100% offline e desinstalação completa. **Permanece PENDENTE**.
+
+#### 2. Linux AppImage Interno
+
+O pipeline do KovaxFiles Desktop no Linux é plenamente autônomo. O build do target `AppImage` no canal interno (`DISTRIBUTION_CHANNEL=internal`, `ALLOW_UNSIGNED_INTERNAL=true`) pode ser gerado e testado com sucesso sob servidor X virtual (`xvfb-run`) sem desativar a sandbox do Chromium e sem qualquer necessidade de certificados da Apple (macOS) ou certificados Authenticode (Windows).
+
+#### 3. Diferença entre Assinatura de Código (Authenticode) e Certificados ICP-Brasil/A1
+
+- **Assinatura de Código de Software (Microsoft Authenticode / Apple Developer ID):** Assinatura criptográfica aplicada sobre o binário da aplicação (`.exe`, `.dmg`) antes da distribuição. Serve para que o Windows SmartScreen e o macOS Gatekeeper reconheçam a autenticidade do desenvolvedor e garantam que o executável não foi adulterado.
+- **Certificados Digitais ICP-Brasil / A1:** Certificados X.509 utilizados internamente pelo KovaxFiles para assinar documentos e petições em formato PDF (`PAdES`), com valor legal para protocolo nos tribunais (PJe, Projudi, etc.).
+- **Regra de Isolamento:** A presença de rotinas de assinatura ICP-Brasil ou a importação de certificados A1 pelo usuário no editor **NÃO** assina o software executável. A assinatura oficial de código do aplicativo permanece **PENDENTE** de certificado comercial Authenticode.
+
+---
+
+### Resultados Comprovados na Rodada 5
+
+- **Tipagem Estática:** `npx tsc --noEmit` e `npm run typecheck:tools` aprovados com 0 erros.
+- **Regressões de Distribuição:** 8/8 suítes aprovadas (`npm run test:distribution`), incluindo a nova suíte `distribution_provenance.test.ts`.
+- **Bateria de PR:** 11/11 suítes homologadas com 100% de sucesso (`npm test`).
+- **Bundle de Produção:** Compilado e auditado com sucesso (`npm run build`).
+- **Pacote Interno:** Gerado em diretório exclusivo `release/runs/1792535051086-aed1309e-bd2effd1`.
+- **Smoke no Aplicativo Real:** 6/6 fases aprovadas (`npm run test:release`).
+- **Jornada Positiva Real:** 5/5 etapas aprovadas (`npm run test:journey`).
+- **Jornada Negativa Real com Recuperação:** 5/5 estágios aprovados (`npm run test:journey:negative`): `ImportRecovery`, `ProcessRecovery`, `SaveRecovery`, `ReopenRecovery`, `Complete`.
+- **Instaladores e Finalização:** `test:installers` e `distribution:finalize` homologaram os artefatos com `cleanMachineAcceptance: pending` e `classification: NAO_HOMOLOGADO`.
+- **Ensaio de Publicação Interno:** `prepare_release_publication.ts --downloads=... --validate-only --channel=internal` aprovado com 2 instaladores selecionados.
+- **Rejeição do Contrato Oficial:** Execução sobre o pacote interno com `--channel=official` abortada imediatamente com `[ERRO DE PUBLICAÇÃO] Pacote com canal "internal" rejeitado no modo de publicação oficial`.
+
+---
+
+### Artefatos e Evidências da Rodada 5
+
+- Diretório exclusivo: `release/runs/1792535051086-aed1309e-bd2effd1`
+- Commit-base: `aed1309e6f5e24c41d9bd8c6c4372a8c248c7126`
+- Versão: `1.0.0` | Arquitetura: `x64` | Canal: `internal`
+- Classificação: **NÃO HOMOLOGADO**
+- Identidade canônica das fontes (`sourceDigest`): `2a2345b9ca20e7d2b06e93aab6a071b2c39f4ed00a5633abdf0f3299b419b663`
+
+| Artefato Interno | Tamanho Físico | Digest SHA-256 (FIPS 180-4) |
+| :--- | :---: | :--- |
+| `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` | 137.19 MB (143.852.152 bytes) | `06f07dcf4cef011609ccee56f4e1b6935c11b35e0384af91184b82779c34ac4b` |
+| `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` | 136.97 MB (143.624.210 bytes) | `03ff55ed7ff22b121f33ea0d5e75aeab075be1ff74e265f03c3d089843e257d5` |
+
+---
+
+### Roteiro de Homologação em Windows Limpo (Status: PENDENTE)
+
+Para garantir que o instalador funcione perfeitamente para advogados e servidores sem ferramentas de desenvolvimento instaladas, o seguinte roteiro em VM Windows x64 limpa deve ser executado pelo operador homologador:
+
+1. **Preparação da VM:**
+   - Provisionar uma máquina virtual Windows 10/11 x64 limpa (sem Node.js, Python, Git, VSCode ou compiladores C++).
+   - Tirar um snapshot limpo antes de qualquer teste.
+2. **Transferência Segura e Verificação Criptográfica:**
+   - Copiar o instalador `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` e o `SHA256SUMS.txt` para a VM via compartilhamento interno ou mídia isolada.
+   - No PowerShell da VM, verificar a integridade física:
+     ```powershell
+     Get-FileHash -Algorithm SHA256 "KovaxFiles Desktop-1.0.0-win-x64-setup.exe"
+     ```
+   - Confirmar se o digest coincide exatamente com `06f07dcf4cef011609ccee56f4e1b6935c11b35e0384af91184b82779c34ac4b`.
+   - Notar que o instalador exibirá o aviso do SmartScreen ("Editor Desconhecido") por se tratar de build interno **NÃO HOMOLOGADO** sem certificado Authenticode comercial.
+3. **Instalação pelo NSIS:**
+   - Executar o instalador com usuário padrão (não-administrador).
+   - Escolher diretório padrão (`%LOCALAPPDATA%\Programs\kovax-files-desktop`).
+   - Confirmar a criação bem-sucedida de atalhos no Menu Iniciar e na Área de Trabalho.
+4. **Operação 100% Offline:**
+   - Desconectar a placa de rede da VM.
+   - Abrir o KovaxFiles Desktop pelo atalho da Área de Trabalho.
+   - Confirmar carregamento imediato da interface sem erros de rede, sem travamento de fontes (fontes locais do pacote) e sem avisos de dependências ausentes.
+5. **Teste Funcional de PDF e OCR Local:**
+   - Importar dois arquivos PDF de teste na ferramenta de manipulação/fusão.
+   - Realizar a fusão, aplicar numeração/chancela e exportar o arquivo resultante.
+   - Reabrir o PDF exportado no aplicativo e confirmar visualização correta das páginas.
+   - Executar OCR sobre uma imagem contendo texto em português; confirmar que o worker Tesseract local processa sem falhas e sem conexões externas.
+6. **Recuperação de Erros e Reinicialização:**
+   - Tentar importar um arquivo PDF deliberadamente corrompido; confirmar exibição do alerta na UI e bloqueio do botão de exportação.
+   - Fechar o aplicativo e reiniciar o sistema operacional da VM.
+   - Reabrir o KovaxFiles Desktop e verificar integridade da aplicação e preferências locais.
+7. **Desinstalação:**
+   - Executar a desinstalação via "Configurações > Aplicativos" do Windows.
+   - Confirmar remoção de atalhos, executáveis e chaves de registro.
+   - Registrar evidências e capturas de tela.
+
+**Status:** **PENDENTE** de execução pelo operador em ambiente de VM isolada.
+
+---
+
+### Pendências Formais e Próximos Bloqueios da Plataforma
+
+1. **Assinatura Digital Comercial Authenticode e Apple Developer ID:**
+   - Sem chaves de assinatura comercial provisionadas, os instaladores permanecem classificados estritamente como **NÃO HOMOLOGADO**.
+   - O canal oficial de release do CI rejeita compilações sem assinatura válida.
+2. **Homologação em Máquina Limpa (VM Isolada):**
+   - O roteiro acima deve ser executado e documentado com snapshots e logs da VM antes de qualquer promoção do instalador.
+3. **Pipeline Multiplataforma Nativo:**
+   - Os jobs de empacotamento em macOS (`.dmg`, `.zip`) e Linux (`.AppImage`) no GitHub Actions devem ser acionados e monitorados em runners nativos.
+
 
 
