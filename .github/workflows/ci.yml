@@ -38,6 +38,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Typecheck tools and regression gates
+        run: npm run prepare:tessdata && npm run typecheck:tools && npm run test:distribution
+
       - name: Verify Offline OCR Assets & Tessdata
         run: npm run prepare:tessdata
 
@@ -48,6 +51,7 @@ jobs:
   # TIER 2: NIGHTLY & DISPATCH (Desempenho, Carga, Estresse e Memória)
   # ============================================================================
   nightly-performance-stress:
+    needs: [pr-quality-gates]
     name: Performance, Load & Memory Stress (${{ matrix.os }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
@@ -68,6 +72,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Typecheck tools and regression gates
+        run: npm run prepare:tessdata && npm run typecheck:tools && npm run test:distribution
+
       - name: Build Application Assets
         run: npm run build
 
@@ -77,5 +84,31 @@ jobs:
       - name: Run Reproducible Resource Benchmarks (CPU, RAM, Throughput)
         run: npm run benchmark
 
+      - name: Build internal desktop (NÃO HOMOLOGADO)
+        run: npm run package:internal
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
       - name: Run Packaged Desktop Pre-Release Audit
-        run: npm run test:release
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then xvfb-run -a npm run test:release; else npm run test:release; fi
+        env:
+          DISTRIBUTION_CHANNEL: internal
+          ALLOW_UNSIGNED_INTERNAL: 'true'
+
+      - name: Validar instaladores e assinaturas
+        run: npm run test:installers
+        env:
+          DISTRIBUTION_CHANNEL: internal
+          ALLOW_UNSIGNED_INTERNAL: 'true'
+
+      - name: Manifesto dos bytes finais
+        run: npx tsx scripts/generate_release_manifest.ts --dir=release
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: internal-NÃO-HOMOLOGADO-${{ matrix.os }}
+          path: release/
+          retention-days: 7

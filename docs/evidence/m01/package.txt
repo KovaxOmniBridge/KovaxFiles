@@ -1,0 +1,80 @@
+
+> kovax-files-desktop@1.0.0 package:internal
+> npm run build && electron-builder --publish never --x64 --config.directories.output=release/m01-validation
+
+
+> kovax-files-desktop@1.0.0 build
+> npx tsx scripts/prepare_offline_tessdata.ts && tsc && vite build
+
+[Tessdata] Copiado: por.traineddata (2.31 MB)
+[Tessdata] Copiado: worker.min.js
+[Tessdata] Copiado (obrigatório): tesseract-core-lstm.wasm.js
+[Tessdata] Copiado (obrigatório): tesseract-core-lstm.wasm
+[Tessdata] Copiado (obrigatório): tesseract-core-simd-lstm.wasm.js
+[Tessdata] Copiado (obrigatório): tesseract-core-simd-lstm.wasm
+[Tessdata] Copiado (opcional): tesseract-core.wasm.js
+[Tessdata] Copiado (opcional): tesseract-core.wasm
+[Tessdata] Copiado (opcional): tesseract-core-simd.wasm.js
+[Tessdata] Copiado (opcional): tesseract-core-simd.wasm
+[Tessdata] ✅ Sucesso: Todos os ativos obrigatórios do OCR offline foram validados e preparados em D:\KovaxOminiBridge\KovaxFilesApp\public\tessdata
+vite v5.4.21 building for production...
+transforming...
+[plugin:vite:resolve] [plugin vite:resolve] Module "fs" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "path" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "os" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "child_process" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "fs" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "child_process" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "fs" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "path" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "os" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "fs" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "fs" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/compressionEngine.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "path" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/compressionEngine.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "os" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/compressionEngine.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "child_process" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/compressionEngine.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin:vite:resolve] [plugin vite:resolve] Module "path" has been externalized for browser compatibility, imported by "D:/KovaxOminiBridge/KovaxFilesApp/src/services/ooxmlParser.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+✓ 2199 modules transformed.
+node_modules/pdfjs-dist/build/pdf.js (1982:23): Use of eval in "node_modules/pdfjs-dist/build/pdf.js" is strongly discouraged as it poses security risks and may cause issues with minification.
+rendering chunks...
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) D:/KovaxOminiBridge/KovaxFilesApp/node_modules/pdf-lib/es/index.js is dynamically imported by D:/KovaxOminiBridge/KovaxFilesApp/src/components/tools/CourtFilingWizard.tsx but also statically imported by D:/KovaxOminiBridge/KovaxFilesApp/node_modules/@pdfsmaller/pdf-decrypt/dist/pdf-decrypt.mjs, D:/KovaxOminiBridge/KovaxFilesApp/node_modules/@pdfsmaller/pdf-encrypt/dist/pdf-encrypt.mjs, D:/KovaxOminiBridge/KovaxFilesApp/src/components/tools/ProcessStamper.tsx, D:/KovaxOminiBridge/KovaxFilesApp/src/infrastructure/pdf/pdfEngineAdapter.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/packagedSmoke.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/compressionEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/courtFilingPreparationService.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/ocrDocumentService.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/padesSignatureService.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/richPdfExporterService.ts, dynamic import will not move module into another chunk.
+
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) __vite-browser-external is dynamically imported by D:/KovaxOminiBridge/KovaxFilesApp/src/services/compressionEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/compressionEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/compressionEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/compressionEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfEngine.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts, D:/KovaxOminiBridge/KovaxFilesApp/src/services/pdfTextExtractor.ts but also statically imported by [NUL]__vite-browser-external?commonjs-proxy, D:/KovaxOminiBridge/KovaxFilesApp/src/services/ooxmlParser.ts, dynamic import will not move module into another chunk.
+
+computing gzip size...
+dist/index.html                              1.26 kB │ gzip:     0.70 kB
+dist/assets/pdf.worker.min-DKQKFyKK.js   1,087.21 kB
+dist/assets/index-B3hIDO_X.css              74.31 kB │ gzip:    11.87 kB
+dist/assets/packagedSmoke-CEnQ4xQY.js        0.90 kB │ gzip:     0.56 kB
+dist/assets/index-BaeYm_XC.js           64,690.40 kB │ gzip: 4,592.73 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 3m 59s
+vite v5.4.21 building for production...
+transforming...
+✓ 318 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-electron/main.js                              0.54 kB │ gzip:   0.30 kB
+dist-electron/padesSignatureService-BrkVeFOx.js   34.57 kB │ gzip:  10.92 kB
+dist-electron/main-DjIulcDo.js                   982.75 kB │ gzip: 290.86 kB
+✓ built in 4.15s
+vite v5.4.21 building for production...
+transforming...
+✓ 2 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-electron/preload.cjs  0.78 kB │ gzip: 0.33 kB
+✓ built in 36ms
+  • electron-builder  version=24.13.3 os=10.0.19045
+  • loaded configuration  file=package.json ("build" field)
+  • packaging       platform=win32 arch=x64 electron=42.11.14 appOutDir=release\m01-validation\win-unpacked
+  • default Electron icon is used  reason=application icon is not set
+  • building        target=nsis file=release\m01-validation\KovaxFiles Desktop Setup 1.0.0.exe archs=x64 oneClick=false perMachine=false
+  • building block map  blockMapFile=release\m01-validation\KovaxFiles Desktop Setup 1.0.0.exe.blockmap
+  • building        target=portable file=release\m01-validation\KovaxFiles Desktop 1.0.0.exe archs=x64

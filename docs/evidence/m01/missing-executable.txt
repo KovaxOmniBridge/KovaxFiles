@@ -1,0 +1,10 @@
+
+> kovax-files-desktop@1.0.0 test:release
+> npx tsx tests/suites/desktop_packaged.test.ts
+
+Error: Executável obrigatório ausente: D:\KovaxOminiBridge\KovaxFilesApp\release\m01-intentionally-absent\win-unpacked\KovaxFiles Desktop.exe
+    at resolvePackagedExecutable (D:\KovaxOminiBridge\KovaxFilesApp\scripts\distribution_contract.ts:11:41)
+    at <anonymous> (D:\KovaxOminiBridge\KovaxFilesApp\tests\suites\desktop_packaged.test.ts:12:22)
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+    at async node:internal/modules/esm/loader:647:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)

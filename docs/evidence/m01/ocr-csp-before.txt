@@ -1,0 +1,20 @@
+
+> kovax-files-desktop@1.0.0 test:release
+> npx tsx tests/suites/desktop_packaged.test.ts
+
+Canal internal: NÃO HOMOLOGADO
+Error: Smoke falhou: 1
+
+[PackagedSmoke:Interface]
+[PackagedSmoke:Preload]
+[PackagedSmoke:IPC]
+
+(node:12184) [DEP0180] DeprecationWarning: fs.Stats constructor is deprecated.
+(Use `KovaxFiles Desktop --trace-deprecation ...` to show where the warning was created)
+(electron) 'console-message' arguments are deprecated and will be removed. Please use Event<WebContentsConsoleMessageEventParams> object instead.
+Uncaught (in promise) RuntimeError: Aborted(CompileError: WebAssembly.instantiate(): Compiling or instantiating WebAssembly module violates the following Content Security policy directive because 'unsafe-eval' is not an allowed source of script in the following Content Security Policy directive: "script-src 'self' blob:".). Build with -sASSERTIONS for more info.
+
+    at <anonymous> (D:\KovaxOminiBridge\KovaxFilesApp\tests\suites\desktop_packaged.test.ts:21:44)
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+    at async node:internal/modules/esm/loader:647:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)

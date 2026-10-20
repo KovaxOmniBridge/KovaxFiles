@@ -1,0 +1,73 @@
+
+> kovax-files-desktop@1.0.0 test
+> npm run test:pr
+
+
+> kovax-files-desktop@1.0.0 test:pr
+> npm run test:distribution && npx tsx scripts/run_pr_test_battery.ts
+
+
+> kovax-files-desktop@1.0.0 test:distribution
+> tsx tests/unit/distribution_gates.test.ts && tsx tests/unit/distribution_contract.test.ts
+
+Distribution workflow gates passed
+================================================================================
+  GERAÇÃO E VALIDAÇÃO ESTREITA DE MANIFESTO CRIPTOGRÁFICO SHA-256
+================================================================================
+Diretório de verificação: C:\Users\diniz\AppData\Local\Temp\kovax-contract-pNrCeg
+Plataformas obrigatórias: win
+
+================================================================================
+  GERAÇÃO E VALIDAÇÃO ESTREITA DE MANIFESTO CRIPTOGRÁFICO SHA-256
+================================================================================
+Diretório de verificação: C:\Users\diniz\AppData\Local\Temp\kovax-contract-pNrCeg
+Plataformas obrigatórias: win
+
+Manifesto SHA256SUMS.txt gerado e validado com sucesso:
+
+| Plataforma | Arquivo | Tamanho | SHA-256 |
+| :---: | :--- | :---: | :--- |
+| WIN | `fixture-9.8.7.exe` | 0.00 MB | `ba7816bf8f01cfea...` |
+
+Total de artefatos homologados no manifesto: 1
+Distribution contracts passed
+================================================================================
+  KOVAXFILES DESKTOP — BATERIA DE INTEGRAÇÃO CONTÍNUA (PULL REQUEST SUITE)
+================================================================================
+Início: 2026-10-20T01:26:11.839Z
+
+⏳ Executando [1. Build & Integridade de Assets]... ✅ APROVADO (25.80s)
+⏳ Executando [2. Segurança Electron (Sandbox, IPC, CSP)]... ✅ APROVADO (2.04s)
+⏳ Executando [3. PDF (Abrir, Manipular, Salvar, Reabrir)]... ✅ APROVADO (2.88s)
+⏳ Executando [4. LGPD (Privacidade, Isolamento e Revisão)]... ✅ APROVADO (2.64s)
+⏳ Executando [5. Criptografia & Cofre Forte AES-GCM]... ✅ APROVADO (2.62s)
+⏳ Executando [6. DOCX (OOXML e Preservação Semântica)]... ✅ APROVADO (1.88s)
+⏳ Executando [7. OCR Documental & PDF Pesquisável]... ✅ APROVADO (3.10s)
+⏳ Executando [8. PAdES (Assinatura, Adulteração e Cadeia)]... ✅ APROVADO (9.54s)
+⏳ Executando [9. Protocolo Judicial (Divisão e Manifesto)]... ✅ APROVADO (2.93s)
+⏳ Executando [10. Acervo Jurídico (Fontes e Autenticidade)]... ✅ APROVADO (1.78s)
+⏳ Executando [11. Testes Adversariais (Fuzzing e Chaos)]... ✅ APROVADO (3.63s)
+
+================================================================================
+  SUMÁRIO EXECUTIVO DA BATERIA DE PULL REQUEST
+================================================================================
+| Suíte | Status | Duração |
+| :--- | :---: | :---: |
+| 1. Build & Integridade de Assets | ✅ APROVADO | 25.80s |
+| 2. Segurança Electron (Sandbox, IPC, CSP) | ✅ APROVADO | 2.04s |
+| 3. PDF (Abrir, Manipular, Salvar, Reabrir) | ✅ APROVADO | 2.88s |
+| 4. LGPD (Privacidade, Isolamento e Revisão) | ✅ APROVADO | 2.64s |
+| 5. Criptografia & Cofre Forte AES-GCM | ✅ APROVADO | 2.62s |
+| 6. DOCX (OOXML e Preservação Semântica) | ✅ APROVADO | 1.88s |
+| 7. OCR Documental & PDF Pesquisável | ✅ APROVADO | 3.10s |
+| 8. PAdES (Assinatura, Adulteração e Cadeia) | ✅ APROVADO | 9.54s |
+| 9. Protocolo Judicial (Divisão e Manifesto) | ✅ APROVADO | 2.93s |
+| 10. Acervo Jurídico (Fontes e Autenticidade) | ✅ APROVADO | 1.78s |
+| 11. Testes Adversariais (Fuzzing e Chaos) | ✅ APROVADO | 3.63s |
+================================================================================
+Total: 11 | Aprovados: 11 | Falhados: 0
+
+🎉 TODAS AS SUÍTES DE PR FORAM HOMOLOGADAS COM SUCESSO!
+
+(node:8376) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)

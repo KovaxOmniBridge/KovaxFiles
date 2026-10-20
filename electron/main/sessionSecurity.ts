@@ -44,8 +44,8 @@ export function configureSessionSecurity(): void {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const responseHeaders = { ...details.responseHeaders };
     const strictCsp = isDev
-      ? "default-src 'self' blob: data:; connect-src 'self' data: blob: http://127.0.0.1:* http://localhost:* ws: ws://localhost:* ws://127.0.0.1:*; worker-src 'self' blob:; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'none';"
-      : "default-src 'self' blob: data:; connect-src 'self' data: blob:; worker-src 'self' blob:; img-src 'self' data: blob:; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none';";
+      ? "default-src 'self' blob: data:; connect-src 'self' data: blob: http://127.0.0.1:* http://localhost:* ws: ws://localhost:* ws://127.0.0.1:*; worker-src 'self' blob:; img-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'none';"
+      : "default-src 'self' blob: data:; connect-src 'self' data: blob:; worker-src 'self' blob:; img-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none';";
 
     responseHeaders['Content-Security-Policy'] = [strictCsp];
     callback({ responseHeaders });

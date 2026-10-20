@@ -1,0 +1,16 @@
+================================================================================
+  GERAÇÃO E VALIDAÇÃO ESTREITA DE MANIFESTO CRIPTOGRÁFICO SHA-256
+================================================================================
+Diretório de verificação: D:\KovaxOminiBridge\KovaxFilesApp\release\m01-validation
+Plataformas obrigatórias: win
+
+Manifesto SHA256SUMS.txt gerado e validado com sucesso:
+
+| Plataforma | Arquivo | Tamanho | SHA-256 |
+| :---: | :--- | :---: | :--- |
+| WIN | `KovaxFiles Desktop 1.0.0.exe` | 136.58 MB | `612a261a6ceaebde...` |
+| WIN | `KovaxFiles Desktop Setup 1.0.0.exe` | 136.80 MB | `0c14db32101e9f1e...` |
+
+Total de artefatos homologados no manifesto: 2
+
+[SUCESSO] Validação e geração do manifesto concluídas com êxito.

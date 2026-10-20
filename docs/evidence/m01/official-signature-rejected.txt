@@ -1,0 +1,68 @@
+
+> kovax-files-desktop@1.0.0 test:installers
+> tsx scripts/verify_packaged_installers.ts
+
+node:internal/errors:986
+  const err = new Error(message);
+              ^
+
+Error: Command failed: powershell.exe -NoProfile -NonInteractive -Command $ErrorActionPreference = 'Stop'; $s = Get-AuthenticodeSignature -LiteralPath $env:KOVAX_SIGNATURE_FILE; if ($s.Status -ne 'Valid') { throw ('Authenticode inválido: ' + $s.Status) }
+Authenticode inválido: NotSigned
+
+No linha:1 caractere:134
+
++ ... Status -ne 'Valid') { throw ('Authenticode inválido: ' + $s.Status) }
+
++                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    + CategoryInfo          : OperationStopped: (Authenticode inválido: NotSigned:String) [], RuntimeException
+
+    + FullyQualifiedErrorId : Authenticode inválido: NotSigned
+
+
+
+
+    at genericNodeError (node:internal/errors:986:15)
+    at wrappedFn (node:internal/errors:540:14)
+    at checkExecSyncError (node:child_process:943:11)
+    at execFileSync (node:child_process:979:15)
+    at verifyOfficialSignature (D:\KovaxOminiBridge\KovaxFilesApp\scripts\distribution_contract.ts:24:5)
+    at <anonymous> (D:\KovaxOminiBridge\KovaxFilesApp\scripts\verify_packaged_installers.ts:18:3)
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+    at async node:internal/modules/esm/loader:647:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  status: 1,
+  signal: null,
+  output: [
+    null,
+    Buffer(0) [Uint8Array] [],
+    Buffer(395) [Uint8Array] [
+       65, 117, 116, 104, 101, 110, 116, 105,  99, 111, 100, 101,
+       32, 105, 110, 118, 195, 161, 108, 105, 100, 111,  58,  32,
+       78, 111, 116,  83, 105, 103, 110, 101, 100,  13,  10,  78,
+      111,  32, 108, 105, 110, 104,  97,  58,  49,  32,  99,  97,
+      114,  97,  99, 116, 101, 114, 101,  58,  49,  51,  52,  13,
+       10,  43,  32,  46,  46,  46,  32,  83, 116,  97, 116, 117,
+      115,  32,  45, 110, 101,  32,  39,  86,  97, 108, 105, 100,
+       39,  41,  32, 123,  32, 116, 104, 114, 111, 119,  32,  40,
+       39,  65, 117, 116,
+      ... 295 more items
+    ]
+  ],
+  pid: 13584,
+  stdout: Buffer(0) [Uint8Array] [],
+  stderr: Buffer(395) [Uint8Array] [
+     65, 117, 116, 104, 101, 110, 116, 105,  99, 111, 100, 101,
+     32, 105, 110, 118, 195, 161, 108, 105, 100, 111,  58,  32,
+     78, 111, 116,  83, 105, 103, 110, 101, 100,  13,  10,  78,
+    111,  32, 108, 105, 110, 104,  97,  58,  49,  32,  99,  97,
+    114,  97,  99, 116, 101, 114, 101,  58,  49,  51,  52,  13,
+     10,  43,  32,  46,  46,  46,  32,  83, 116,  97, 116, 117,
+    115,  32,  45, 110, 101,  32,  39,  86,  97, 108, 105, 100,
+     39,  41,  32, 123,  32, 116, 104, 114, 111, 119,  32,  40,
+     39,  65, 117, 116,
+    ... 295 more items
+  ]
+}
+
+Node.js v24.22.0

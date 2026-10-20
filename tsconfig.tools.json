@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "scripts/distribution_contract.ts",
+    "scripts/generate_release_manifest.ts",
+    "scripts/verify_release_distribution_package.ts",
+    "scripts/run_pr_test_battery.ts",
+    "tests/suites/desktop_packaged.test.ts",
+    "tests/unit/distribution*.test.ts",
+    "scripts/verify_packaged_installers.ts",
+    "scripts/verify_distribution_bundle.ts"
+  ],
+  "exclude": []
+}

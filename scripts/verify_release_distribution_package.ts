@@ -1,15 +1,7 @@
-#!/usr/bin/env node
 /**
- * =============================================================================
- * KOVAXFILES DESKTOP — AUDITORIA DE ESTABILIZAÇÃO DE RELEASE E DISTRIBUIÇÃO
- * =============================================================================
- * Comprova categoricamente:
- * 1. Assinatura dos executáveis (forceCodeSigning=true e verificação Authenticode / Gatekeeper).
- * 2. Compatibilidade de arquitetura (x64 e arm64 declarados nos targets do electron-builder).
- * 3. Integridade dos assets offline (tessdata, modelos de OCR, fontes tipográficas locais).
- * 4. Abertura em computadores limpos (Zero-Dev Runtime, sem dependência de Python ou Node.js externos).
- * 5. Integridade do manifesto criptográfico SHA256SUMS.txt (sem mascaramento por '|| true').
- * =============================================================================
+ * Auditoria estática de configuração, políticas e bundle.
+ * Não valida executável, instalador, assinatura real nem máquina limpa.
+ * Esses gates são test:release, test:installers e aceitação manual documentada.
  */
 
 import fs from 'fs';
@@ -202,5 +194,5 @@ if (failedTests > 0) {
   process.exit(1);
 }
 
-console.log('🎉 [APROVADO] Todos os critérios de estabilização de release foram homologados com sucesso!\n');
+console.log('🎉 [APROVADO] Pré-requisitos estáticos aprovados; smoke, assinatura real e máquina limpa são gates separados.\n');
 process.exit(0);

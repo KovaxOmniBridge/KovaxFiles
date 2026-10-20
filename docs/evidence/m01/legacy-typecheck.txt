@@ -1,0 +1,115 @@
+scripts/run_single_attack_test.ts(3,35): error TS2307: Cannot find module '../src/services/chatModuleService.js' or its corresponding type declarations.
+scripts/test_advanced_pdf_edge_cases.ts(71,66): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_advanced_pdf_edge_cases.ts(126,65): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_advanced_pdf_edge_cases.ts(159,68): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_advanced_pdf_edge_cases.ts(185,67): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_advanced_pdf_edge_cases.ts(220,65): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_advanced_pdf_edge_cases.ts(257,65): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_advanced_pdf_edge_cases.ts(284,65): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_advanced_pdf_edge_cases.ts(294,41): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_advanced_pdf_edge_cases.ts(307,38): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_clean_byterange.ts(89,28): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(string: string, offset: number, encoding?: BufferEncoding | undefined): number', gave the following error.
+    Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+  Overload 2 of 3, '(string: string, offset: number, length: number, encoding?: BufferEncoding | undefined): number', gave the following error.
+    Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+scripts/test_clean_byterange.ts(120,43): error TS2322: Type 'Date' is not assignable to type 'string'.
+scripts/test_court_filing_pipeline.ts(37,3): error TS2322: Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+    Types of property '[Symbol.toStringTag]' are incompatible.
+      Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+scripts/test_court_filing_pipeline.ts(138,5): error TS2740: Type '{ id: string; name: string; shortLabel: string; maxVolumeSizeBytes: number; description: string; }' is missing the following properties from type 'UnifiedCourtPreset': systemName, courtScope, maxSizeMB, versionOrDate, and 4 more.
+scripts/test_docx_export_integrity.ts(72,54): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'string | Buffer<ArrayBufferLike>' is not assignable to parameter of type 'ArrayBuffer | ArrayLike<number>'.
+      Type 'string' is not assignable to type 'ArrayBuffer | ArrayLike<number>'.
+scripts/test_docx_import_export_fidelity.ts(220,10): error TS2345: Argument of type 'string | boolean' is not assignable to parameter of type 'boolean'.
+  Type 'string' is not assignable to type 'boolean'.
+scripts/test_editor_professional_export_suite.ts(150,71): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+    Types of property '[Symbol.toStringTag]' are incompatible.
+      Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+scripts/test_engine_behavior.ts(38,56): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_jurisprudence_integrity.ts(62,59): error TS18048: 'sv13' is possibly 'undefined'.
+scripts/test_jurisprudence_integrity.ts(85,58): error TS18048: 'sv60' is possibly 'undefined'.
+scripts/test_jurisprudence_integrity.ts(85,97): error TS18048: 'sv60' is possibly 'undefined'.
+scripts/test_pades_signing_full.ts(141,9): error TS2322: Type 'Date' is not assignable to type 'string'.
+scripts/test_pades_verifier.ts(49,64): error TS2345: Argument of type '{ parseAllBytes: boolean; }' is not assignable to parameter of type 'boolean | undefined'.
+scripts/test_process_stamper_chancela_integrity.ts(36,5): error TS2353: Object literal may only specify known properties, and 'departmentText' does not exist in type 'ProcessStampOptions'.
+scripts/test_raster_quality_criteria.ts(63,59): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_raster_quality_criteria.ts(88,70): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_raster_quality_criteria.ts(105,66): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_sanitization_failure_mode.ts(19,52): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_sanitization_failure_mode.ts(48,36): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_sanitization_failure_mode.ts(65,39): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_sanitization_failure_mode.ts(79,67): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+scripts/test_scanned_pdf_ocr_pipeline.ts(67,5): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+    Types of property '[Symbol.toStringTag]' are incompatible.
+      Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+scripts/test_scanned_pdf_ocr_pipeline.ts(119,61): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer | Uint8Array<ArrayBufferLike>'.
+    Type 'SharedArrayBuffer' is missing the following properties from type 'Uint8Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteOffset, copyWithin, and 24 more.
+src/services/ocrDocumentService.ts(2,25): error TS2307: Cannot find module 'pdfjs-dist/build/pdf.worker.min.js?url' or its corresponding type declarations.
+src/services/pdfEngine.ts(3,25): error TS2307: Cannot find module 'pdfjs-dist/build/pdf.worker.min.js?url' or its corresponding type declarations.
+src/services/pdfTextExtractor.ts(2,25): error TS2307: Cannot find module 'pdfjs-dist/build/pdf.worker.min.js?url' or its corresponding type declarations.
+tests/integration/core_services_integration.test.ts(70,12): error TS2345: Argument of type 'boolean | undefined' is not assignable to parameter of type 'boolean'.
+  Type 'undefined' is not assignable to type 'boolean'.
+tests/integration/uniform_state_contracts.test.ts(217,82): error TS2345: Argument of type 'ArrayBufferLike' is not assignable to parameter of type 'ArrayBuffer'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+    Types of property '[Symbol.toStringTag]' are incompatible.
+      Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+tests/integration/uniform_state_contracts.test.ts(235,5): error TS2740: Type '{ id: string; name: string; shortLabel: string; maxVolumeSizeBytes: number; description: string; }' is missing the following properties from type 'UnifiedCourtPreset': systemName, courtScope, maxSizeMB, versionOrDate, and 4 more.
+tests/integration/uniform_state_contracts.test.ts(255,7): error TS2740: Type '{ id: string; name: string; shortLabel: string; maxVolumeSizeBytes: number; description: string; }' is missing the following properties from type 'UnifiedCourtPreset': systemName, courtScope, maxSizeMB, versionOrDate, and 4 more.
+tests/integration/uniform_state_contracts_repro.test.ts(23,3): error TS2322: Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+    Types of property '[Symbol.toStringTag]' are incompatible.
+      Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+tests/integration/uniform_state_contracts_repro.test.ts(52,5): error TS2740: Type '{ id: string; name: string; shortLabel: string; maxVolumeSizeBytes: number; description: string; }' is missing the following properties from type 'UnifiedCourtPreset': systemName, courtScope, maxSizeMB, versionOrDate, and 4 more.
+tests/suites/crypto.test.ts(61,7): error TS2353: Object literal may only specify known properties, and 'permissions' does not exist in type 'PdfEncryptionOptions'.
+tests/suites/pades.test.ts(215,128): error TS2345: Argument of type '() => void' is not assignable to parameter of type '() => Promise<void>'.
+  Type 'void' is not assignable to type 'Promise<void>'.
+tests/suites/pades.test.ts(234,124): error TS2345: Argument of type '() => void' is not assignable to parameter of type '() => Promise<void>'.
+  Type 'void' is not assignable to type 'Promise<void>'.
+tests/suites/protocolo.test.ts(29,3): error TS2322: Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+  Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+    Types of property '[Symbol.toStringTag]' are incompatible.
+      Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+tests/suites/protocolo.test.ts(96,5): error TS2740: Type '{ id: string; name: string; shortLabel: string; maxVolumeSizeBytes: number; description: string; }' is missing the following properties from type 'UnifiedCourtPreset': systemName, courtScope, maxSizeMB, versionOrDate, and 4 more.
+tests/suites/protocolo.test.ts(134,7): error TS2740: Type '{ id: string; name: string; shortLabel: string; maxVolumeSizeBytes: number; description: string; }' is missing the following properties from type 'UnifiedCourtPreset': systemName, courtScope, maxSizeMB, versionOrDate, and 4 more.

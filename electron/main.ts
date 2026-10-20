@@ -32,9 +32,18 @@ app.whenReady().then(() => {
 
   // 3. Suporte a Smoke Test / Teste de Execução em Ambiente Limpo (CI / Testes Automatizados)
   if (isSmokeTest) {
+    const timer = setTimeout(() => { console.error('Packaged smoke timeout'); app.exit(1); }, 150000);
+    const fail = (_event: unknown, ...detail: unknown[]) => { console.error('Packaged smoke runtime failure', ...detail); app.exit(1); };
+    process.on('uncaughtException', e => { console.error(e); app.exit(1); });
+    process.on('unhandledRejection', e => { console.error(e); app.exit(1); });
     const win = windowManager.createWindow();
+    win.webContents.on('did-fail-load', fail);
+    win.webContents.on('preload-error', fail);
+    win.webContents.on('render-process-gone', fail);
+    win.webContents.on('console-message', (_event, level, message) => { if (level === 3) { console.error(message); app.exit(1); } });
     win.webContents.once('did-finish-load', async () => {
       await runCleanEnvironmentPackagedTest(win);
+      clearTimeout(timer);
     });
     return;
   }

@@ -1,0 +1,5 @@
+
+> kovax-files-desktop@1.0.0 test:installers
+> tsx scripts/verify_packaged_installers.ts
+
+Instaladores verificados: KovaxFiles Desktop 1.0.0.exe, KovaxFiles Desktop Setup 1.0.0.exe; NÃO HOMOLOGADO, assinatura não atestada

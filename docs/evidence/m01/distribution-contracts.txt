@@ -1,0 +1,20 @@
+================================================================================
+  GERAÇÃO E VALIDAÇÃO ESTREITA DE MANIFESTO CRIPTOGRÁFICO SHA-256
+================================================================================
+Diretório de verificação: C:\Users\diniz\AppData\Local\Temp\kovax-contract-lVmnxP
+Plataformas obrigatórias: win
+
+================================================================================
+  GERAÇÃO E VALIDAÇÃO ESTREITA DE MANIFESTO CRIPTOGRÁFICO SHA-256
+================================================================================
+Diretório de verificação: C:\Users\diniz\AppData\Local\Temp\kovax-contract-lVmnxP
+Plataformas obrigatórias: win
+
+Manifesto SHA256SUMS.txt gerado e validado com sucesso:
+
+| Plataforma | Arquivo | Tamanho | SHA-256 |
+| :---: | :--- | :---: | :--- |
+| WIN | `fixture-9.8.7.exe` | 0.00 MB | `ba7816bf8f01cfea...` |
+
+Total de artefatos homologados no manifesto: 1
+Distribution contracts passed

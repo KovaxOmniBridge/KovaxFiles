@@ -1,0 +1,2 @@
+612a261a6ceaebde305810a97d8be0a4a034218e9c2d0acf2957ec9f460d238b  KovaxFiles Desktop 1.0.0.exe
+0c14db32101e9f1e3a829a188569d939a04000226943db886419b40dd577b831  KovaxFiles Desktop Setup 1.0.0.exe
