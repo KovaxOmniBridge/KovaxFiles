@@ -1,6 +1,6 @@
 # M01 — Empacotamento e validação interna
 
-Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. As seções “Rodada 2”, “Rodada 3” e “Rodada 4” registram as correções anteriores e evidências das bases `471971f` e `ab66a3f`. A seção “Rodada 5” consolida a identidade canônica das fontes multiplataforma, a extração do contrato de provas de produção e a validação interna completa na base `aed1309`. A seção “Rodada 6” documenta a auditoria de commit obrigatório e a falha global da execução `39516147493`. A seção “Rodada 7” consolida a resolução técnica definitiva da sandbox Linux (sem `--no-sandbox`), a reexecução do workflow interno com aprovação 100% multiplataforma na base `d8d1911` (Run `39520761216`) e a auditoria por plataforma. Os registros históricos anteriores foram rigorosamente preservados.
+Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. As seções “Rodada 2”, “Rodada 3” e “Rodada 4” registram as correções anteriores e evidências das bases `471971f` e `ab66a3f`. A seção “Rodada 5” consolida a identidade canônica das fontes multiplataforma, a extração do contrato de provas de produção e a validação interna completa na base `aed1309`. A seção “Rodada 6” documenta a auditoria de commit obrigatório e a falha global da execução `39516147493`. A seção “Rodada 7” consolida a resolução técnica definitiva da sandbox Linux (sem `--no-sandbox`), a reexecução do workflow interno com aprovação 100% multiplataforma na base `d8d1911` (Run `39520761216`) e a auditoria por plataforma. A seção “Rodada 8” consolida o ajuste estrito de segurança da validação da sandbox Linux (exigência de permissões exatamente 4755, rejeição de 4777 e permissões adicionais, restrição de elevação a ambientes explicitamente autorizados e aborto mandatório no CI), a diferenciação formal e técnica entre as três modalidades de ensaio (runner automatizado, AppImage direto e VM limpa), e a geração e homologação dos novos bytes e evidências. Os registros históricos anteriores foram rigorosamente preservados.
 
 Baseline inspecionada: `main`, `c23754d018c792b49f5daa659431f93014c87409`, checkout sem alterações rastreadas. A pasta ignorada `release/` já continha artefatos antigos; eles não comprovam a implementação atual.
 
@@ -713,6 +713,165 @@ Esta rodada consolida a resolução técnica definitiva da sandbox Chromium no L
   - Presença obrigatória da etapa de configuração do SUID helper no workflow do Linux.
   - Conformidade das garantias de segurança e diferenciação entre CI e AppImage.
 - **Classificação Mandatória:** Todos os pacotes internos gerados nesta rodada continuam classificados expressamente como **NÃO HOMOLOGADOS**. Nenhuma prontidão para lançamento oficial é declarada.
+
+## Rodada 8 — base f8f7523 / atual: Ajuste Estrito da Sandbox Linux (4755 vs 4777), Restrição de Elevação Privilegiada, Aborto no CI, Diferenciação Formal de Ensaio e Homologação dos Novos Bytes
+
+Esta rodada atende integralmente às diretrizes de governança técnica e segurança operacional:
+1. **Ajuste estrito da validação da sandbox Linux em `scripts/linux_sandbox.ts`:** exigência de permissões exatamente `4755`, com rejeição terminante de permissões adicionais permissivas (como `4777` ou `4775`);
+2. **Restrição de configuração privilegiada automática:** elevação via `sudo` permitida exclusivamente em ambiente de teste explicitamente autorizado (`isPrivilegedSandboxConfigurationAllowed()`);
+3. **Aborto mandatório de falha no CI:** qualquer inconformidade no caminho de CI aborta imediatamente a execução com exceção (`throw new Error`), sem degradação para aviso silencioso (`console.warn`);
+4. **Anti-regressões reais com a implementação efetiva:** expansão de `tests/unit/distribution_sandbox.test.ts` cobrindo 4777, 4775, 0755, non-root, 4755 válido, autorização e aborto no CI;
+5. **Diferenciação técnica e formal entre as três modalidades de validação:** distinção minuciosa entre testes automatizados no runner (linux-unpacked), ensaio direto do AppImage (Linux limpo) e instalação em máquina Windows limpa (Clean VM);
+6. **Homologação dos novos bytes:** compilação de novos artefatos e revalidação de todos os gates (smoke, jornada positiva, jornada negativa, instaladores e manifesto final).
+
+---
+
+### 1. Ajuste Estrito de Segurança da Sandbox Linux (`scripts/linux_sandbox.ts`)
+
+- **Vulnerabilidade Prevenida (Rejeição Estrita de `4777`):**
+  O Chromium (`setuid_sandbox_host.cc`) exige estritamente que o binário auxiliar `chrome-sandbox` seja de propriedade do `root` (`uid == 0`) e possua permissões `04755` (`rwsr-xr-x`). A verificação anterior realizava uma operação bitwise com máscara aberta `(mode & 0o0755) === 0o0755`, o que admitia permissões adicionais perigosas como `4777` (world-writable SUID) ou `4775` (group-writable). Um binário SUID com permissão de escrita por outros/grupo constitui vulnerabilidade crítica de escalonamento local de privilégios.
+  A função `inspectLinuxSandboxHelper` agora avalia o modo exato:
+  ```ts
+  const permissionMode = stat.mode & 0o7777;
+  const isExactMode = permissionMode === 0o4755;
+  const valid = isRoot && isExactMode;
+  ```
+  Permissões adicionais como `4777` ou `4775`, ou insuficientes como `4700` ou `0755`, são expressamente rejeitadas.
+
+- **Restrição de Elevação a Ambiente Autorizado (`isPrivilegedSandboxConfigurationAllowed`):**
+  A invocação automática de `sudo` para reconfigurar permissões foi restrita exclusivamente a:
+  - Variável de ambiente explícita `KOVAX_ALLOW_SANDBOX_ELEVATION === 'true'`;
+  - Runner de CI GitHub Actions oficial (`process.env.CI && process.env.GITHUB_ACTIONS`), salvo se explicitamente bloqueado via `KOVAX_ALLOW_SANDBOX_ELEVATION === 'false'`.
+  Em qualquer outro ambiente (como máquinas de desenvolvimento local sem autorização), a configuração automática não executa `sudo`.
+
+- **Interrupção Mandatória no Caminho de CI:**
+  Em `ensureLinuxSandboxConfigured`, caso o ambiente seja CI (`process.env.CI`), qualquer falha na validação, ausência de autorização de elevação ou erro durante a execução de `sudo` lança uma exceção imediata que interrompe o teste, impedindo que testes executem em modo inseguro ou mascarado.
+
+- **Anti-Regressões Mandatórias Homologadas (`tests/unit/distribution_sandbox.test.ts`):**
+  - Rejeição de arquivo com permissão `4777` (world-writable) pertencente a root;
+  - Rejeição de arquivo com permissão `4775` (group-writable);
+  - Rejeição de arquivo com permissão `0755` (sem bit SUID);
+  - Rejeição de arquivo com permissão `4755` pertencente a usuário não-root (UID != 0);
+  - Aprovação estrita de arquivo com permissão `4755` pertencente a root;
+  - Contrato de autorização de elevação (fora do CI sem flag -> bloqueado; flag true -> autorizado; CI por padrão -> autorizado; flag false no CI -> bloqueado);
+  - Lançamento obrigatório de exceção no caminho de CI quando helper for inválido e não autorizado.
+
+---
+
+### 2. Diferenciação Formal das Três Modalidades de Ensaio
+
+| Dimensão Técnica | Modalidade 1: Testes no Runner (Automatizado) | Modalidade 2: Execução Direta do AppImage (Linux Limpo) | Modalidade 3: Instalação em Máquina Limpa (Windows Clean VM) |
+| :--- | :--- | :--- | :--- |
+| **Artefato Alvo** | Executável desempacotado (`linux-unpacked`, `win-unpacked`, `mac/Resources`) | Pacote único `.AppImage` (`KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage`) | Instalador NSIS (`KovaxFiles Desktop-1.0.0-win-x64-setup.exe`) |
+| **Ambiente de Execução** | Runner de CI (`ubuntu-latest`, `windows-latest`, `macos-latest`) com ferramentas de build | Desktop Linux limpo (Ubuntu, Debian, Fedora), sem Node.js/Git/Python | VM Windows 10/11 limpa, sem Node.js/Python/Git/compiladores |
+| **Usuário & Privilégios** | Runner com privilégios de `sudo` no Linux para ajuste do SUID helper | Usuário comum sem privilégios (não-root, sem `sudo`) | Usuário comum não-elevado (instalação por usuário em `%LOCALAPPDATA%`) |
+| **Configuração de Sandbox** | SUID Sandbox Helper configurado via `sudo chown root:root` e `chmod 4755` | Unprivileged User Namespaces nativo do kernel Linux (`CLONE_NEWUSER`) | Token de integridade restrito do Windows / Sandbox Chromium nativo |
+| **Mecanismo de Montagem / FS** | Sistema de arquivos nativo ext4 / NTFS / APFS | FUSE (Filesystem in Userspace) montado em `/tmp/.mount_XXXXXX` | Sistema de arquivos local NTFS padrão |
+| **Comportamento FUSE `nosuid`** | N/A (não utiliza FUSE) | **FUSE impõe flag `nosuid` por segurança:** SUID helper interno não opera como root | N/A (Windows OS) |
+| **Requisitos & Restrições de SO** | Xvfb para display virtual headless | `libfuse2` presente no sistema; kernel com suporte a `CLONE_NEWUSER` | Nenhuma ferramenta externa; ausência de dependências VCRedist |
+| **Tratamento de Restrições (ex: Ubuntu 24.04 AppArmor)** | N/A (runner possui elevação ext4) | **Proibição absoluta de desativação global:** requer perfil AppArmor sob medida ou pacote nativo `.deb`/`.rpm` | N/A |
+| **Escopo Comprovado** | Integridade do código React, preload isolado, IPC, OCR local, I/O PDF de 2 páginas e jornada negativa | Execução real do empacotamento AppImage por usuário comum em desktop Linux | Ciclo de vida completo do instalador NSIS, atalhos, operação offline, persistência e desinstalação |
+| **Status Atual** | **APROVADO (100% multiplataforma no Run 39520761216 e local)** | **PENDENTE** (roteiro fornecido ao operador; sem Linux limpo no host) | **PENDENTE** (roteiro fornecido ao operador; sem VM limpa no host) |
+
+---
+
+### 3. Roteiro e Análise Técnica para Ensaio Direto do AppImage (Linux Limpo)
+
+1. **Objeto do Ensaio:**
+   - Arquivo: `KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage` (Run `39520761216` ou compilação local equivalente).
+   - SHA-256: `44b59795147c0538a79a32c250d4022c4fbcfa001eb70f7cfcb95eeb8e94fa00`.
+2. **Condições Mandatórias de Teste:**
+   - Executar como usuário normal não-privilegiado;
+   - **NUNCA utilizar a flag `--no-sandbox`**;
+   - Registrar distribuição (ex: Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, Debian 12, Fedora 40), arquitetura do kernel (`uname -m`) e versão do FUSE.
+3. **Comportamento FUSE e User Namespaces:**
+   - O formato AppImage monta o squashfs em `/tmp/.mount_XXXXXX` via FUSE. O subsistema FUSE do kernel Linux impõe obrigatoriamente a flag de montagem `nosuid`. Consequentemente, o arquivo `chrome-sandbox` contido dentro do AppImage não pode obter elevação de root via bit SUID.
+   - Em virtude disso, o Electron/Chromium no AppImage depende do suporte a unprivileged user namespaces (`CLONE_NEWUSER`) provido pelo kernel da distribuição.
+4. **Limitações Observadas por Distribuição e Política de Segurança:**
+   - **Ubuntu 22.04 LTS, Debian 12, Fedora 39/40:** User namespaces ativos por padrão. O AppImage executa diretamente desde que a biblioteca de compatibilidade FUSE (`libfuse2`) esteja instalada.
+   - **Ubuntu 24.04 LTS:** A Canonical introduziu restrição de segurança via AppArmor para user namespaces (`kernel.apparmor_restrict_unprivileged_userns = 1`). Sem perfil de confinamento, o Chromium aborta ao tentar instanciar a sandbox.
+   - **Diretriz de Segurança Mandatória:** É **estritamente proibido** instruir o usuário ou documentar em runbooks a desativação global dessa proteção (ex.: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` ou `--no-sandbox`). Para ambientes corporativos e governamentais com distribuições restritivas, a solução homologada consiste em:
+     a) Fornecer um perfil AppArmor específico para a aplicação em `/etc/apparmor.d/kovax-files-desktop`; ou
+     b) Distribuir o aplicativo via pacote de sistema nativo (`.deb` / `.rpm`), onde o instalador gerencia o `chrome-sandbox` com permissões `root:root 4755` no sistema de arquivos ext4 nativo.
+5. **Roteiro de Validação (Passo a Passo do Operador):**
+   ```bash
+   # 1. Conferir integridade SHA-256
+   sha256sum "KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage"
+   # 2. Conceder permissão de execução
+   chmod +x "KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage"
+   # 3. Executar como usuário comum (SEM --no-sandbox)
+   ./"KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage"
+   ```
+   - Validar: abertura da janela React, importação de dois PDFs, fusão e exportação, processamento de OCR local offline e tratamento de arquivo corrompido.
+
+---
+
+### 4. Roteiro e Análise Técnica para Instalação Windows em Máquina Limpa (Clean VM)
+
+1. **Objeto do Ensaio:**
+   - Arquivo: `KovaxFiles Desktop-1.0.0-win-x64-setup.exe`.
+   - Hashes auditados:
+     - Pacote Run 39520761216: `a03a8b84d5b7a4a7548c2670e9a59c78ca5e80718fc898e0b67484d29e7195c6`
+     - Pacote local atual (Run 1792575983169-f8f7523e-0f8758fe): `be5dba06a94d42674a8f17604ae18f71e46fda840df69092c2348cd7bc38e11c`
+2. **Ambiente:**
+   - VM Windows 10/11 x64 limpa, sem Node.js, Python, Git ou ferramentas de build.
+3. **Instruções Curtas ao Operador (8 Passos):**
+   1. **Conferência de Hash:** Verificar hash SHA-256 no PowerShell:
+      ```powershell
+      (Get-FileHash "KovaxFiles Desktop-1.0.0-win-x64-setup.exe" -Algorithm SHA256).Hash
+      ```
+   2. **Instalação:** Executar como usuário normal e concluir o assistente NSIS em `%LOCALAPPDATA%\Programs`.
+   3. **Abertura Offline:** Desconectar adaptadores de rede da VM e iniciar pelo atalho na Área de Trabalho. Confirmar ausência de erros de dependências (VCRedist).
+   4. **Operação PDF:** Importar dois PDFs de teste, executar a fusão/numeração e salvar/exportar o resultado.
+   5. **OCR Offline:** Carregar imagem com texto em português e confirmar extração pelo worker Tesseract local embutido.
+   6. **Recuperação de Erros:** Carregar arquivo corrompido/truncado e verificar toast/alerta de erro na UI sem travamento.
+   7. **Reinício do Sistema:** Reiniciar a VM, reabrir o aplicativo e verificar persistência de configurações locais.
+   8. **Desinstalação:** Desinstalar via "Configurações > Aplicativos" e confirmar remoção limpa de arquivos e atalhos.
+
+---
+
+### 5. Homologação dos Novos Bytes Gerados Localmente (Run `1792575983169-f8f7523e-0f8758fe`)
+
+Conforme a regra mandatória de integridade (“não reutilize evidências antigas como aprovação dos novos bytes”), as alterações no código de governança (`scripts/linux_sandbox.ts`) geraram um novo `sourceDigest` canônico (`09b23ef5bcadc54cdaf8be290d0c7eaf1f520492340b7c9f9027931753c05483`).
+
+Um pacote novo foi gerado localmente em `release/runs/1792575983169-f8f7523e-0f8758fe`, submetido a todos os gates de qualidade:
+
+| Gate de Qualidade | Comando Executado | Resultado | Evidência Gerada |
+| :--- | :--- | :---: | :--- |
+| **Tipagem de Ferramentas** | `npm run typecheck:tools` | ✅ APROVADO | Código 0, TypeScript estrito aprovado sem erros |
+| **Regressões de Distribuição** | `npm run test:distribution` | ✅ APROVADO | 9 suítes unitárias aprovadas, incluindo sandbox estrito 4755 |
+| **Bateria Completa de PR** | `npm test` | ✅ APROVADO | 11/11 suítes homologadas (Build, Segurança, PDF, LGPD, Cripto, DOCX, OCR, PAdES, Protocolo, Acervo, Adversarial) |
+| **Geração do Pacote** | `npm run package:internal -- --x64` | ✅ APROVADO | Gerados NSIS e Portable em `release/runs/1792575983169-f8f7523e-0f8758fe` |
+| **Smoke do Executável** | `npm run test:release` | ✅ APROVADO | 6/6 etapas validadas (`evidence/smoke/smoke.log` e `result.json`) |
+| **Jornada Positiva** | `npm run test:journey` | ✅ APROVADO | 5/5 etapas validadas (`evidence/journey/journey.log` e `result.json`) |
+| **Jornada Negativa** | `npm run test:journey:negative` | ✅ APROVADO | 5/5 etapas de recuperação validadas (`evidence/journey-negative/result.json`) |
+| **Validação de Instaladores** | `npm run test:installers` | ✅ APROVADO | NSIS e Portable validados no canal interno |
+| **Manifesto Final SHA-256** | `npm run distribution:finalize` | ✅ APROVADO | `SHA256SUMS.txt` gerado com integridade estrita |
+
+#### Novos Artefatos e Hashes Auditados (Run `1792575983169-f8f7523e-0f8758fe`):
+- `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` (143.852.125 bytes | 137.19 MB)
+  - SHA-256: `be5dba06a94d42674a8f17604ae18f71e46fda840df69092c2348cd7bc38e11c`
+- `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` (143.624.209 bytes | 136.97 MB)
+  - SHA-256: `5b3376aae6470c25b5934e931940a2ad812bad6927350c4276f873faee1f916c`
+- `win-unpacked\KovaxFiles Desktop.exe`
+  - SHA-256: `8972b5e0c2ce6e643638fb278b4a56563c0ab6a466f2e956af7d6fad79c71a6f`
+- `win-unpacked\resources\app.asar`
+  - SHA-256: `4b49bc8dc53a6aae6ef017bbdd5f58ecc95f2a972595a0cd35b5070d8aa54f3f`
+
+---
+
+### 6. Tabela Consolidada de Pendências da M01
+
+| Pendência | Status | Resultado | Evidência / Artefato | Commit / Base | Hashes Auditados |
+| :--- | :---: | :---: | :--- | :--- | :--- |
+| **1. Validação estrita de sandbox Linux (4755 estrito vs 4777)** | ✅ CONCLUÍDO | Permissões estritas 4755 exigidas; 4777 e permissões adicionais expressamente rejeitadas; autorização restrita; aborto mandatório no CI | `scripts/linux_sandbox.ts`, `tests/unit/distribution_sandbox.test.ts` | Base `f8f7523` + alterações vigentes | N/A (código-fonte e testes de governança) |
+| **2. Testes automatizados no runner (CI multiplataforma)** | ✅ CONCLUÍDO | Aprovado 100% nas três plataformas no CI (Run 39520761216) e revalidado no Windows local | GitHub Actions Run [`39520761216`](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39520761216) e run local `1792575983169-f8f7523e-0f8758fe` | `d8d1911` (remoto) / `f8f7523` (local) | Linux AppImage: `44b59795...`<br>Win Setup: `be5dba06...`<br>Win Portable: `5b3376aa...`<br>Mac DMG: `2b947e4b...` |
+| **3. Teste direto do AppImage em Linux limpo** | ⏳ PENDENTE | Diferenciação arquitetural documentada (FUSE `nosuid`, unprivileged user namespaces, restrições AppArmor); proibição de desativação global de proteções mantida; roteiro entregue ao operador | Seção 3 da Rodada 8 em `docs/M01-distribution-validation.md` | `d8d1911` | AppImage: `44b59795147c0538a79a32c250d4022c4fbcfa001eb70f7cfcb95eeb8e94fa00` |
+| **4. Teste do instalador Windows em máquina limpa (Clean VM)** | ⏳ PENDENTE | Host local possui ferramentas de build e não possui VM limpa; roteiro de 8 passos entregue ao operador; conferência de hash SHA-256 e testes offline detalhados | Seção 4 da Rodada 8 em `docs/M01-distribution-validation.md` e `evidence/smoke/result.json` (`cleanMachineAcceptance: pending`) | `1792575983169-f8f7523e-0f8758fe` / `f8f7523` | Setup.exe: `be5dba06a94d42674a8f17604ae18f71e46fda840df69092c2348cd7bc38e11c`<br>Run 39520761216 Setup: `a03a8b84d5b7a4a7548c2670e9a59c78ca5e80718fc898e0b67484d29e7195c6` |
+| **5. Portão de qualidade e anti-regressão (`npm test`)** | ✅ CONCLUÍDO | 11/11 suítes de PR homologadas com 100% de sucesso; gates de distribuição e tipagem estrita de ferramentas aprovados | Log `npm test` e `docs/M01-distribution-validation.md` | Base vigente | `sourceDigest`: `09b23ef5bcadc54cdaf8be290d0c7eaf1f520492340b7c9f9027931753c05483` |
+| **6. Assinatura oficial e Notarização** | ⏳ PENDENTE | Certificados comerciais Authenticode (Windows) e Apple Developer ID / Notarização (macOS) mantidos pendentes para release oficial | Gates nativos `verify_packaged_installers.ts` | N/A | Classificação formal: **NÃO HOMOLOGADO** |
+| **7. Publicação, Tags e Pages** | 🛡️ BLOQUEADO / PRESERVADO | 0 tags criadas, 0 releases publicadas, Pages mantido estritamente isolado; nenhum deploy acionado | Workflows `.github/workflows/build-release.yml` e `ci.yml` | Base vigente | Canal: `internal` |
+
 
 
 
