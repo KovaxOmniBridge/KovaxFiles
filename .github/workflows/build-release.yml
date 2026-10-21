@@ -120,6 +120,22 @@ jobs:
         with:
           name: failure-evidence-${{ matrix.os }}
           path: ${{ env.RELEASE_DIR }}/**
+      - name: Configurar sandbox SUID do Chromium no Linux (CI)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          echo "==> Configurando SUID sandbox helper no CI: procurando chrome-sandbox em ${RELEASE_DIR}..."
+          CHROME_SANDBOX=$(find "${RELEASE_DIR}" -name "chrome-sandbox" -type f | head -n 1)
+          if [ -n "$CHROME_SANDBOX" ] && [ -f "$CHROME_SANDBOX" ]; then
+            echo "==> Configurando permissões de $CHROME_SANDBOX (root:root 4755)..."
+            sudo chown root:root "$CHROME_SANDBOX"
+            sudo chmod 4755 "$CHROME_SANDBOX"
+            ls -la "$CHROME_SANDBOX"
+            echo "SUID sandbox helper configurado com sucesso."
+          else
+            echo "::error title=Sandbox Linux::chrome-sandbox não foi localizado em ${RELEASE_DIR}."
+            exit 1
+          fi
       - name: Smoke do executável empacotado
         shell: bash
         run: |

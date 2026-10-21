@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { verifyArtifactDirectory, hashFile } from '../../scripts/distribution_artifacts';
 import { distributionRoot, sourceDigest } from '../../scripts/distribution_provenance';
 import { resolvePackagedExecutable, requireSmokeEvidence, distributionChannel } from '../../scripts/distribution_contract';
+import { ensureLinuxSandboxConfigured } from '../../scripts/linux_sandbox';
 
 const root = distributionRoot();
 const isNegative = process.argv.includes('--journey-negative');
@@ -18,6 +19,7 @@ fs.writeFileSync(path.join(evidenceDir, 'result.json'), JSON.stringify({ status:
 try {
   const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
   const executable = resolvePackagedExecutable(root, pkg);
+  ensureLinuxSandboxConfigured(executable);
   const channel = distributionChannel();
   const platform = process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'mac' : 'linux';
   const { identity, records } = verifyArtifactDirectory(root, pkg, { platform, architecture: process.arch, channel, sourceDigest: sourceDigest() });

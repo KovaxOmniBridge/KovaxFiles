@@ -71,6 +71,17 @@ jobs:
         run: npm run package:internal
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Configurar sandbox SUID do Chromium no Linux (CI)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          CHROME_SANDBOX=$(find "${RELEASE_DIR}" -name "chrome-sandbox" -type f | head -n 1)
+          if [ -n "$CHROME_SANDBOX" ] && [ -f "$CHROME_SANDBOX" ]; then
+            echo "==> Configurando permissões de $CHROME_SANDBOX (root:root 4755)..."
+            sudo chown root:root "$CHROME_SANDBOX"
+            sudo chmod 4755 "$CHROME_SANDBOX"
+            ls -la "$CHROME_SANDBOX"
+          fi
       - name: Run Packaged Desktop Pre-Release Audit
         shell: bash
         run: |

@@ -17,7 +17,8 @@
     "scripts/verify_distribution_security.ts",
     "scripts/verify_distribution_prerequisites.ts",
     "scripts/prepare_landing_artifact.ts",
-    "scripts/prepare_release_publication.ts"
+    "scripts/prepare_release_publication.ts",
+    "scripts/linux_sandbox.ts"
   ],
   "exclude": []
 }
