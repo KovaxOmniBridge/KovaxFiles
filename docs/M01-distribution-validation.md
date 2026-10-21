@@ -1,6 +1,6 @@
 # M01 — Empacotamento e validação interna
 
-Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. As seções “Rodada 2”, “Rodada 3” e “Rodada 4” registram as correções anteriores e evidências das bases `471971f` e `ab66a3f`. A seção “Rodada 5” consolida a identidade canônica das fontes multiplataforma, a extração do contrato de provas de produção e a validação interna completa na base `aed1309`. A seção “Rodada 6” documenta a auditoria de commit obrigatório e a falha global da execução `39516147493`. A seção “Rodada 7” consolida a resolução técnica definitiva da sandbox Linux (sem `--no-sandbox`), a reexecução do workflow interno com aprovação 100% multiplataforma na base `d8d1911` (Run `39520761216`) e a auditoria por plataforma. A seção “Rodada 8” consolida o ajuste estrito de segurança da validação da sandbox Linux (exigência de permissões exatamente 4755, rejeição de 4777 e permissões adicionais, restrição de elevação a ambientes explicitamente autorizados e aborto mandatório no CI), a diferenciação formal e técnica entre as três modalidades de ensaio (runner automatizado, AppImage direto e VM limpa), e a geração e homologação dos novos bytes e evidências. A seção “Rodada 9” consolida a autorização estrita da sandbox Linux (substituição de `Boolean()` por comparações explícitas de string `CI === 'true'` e `GITHUB_ACTIONS === 'true'`, matriz de regressão completa para valores ausentes, 'false', vazios e 'true'), o commit obrigatório `9a5eb07` testado ponta a ponta, a execução remota de workflow interno `39628802135` com aprovação 100% multiplataforma (Ubuntu, macOS e Windows), os novos hashes auditados e o estado explicitamente pendente dos ensaios em máquinas limpas devido à ausência de ambientes isolados e à proibição de alteração do host sem autorização. Os registros históricos anteriores foram rigorosamente preservados.
+Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. As seções “Rodada 2”, “Rodada 3” e “Rodada 4” registram as correções anteriores e evidências das bases `471971f` e `ab66a3f`. A seção “Rodada 5” consolida a identidade canônica das fontes multiplataforma, a extração do contrato de provas de produção e a validação interna completa na base `aed1309`. A seção “Rodada 6” documenta a auditoria de commit obrigatório e a falha global da execução `39516147493`. A seção “Rodada 7” consolida a resolução técnica definitiva da sandbox Linux (sem `--no-sandbox`), a reexecução do workflow interno com aprovação 100% multiplataforma na base `d8d1911` (Run `39520761216`) e a auditoria por plataforma. A seção “Rodada 8” consolida o ajuste estrito de segurança da validação da sandbox Linux (exigência de permissões exatamente 4755, rejeição de 4777 e permissões adicionais, restrição de elevação a ambientes explicitamente autorizados e aborto mandatório no CI), a diferenciação formal e técnica entre as três modalidades de ensaio (runner automatizado, AppImage direto e VM limpa), e a geração e homologação dos novos bytes e evidências. A seção “Rodada 9” consolida a autorização estrita da sandbox Linux (substituição de `Boolean()` por comparações explícitas de string `CI === 'true'` e `GITHUB_ACTIONS === 'true'`, matriz de regressão completa para valores ausentes, 'false', vazios e 'true'), o commit obrigatório `9a5eb07` testado ponta a ponta, a execução remota de workflow interno `39628802135` com aprovação 100% multiplataforma (Ubuntu, macOS e Windows), os hashes auditados integralmente com 64 caracteres hexadecimais contra os manifestos `SHA256SUMS.txt`, os roteiros operacionais exigindo comparação exata de 64 caracteres sem aceitação de prefixos, a definição formal de máquina limpa com preservação obrigatória de componentes nativos do Linux (como o interpretador Python) e o estado expressamente pendente dos ensaios em máquinas limpas devido à ausência de ambientes isolados dedicados e à proibição de alteração do host sem autorização. Os registros históricos anteriores foram rigorosamente preservados.
 
 Baseline inspecionada: `main`, `c23754d018c792b49f5daa659431f93014c87409`, checkout sem alterações rastreadas. A pasta ignorada `release/` já continha artefatos antigos; eles não comprovam a implementação atual.
 
@@ -956,95 +956,141 @@ Após os checks do commit `9a5eb07`, foi disparado via `workflow_dispatch` o wor
 
 ### 4. Manifestos e Hashes Criptográficos do Run `39628802135`
 
-Os novos bytes gerados para o commit `9a5eb07` foram auditados individualmente nos logs oficiais de cada job na etapa `Validar e Gerar Manifesto Local da Plataforma`:
+Os bytes gerados para o commit `9a5eb07` foram extraídos diretamente dos manifestos oficiais `SHA256SUMS.txt` e metadados `artifacts.json` contidos nos artefatos da execução remota aprovada:
 
 #### Linux (`ubuntu-latest` / Job `119322126524`):
-| Plataforma | Arquivo | Tamanho | SHA-256 |
-| :---: | :--- | :---: | :--- |
-| **LINUX** | `KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage` | 173.70 MB | `f5a4d941d44376d3...` |
+| Plataforma | Arquivo | Tamanho (Bytes) | Tamanho (MB) | SHA-256 Canônico Completo (64 Caracteres) |
+| :---: | :--- | :---: | :---: | :--- |
+| **LINUX** | `KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage` | 182.136.550 | 173.70 MB | `f5a4d941d44376d3802f0c96002c779ecd188366cfdb159ed1a237b053195ffe` |
 
 - Evidência adicional Linux: SUID helper `chrome-sandbox` configurado estritamente com `root:root` e permissão `4755`. Smoke e jornadas executados via Xvfb com sandbox Chromium integralmente ativado (sem `--no-sandbox`).
 
 #### Windows (`windows-latest` / Job `119322126692`):
-| Plataforma | Arquivo | Tamanho | SHA-256 |
-| :---: | :--- | :---: | :--- |
-| **WIN** | `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` | 135.93 MB | `5aae570a4c03f336...` |
-| **WIN** | `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` | 135.72 MB | `3a74160f7071f8fa...` |
+| Plataforma | Arquivo | Tamanho (Bytes) | Tamanho (MB) | SHA-256 Canônico Completo (64 Caracteres) |
+| :---: | :--- | :---: | :---: | :--- |
+| **WIN** | `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` | 142.537.486 | 135.93 MB | `5aae570a4c03f3361e030ffe88c948d4ac91128e2bd2cea10db78d560e923ed9` |
+| **WIN** | `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` | 142.309.578 | 135.72 MB | `3a74160f7071f8fac620011ebfeb87a938bded70b8fe4952e1970b82c788a7c5` |
 
 #### macOS (`macos-latest` / Job `119322126392`):
-| Plataforma | Arquivo | Tamanho | SHA-256 |
-| :---: | :--- | :---: | :--- |
-| **MAC** | `KovaxFiles Desktop-1.0.0-mac-arm64.dmg` | 164.85 MB | `e0247584ed28db57...` |
-| **MAC** | `KovaxFiles Desktop-1.0.0-mac-arm64.zip` | 159.09 MB | `0902d168b407d0c9...` |
+| Plataforma | Arquivo | Tamanho (Bytes) | Tamanho (MB) | SHA-256 Canônico Completo (64 Caracteres) |
+| :---: | :--- | :---: | :---: | :--- |
+| **MAC** | `KovaxFiles Desktop-1.0.0-mac-arm64.dmg` | 172.858.707 | 164.85 MB | `e0247584ed28db571168ab43921331e17c45d2e17f4fbae93c902f0aeb72b6e9` |
+| **MAC** | `KovaxFiles Desktop-1.0.0-mac-arm64.zip` | 166.818.739 | 159.09 MB | `0902d168b407d0c9cc1d0fa7015912b8719276f083a37a8ef0455ede2bca4489` |
 
 ---
 
-### 5. Avaliação Técnica de Recursos e Status dos Ensaios em Máquinas Limpas
+### 5. Avaliação Técnica de Recursos, Governança e Roteiros de Aceitação Operacional
 
-Em cumprimento às diretrizes de governança técnica e integridade probatória:
-- **Não presumir aprovação nem mascarar limitações:** Ensaios que não foram fisicamente executados em ambiente limpo dedicado **não são dados como concluídos**.
-- **Não alterar configurações do host:** Nenhum hipervisor (Hyper-V, VirtualBox, VMware, Windows Sandbox) foi instalado ou ativado no host local sem autorização expressa do usuário.
+Em cumprimento estrito às diretrizes de governança técnica do [AGENTS.md](file:///d:/KovaxOminiBridge/KovaxFilesApp/AGENTS.md) e aos princípios de honestidade probatória:
+
+1. **Definição Formal de Máquina Limpa:**
+   - Define-se **máquina limpa** como a instalação padrão, original e íntegra do sistema operacional, sem a presença de ferramentas ou runtimes adicionais de desenvolvimento (sem Node.js, npm, Git, Electron, compiladores C/C++, VS Code, IDEs ou SDKs).
+   - **Preservação de Componentes Nativos do SO:** É **terminantemente proibido desinstalar ou expurgar componentes nativos da distribuição Linux (como o Python integrado por padrão)**. Em distribuições como Ubuntu, Debian e Fedora, o interpretador Python faz parte da infraestrutura nativa do sistema e de gerenciadores de pacotes essenciais (APT, DNF); removê-lo descaracterizaria o ambiente padrão e representaria uma anomalia em relação à máquina real do usuário comum.
+2. **Proibição de Substituição por Binários Descompactados (`unpacked`):**
+   - Os ensaios de aceitação operacional do instalador e do pacote não podem ser substituídos pela execução dos diretórios internos de compilação `win-unpacked` ou `linux-unpacked`. A homologação exige a execução direta do pacote final distribuível (`.setup.exe` no Windows e `.AppImage` no Linux).
+3. **Proibição de Mascaramento de Ensaios Não Realizados:**
+   - A preparação, documentação ou detalhamento de um roteiro operacional de testes **NÃO constitui nem pode ser apresentada como ensaio concluído**. Na ausência do ambiente dedicado, o teste permanece classificado com total transparência como **PENDENTE**.
+4. **Isolamento e Princípio de Não-Intervenção no Host:**
+   - Nenhum hipervisor (Hyper-V, VirtualBox, VMware, Windows Sandbox) pode ser instalado ou ativado no host local sem autorização expressa do usuário. O host local não pode ter suas configurações alteradas.
+
+---
 
 #### A. Ensaio Direto do AppImage em Linux Limpo:
-- **Status:** ⏳ **PENDENTE**
-- **Diagnóstico do Host Local:** O sistema operacional local é Windows 11 x64. Não há distribuição Linux instalada nativamente nem máquina virtual Linux configurada.
-- **Recursos Necessários para Execução:**
-  1. Máquina física ou máquina virtual isolada com distribuição Linux limpa (ex: Ubuntu 22.04 LTS x86_64 com biblioteca `libfuse2` instalada, ou Ubuntu 24.04 LTS com perfil AppArmor documentado);
-  2. Usuário comum não-privilegiado (sem privilégios de `sudo` e sem acesso a comandos administrativos);
-  3. Ausência de ferramentas de desenvolvimento (sem Node.js, Python, Git ou Electron no sistema);
-  4. Suporte a FUSE ativo no kernel para montagem do squashfs do AppImage.
-- **Roteiro Mandatório do Operador:**
+- **Status:** ⏳ **PENDENTE** (Ausência de VM/máquina física Linux limpa dedicada)
+- **Artefato Auditado:** `KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage` (Run `39628802135` / Commit `9a5eb07`)
+- **Tamanho Físico:** 182.136.550 bytes (173.70 MB)
+- **Hash SHA-256 Completo Exato:** `f5a4d941d44376d3802f0c96002c779ecd188366cfdb159ed1a237b053195ffe`
+- **Diagnóstico do Host Local:** O sistema operacional local é Windows 11 x64. Não há instalação Linux física nem máquina virtual Linux configurada. O subsistema WSL presente possui unicamente a distribuição interna `docker-desktop` parada, sem ambiente de desktop gráfico, sem FUSE ativo e sem perfil de usuário comum para execução de aplicativos desktop.
+- **Recursos Necessários para Execução do Ensaio:**
+  1. Máquina física ou máquina virtual isolada com distribuição Linux padrão de 64 bits (ex.: Ubuntu 22.04 LTS x86_64 ou Debian 12 com ambiente gráfico ativo Wayland/X11);
+  2. Preservação integral dos componentes nativos do sistema (como Python 3 nativo do SO), sem ferramentas adicionais de desenvolvimento (sem Node.js, Git, Electron, VS Code ou toolchains de build);
+  3. Usuário comum não-privilegiado (sem privilégios administrativos de `sudo` e sem acesso a comandos root);
+  4. Dependências de sistema: suporte a FUSE ativo no kernel e biblioteca `libfuse2` instalada (necessária para a montagem em espaço de usuário do runtime de AppImages tipo 2);
+  5. Em distribuições como Ubuntu 24.04 LTS, permissão de unprivileged user namespaces devidamente configurada para o aplicativo, mantendo o sandbox Chromium ativo e ESTRITAMENTE sem a flag `--no-sandbox`.
+- **Roteiro Mandatório do Operador com Comparação Exata de 64 Caracteres:**
   ```bash
-  # 1. Conferir integridade SHA-256 contra o manifesto do Run 39628802135:
-  sha256sum "KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage"
-  # Deve iniciar com f5a4d941d44376d3...
-  
+  # 1. Conferência estrita dos 64 caracteres do SHA-256 contra SHA256SUMS.txt:
+  echo "f5a4d941d44376d3802f0c96002c779ecd188366cfdb159ed1a237b053195ffe  KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage" | sha256sum --check --strict
+  # Alternativa: validar contra o arquivo de manifesto SHA256SUMS.txt transferido com o pacote:
+  sha256sum -c SHA256SUMS.txt --ignore-missing
+  # Critério terminante: a resposta DEVE ser "OK" e todos os 64 caracteres devem coincidir. Rejeição obrigatória se apenas prefixos forem aceitos.
+
   # 2. Conceder permissão de execução:
   chmod +x "KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage"
-  
-  # 3. Executar como usuário normal SEM sudo e ESTRITAMENTE SEM --no-sandbox:
+
+  # 3. Execução direta como usuário comum (SEM sudo e ESTRITAMENTE SEM --no-sandbox):
   ./"KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage"
   ```
-- **Critérios de Aceitação Obrigatórios no Ensaio:**
-  - Abertura da janela React sem travamento ou mensagens de erro de console;
-  - Importação de dois PDFs de teste, execução de fusão e exportação física do arquivo resultante;
-  - Extração OCR offline em imagem com texto em português via worker embutido;
-  - Recuperação graciosa de erros ao carregar arquivo propositalmente truncado/corrompido.
-
-#### B. Ensaio do Instalador NSIS em Windows Limpo:
-- **Status:** ⏳ **PENDENTE**
-- **Diagnóstico do Host Local:** O host local é a estação de trabalho de desenvolvimento principal. Ela possui instalados Node.js v24.22.0, Python 3.15, Git 2.50, bibliotecas C++ e toolchains de build. Executar o instalador neste host violaria a regra de teste em "máquina limpa", pois dependências de sistema (como runtimes Visual C++ Redistributable herdados de outras ferramentas) poderiam mascarar ausências no pacote.
-- **Recursos Necessários para Execução:**
-  1. Máquina física ou máquina virtual dedicada com Windows 10 ou Windows 11 x64 em instalação limpa e original;
-  2. Ausência total de ferramentas de desenvolvimento: sem Node.js, sem Python, sem Git, sem VS Code e sem C++ Build Tools;
-  3. Desconexão completa de rede durante o ensaio para assegurar operação estritamente offline.
-- **Roteiro Mandatório do Operador:**
-  ```powershell
-  # 1. Conferir SHA-256 do instalador contra o manifesto do Run 39628802135:
-  (Get-FileHash "KovaxFiles Desktop-1.0.0-win-x64-setup.exe" -Algorithm SHA256).Hash
-  # Deve iniciar com 5aae570a4c03f336...
-  ```
-  1. **Instalação:** Executar o assistente NSIS sob privilégios de usuário comum, instalando em `%LOCALAPPDATA%\Programs\KovaxFiles Desktop`.
-  2. **Abertura Offline:** Desconectar adaptadores de rede da VM e iniciar pelo atalho na Área de Trabalho. Confirmar ausência de caixas de diálogo solicitando DLLs externas (VCRedist).
-  3. **Operação PDF:** Importar dois PDFs, executar fusão/numeração de páginas e salvar o arquivo.
-  4. **OCR Offline:** Processar imagem de teste e validar texto extraído localmente.
-  5. **Recuperação de Erros:** Tentar abrir arquivo truncado e confirmar exibição de toast sem crash do Electron.
-  6. **Reinício do Sistema:** Reiniciar a VM, reabrir o aplicativo e verificar integridade e persistência.
-  7. **Desinstalação:** Desinstalar via "Configurações > Aplicativos" e confirmar remoção completa de arquivos e atalhos.
+- **Etapas e Critérios de Aceitação Operacional no Ensaio:**
+  - **Abertura:** Carregamento suave da janela React sem travamentos, sem dependências dinâmicas faltantes e sem desativação de sandbox;
+  - **Operação PDF:** Importação de dois arquivos PDF de referência no editor, execução de fusão (`merge`) com numeração, exportação atômica em disco e reabertura do arquivo gerado para checagem de integridade e renderização;
+  - **OCR Documental Offline:** Processamento de imagem de teste em português com desconexão de rede ativa, comprovando reconhecimento pelo worker Tesseract local embutido sem requisições externas;
+  - **Recuperação de Erros:** Tentativa de importação de arquivo propositalmente truncado/corrompido, validação de mensagem de erro visível na interface (`data-testid="pdf-error"`), ausência de falso sucesso e preservação da estabilidade da interface sem fechamento do processo.
 
 ---
 
-### 6. Tabela Consolidada Atualizada da M01
+#### B. Ensaio do Instalador NSIS em Windows Limpo (Clean VM):
+- **Status:** ⏳ **PENDENTE** (Ausência de VM Windows limpa dedicada)
+- **Artefato Auditado:** `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` (Run `39628802135` / Commit `9a5eb07`)
+- **Tamanho Físico:** 142.537.486 bytes (135.93 MB)
+- **Hash SHA-256 Completo Exato:** `5aae570a4c03f3361e030ffe88c948d4ac91128e2bd2cea10db78d560e923ed9`
+- **Diagnóstico do Host Local:** O host local é a estação de trabalho de desenvolvimento principal. Ela possui instalados Node.js v24.22.0, Python 3.15, Git 2.50, bibliotecas C++ e toolchains de compilação. Executar o instalador neste host violaria os critérios de máquina limpa, pois dependências herdadas de outras ferramentas poderiam mascarar ausências no pacote (ex.: runtimes C++ Redistributable). Não há máquina virtual Windows limpa configurada no sistema.
+- **Recursos Necessários para Execução do Ensaio:**
+  1. Máquina física ou máquina virtual dedicada com instalação padrão e limpa de Windows 10 ou Windows 11 x64 original;
+  2. Ausência total de ferramentas adicionais de desenvolvimento (sem Node.js, sem Python para Windows, sem Git, sem VS Code e sem C++ Build Tools adicionais);
+  3. Usuário comum padrão (Standard User), sem privilégios de Administrador da máquina;
+  4. Capacidade de desconexão completa dos adaptadores de rede (isolamento físico ou vSwitch desconectado) para garantia de operação estritamente offline;
+  5. Suporte a snapshots na VM para assegurar a repetibilidade e auditabilidade do ensaio.
+- **Roteiro Mandatório do Operador com Comparação Exata de 64 Caracteres (8 Passos):**
+  ```powershell
+  # 1. Conferência estrita dos 64 caracteres do SHA-256 contra SHA256SUMS.txt:
+  $expected = "5aae570a4c03f3361e030ffe88c948d4ac91128e2bd2cea10db78d560e923ed9"
+  $actual = (Get-FileHash ".\KovaxFiles Desktop-1.0.0-win-x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+  if ($actual.Length -ne 64 -or $actual -ne $expected) {
+      throw "FALHA GRAVE: Hash SHA-256 divergente ou incompleto! Esperado (64 chars): $expected | Obtido: $actual"
+  } else {
+      Write-Host "Integridade confirmada: 64 caracteres SHA-256 idênticos ao manifesto oficial." -ForegroundColor Green
+  }
+  ```
+  1. **Conferência Estrita de Hash:** Executar o script PowerShell acima exigindo a conferência integral dos 64 caracteres hexadecimais contra `SHA256SUMS.txt`. É proibido aceitar apenas prefixos.
+  2. **Instalação como Usuário Comum:** Executar o assistente NSIS (`KovaxFiles Desktop-1.0.0-win-x64-setup.exe`) sob conta de usuário comum, confirmando a instalação no escopo por usuário em `%LOCALAPPDATA%\Programs\KovaxFiles Desktop`, sem solicitação de elevação administrativa UAC.
+  3. **Abertura Offline:** Desconectar os adaptadores de rede da VM e iniciar o aplicativo pelo atalho gerado na Área de Trabalho ou Menu Iniciar. Confirmar que a inicialização ocorre sem avisos de DLLs ausentes (ex.: `MSVCP140.dll` ou `VCRUNTIME140.dll`).
+  4. **Operação Documental PDF:** Importar dois PDFs de teste, executar a fusão com numeração de páginas, salvar/exportar o resultado atômico via IPC e reabrir o arquivo gerado para verificar a fidelidade de páginas e texto.
+  5. **OCR Offline:** Carregar imagem contendo texto em português em modo totalmente desconectado e confirmar a extração pelo worker Tesseract local embutido.
+  6. **Recuperação de Erros:** Carregar arquivo propositalmente truncado/corrompido, verificar exibição de banner/toast visível na interface (`data-testid="pdf-error"`), ausência de mensagem falsa de sucesso e manutenção da estabilidade do processo sem crash do Electron.
+  7. **Reinício do Sistema:** Reiniciar a VM Windows, reabrir o aplicativo e verificar integridade e persistência de dados/configurações locais.
+  8. **Desinstalação Limpa:** Acessar "Configurações > Aplicativos > Aplicativos Instalados", executar a desinstalação e confirmar a remoção completa de executáveis, pastas em `%LOCALAPPDATA%\Programs` e atalhos na Área de Trabalho e Menu Iniciar.
 
-| Pendência / Ação | Status | Resultado | Evidência / Artefato | Commit / Base | Hashes Auditados |
-| :--- | :---: | :---: | :--- | :--- | :--- |
-| **1. Validação e autorização estrita de sandbox Linux** | ✅ CONCLUÍDO | Comparações estritas `=== 'true'` implementadas; permissões 4755 estritas; rejeição de 4777; matriz de regressão completa | [`scripts/linux_sandbox.ts`](file:///d:/KovaxOminiBridge/KovaxFilesApp/scripts/linux_sandbox.ts), [`tests/unit/distribution_sandbox.test.ts`](file:///d:/KovaxOminiBridge/KovaxFilesApp/tests/unit/distribution_sandbox.test.ts) | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) | `sourceDigest`: `6f96743e...` |
-| **2. Testes automatizados no runner (CI multiplataforma)** | ✅ CONCLUÍDO | 100% de sucesso nas 3 plataformas (Ubuntu, Windows, macOS) no workflow interno completo | GitHub Actions Run [`39628802135`](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39628802135) | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) | Linux: `f5a4d941...`<br>Win Setup: `5aae570a...`<br>Win Port: `3a74160f...`<br>Mac DMG: `e0247584...` |
-| **3. Teste direto do AppImage em Linux limpo** | ⏳ PENDENTE | Roteiro documentado; recursos necessários especificados; host local Windows sem ambiente Linux limpo; hipervisores não alterados sem autorização | Seção 5.A da Rodada 9 | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) | AppImage: `f5a4d941d44376d3...` |
-| **4. Teste do instalador Windows em máquina limpa (Clean VM)** | ⏳ PENDENTE | Roteiro documentado; recursos necessários especificados; host local de desenvolvimento possui Node/Python/Git; ambiente limpo não configurado sem autorização | Seção 5.B da Rodada 9 | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) | Setup.exe: `5aae570a4c03f336...` |
-| **5. Portão de qualidade e anti-regressão (`npm test`)** | ✅ CONCLUÍDO | 11/11 suítes de PR homologadas; tipagem estrita de ferramentas e 9 suítes de distribuição aprovadas | Logs de execução e GitHub Actions Check Run [`39628718792`](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39628718792) | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) | `sourceDigest`: `6f96743e...` |
-| **6. Assinatura oficial e Notarização** | ⏳ PENDENTE | Certificados comerciais Authenticode (Windows) e Apple Developer ID / Notarização (macOS) mantidos pendentes para release oficial | Gates nativos [`scripts/verify_packaged_installers.ts`](file:///d:/KovaxOminiBridge/KovaxFilesApp/scripts/verify_packaged_installers.ts) | Base `9a5eb07` | Classificação formal: **NÃO HOMOLOGADO** |
-| **7. Publicação, Tags e Pages** | 🛡️ BLOQUEADO / PRESERVADO | 0 tags criadas, 0 releases publicadas, Pages mantido estritamente isolado; nenhum deploy acionado | Workflows [`.github/workflows/build-release.yml`](file:///d:/KovaxOminiBridge/KovaxFilesApp/.github/workflows/build-release.yml) e [`.github/workflows/ci.yml`](file:///d:/KovaxOminiBridge/KovaxFilesApp/.github/workflows/ci.yml) | Base `9a5eb07` | Canal: `internal` |
+---
+
+### 6. Tabela Consolidada Atualizada da Aceitação Operacional M01
+
+| Ensaio / Ação | Ambiente / Plataforma | Status | Resultado | Evidência / Artefato Físico | Commit / Run ID | Hash SHA-256 Completo (64 Caracteres) | Bloqueio Restante |
+| :--- | :--- | :---: | :---: | :--- | :--- | :--- | :--- |
+| **1. Validação estrita de sandbox Linux (4755 estrito)** | Ambiente de Desenvolvimento / Testes Unitários | ✅ CONCLUÍDO | Permissões 4755 exigidas; 4777 rejeitado; comparações estritas `=== 'true'` implementadas; matriz de regressão completa | [`scripts/linux_sandbox.ts`](file:///d:/KovaxOminiBridge/KovaxFilesApp/scripts/linux_sandbox.ts), [`tests/unit/distribution_sandbox.test.ts`](file:///d:/KovaxOminiBridge/KovaxFilesApp/tests/unit/distribution_sandbox.test.ts) | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) | `sourceDigest`: `6f96743e3bb28202c25d7c2a147bc5926ff9bb584f6bd965c52004619b0d9128` | Nenhum (aprovado no código-fonte) |
+| **2. Pipeline automatizado de CI (3 plataformas)** | GitHub Actions Hosted Runners (Ubuntu, Windows, macOS) | ✅ CONCLUÍDO | 100% de aprovação nos jobs de compilação, smoke com sandbox ativo, jornadas positiva e negativa e manifesto local | GitHub Actions Run [`39628802135`](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39628802135) | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) | Linux: `f5a4d941d44376d3802f0c96002c779ecd188366cfdb159ed1a237b053195ffe`<br>Win Setup: `5aae570a4c03f3361e030ffe88c948d4ac91128e2bd2cea10db78d560e923ed9`<br>Win Port: `3a74160f7071f8fac620011ebfeb87a938bded70b8fe4952e1970b82c788a7c5`<br>Mac DMG: `e0247584ed28db571168ab43921331e17c45d2e17f4fbae93c902f0aeb72b6e9`<br>Mac ZIP: `0902d168b407d0c9cc1d0fa7015912b8719276f083a37a8ef0455ede2bca4489` | Nenhum no runner automatizado |
+| **3. Ensaio direto do AppImage em Linux limpo** | Linux limpo dedicado (Ubuntu 22.04 LTS x86_64 com `libfuse2`, display Wayland/X11, Python nativo preservado, sem dev tools) | ⏳ PENDENTE | Roteiro de 64 caracteres entregue; recursos documentados; não executado devido à ausência de ambiente isolado | Seção 5.A da Rodada 9 em `docs/M01-distribution-validation.md` | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) / Run `39628802135` | `f5a4d941d44376d3802f0c96002c779ecd188366cfdb159ed1a237b053195ffe` | Necessária máquina física ou VM Linux limpa dedicada com display e FUSE. Host local não alterado |
+| **4. Ensaio do instalador NSIS em Windows limpo** | VM Windows 10/11 x64 limpa (Standard User, sem dev tools, rede desconectada, com snapshots) | ⏳ PENDENTE | Roteiro de 8 passos com 64 caracteres entregue; recursos documentados; não executado para evitar mascaramento no host de dev | Seção 5.B da Rodada 9 em `docs/M01-distribution-validation.md` | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) / Run `39628802135` | `5aae570a4c03f3361e030ffe88c948d4ac91128e2bd2cea10db78d560e923ed9` | Necessária VM Windows limpa isolada. Proibida instalação de hipervisores no host sem autorização |
+| **5. Portão de qualidade e anti-regressão (`npm test`)** | Ambiente local de desenvolvimento | ✅ CONCLUÍDO | 100% de aprovação nas 11 suítes de PR, tipagem estrita de ferramentas e 9 suítes de distribuição | Logs de execução locais e GitHub Actions Check Run [`39628718792`](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39628718792) | Commit [`9a5eb07`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/9a5eb07) | `sourceDigest`: `6f96743e3bb28202c25d7c2a147bc5926ff9bb584f6bd965c52004619b0d9128` | Nenhum (aprovado) |
+| **6. Assinatura oficial Authenticode e Notarização Apple** | Infraestrutura PKI institucional e Apple Developer ID | ⏳ PENDENTE | Rejeição correta pelo verificador nativo (`NotSigned`); certificados de produção mantidos pendentes para release oficial | Gates nativos [`scripts/verify_packaged_installers.ts`](file:///d:/KovaxOminiBridge/KovaxFilesApp/scripts/verify_packaged_installers.ts) | Base `9a5eb07` | N/A | Certificados comerciais Authenticode (Windows) e Apple Developer ID / Notarização Apple pendentes. **Classificação formal: NÃO HOMOLOGADO** |
+| **7. Publicação, Tags e Deploy de GitHub Pages** | Repositório GitHub remoto | 🛡️ BLOQUEADO / PRESERVADO | 0 tags criadas, 0 releases publicadas; step de publicação ignorado no CI; workflow de Pages mantido estritamente isolado | Workflows [`.github/workflows/build-release.yml`](file:///d:/KovaxOminiBridge/KovaxFilesApp/.github/workflows/build-release.yml) e [`.github/workflows/ci.yml`](file:///d:/KovaxOminiBridge/KovaxFilesApp/.github/workflows/ci.yml) | Base `9a5eb07` | Canal: `internal` | Publicação pública e tags proibidas na etapa interna M01 |
+
+---
+
+### Declaração de Governança Técnica: Limite de Prontidão
+
+> [!CAUTION]
+> **NÃO HÁ DECLARAÇÃO DE PRONTIDÃO GERAL DA PLATAFORMA PARA LANÇAMENTO.**
+>
+> A aprovação no pipeline automatizado de CI (Run `39628802135`) atesta exclusivamente a integridade da compilação e a conformidade funcional nos runners gerenciados pelo GitHub.
+>
+> Para a homologação formal de distribuição pública institucional, permanecem estritamente bloqueantes:
+> 1. Execução física dos ensaios de aceitação operacional em máquina limpa Windows x64 (NSIS) e Linux x64 (AppImage com display);
+> 2. Assinatura digital com certificados comerciais válidos (Microsoft Authenticode) e aprovação de Notarização pela Apple (Gatekeeper);
+> 3. Resolução da dívida técnica de tipagem em scripts/testes legados identificada no relatório da M01.
+>
+> Todos os pacotes e instaladores atuais permanecem formal e juridicamente classificados como **NÃO HOMOLOGADOS**.
+
 
 
 
