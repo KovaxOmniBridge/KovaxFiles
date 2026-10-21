@@ -109,50 +109,105 @@ try {
   }
 
   // ==============================================================================
-  // 2. Autorização Estrita de Configuração Privilegiada Automática
+  // 2. Autorização Estrita de Configuração Privilegiada Automática (Matriz Completa)
   // ==============================================================================
   const savedCI = process.env.CI;
   const savedGA = process.env.GITHUB_ACTIONS;
   const savedElevation = process.env.KOVAX_ALLOW_SANDBOX_ELEVATION;
 
   try {
-    // 2A: Fora do CI e sem flag explícita -> NÃO AUTORIZADO
+    // 2A: Fora do CI (ausentes) e sem flag explícita -> NÃO AUTORIZADO
     delete process.env.CI;
     delete process.env.GITHUB_ACTIONS;
     delete process.env.KOVAX_ALLOW_SANDBOX_ELEVATION;
     assert.equal(
       isPrivilegedSandboxConfigurationAllowed(),
       false,
-      'Não deve autorizar configuração automática fora do CI sem autorização explícita'
+      'Não deve autorizar quando CI, GITHUB_ACTIONS e KOVAX_ALLOW_SANDBOX_ELEVATION forem ausentes'
     );
 
-    // 2B: Com flag explícita KOVAX_ALLOW_SANDBOX_ELEVATION=true -> AUTORIZADO
+    // 2B: KOVAX_ALLOW_SANDBOX_ELEVATION com 'true' -> SEMPRE AUTORIZADO
     process.env.KOVAX_ALLOW_SANDBOX_ELEVATION = 'true';
-    assert.equal(
-      isPrivilegedSandboxConfigurationAllowed(),
-      true,
-      'Deve autorizar quando KOVAX_ALLOW_SANDBOX_ELEVATION=true'
-    );
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), true, 'Deve autorizar quando KOVAX_ALLOW_SANDBOX_ELEVATION=true (mesmo sem CI)');
+    process.env.CI = 'false';
+    process.env.GITHUB_ACTIONS = 'false';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), true, 'KOVAX_ALLOW_SANDBOX_ELEVATION=true sobrepõe CI/GA false');
+    process.env.CI = '';
+    process.env.GITHUB_ACTIONS = '';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), true, 'KOVAX_ALLOW_SANDBOX_ELEVATION=true sobrepõe CI/GA vazios');
 
-    // 2C: Bloqueio explícito com KOVAX_ALLOW_SANDBOX_ELEVATION=false mesmo em CI -> BLOQUEADO
+    // 2C: KOVAX_ALLOW_SANDBOX_ELEVATION com 'false' -> SEMPRE BLOQUEADO
     process.env.KOVAX_ALLOW_SANDBOX_ELEVATION = 'false';
     process.env.CI = 'true';
     process.env.GITHUB_ACTIONS = 'true';
-    assert.equal(
-      isPrivilegedSandboxConfigurationAllowed(),
-      false,
-      'Deve respeitar KOVAX_ALLOW_SANDBOX_ELEVATION=false mesmo no CI'
-    );
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'KOVAX_ALLOW_SANDBOX_ELEVATION=false bloqueia mesmo com CI=true e GA=true');
 
-    // 2D: No CI GitHub Actions oficial por padrão -> AUTORIZADO
-    delete process.env.KOVAX_ALLOW_SANDBOX_ELEVATION;
+    // 2D: KOVAX_ALLOW_SANDBOX_ELEVATION vazio ('') -> cai para a avaliação estrita de CI/GA
+    process.env.KOVAX_ALLOW_SANDBOX_ELEVATION = '';
     process.env.CI = 'true';
     process.env.GITHUB_ACTIONS = 'true';
-    assert.equal(
-      isPrivilegedSandboxConfigurationAllowed(),
-      true,
-      'Deve autorizar no CI GitHub Actions oficial por padrão'
-    );
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), true, 'KOVAX_ALLOW_SANDBOX_ELEVATION vazio cai para CI=true e GA=true');
+
+    process.env.KOVAX_ALLOW_SANDBOX_ELEVATION = '';
+    process.env.CI = 'false';
+    process.env.GITHUB_ACTIONS = 'true';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'KOVAX_ALLOW_SANDBOX_ELEVATION vazio com CI false bloqueia');
+
+    // 2E: Matriz estrita de CI e GITHUB_ACTIONS (KOVAX_ALLOW_SANDBOX_ELEVATION ausente)
+    delete process.env.KOVAX_ALLOW_SANDBOX_ELEVATION;
+
+    // Ambos 'true' -> AUTORIZADO
+    process.env.CI = 'true';
+    process.env.GITHUB_ACTIONS = 'true';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), true, 'CI=true e GITHUB_ACTIONS=true deve autorizar');
+
+    // CI 'false'
+    process.env.CI = 'false';
+    process.env.GITHUB_ACTIONS = 'true';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI=false e GA=true deve rejeitar');
+
+    process.env.CI = 'true';
+    process.env.GITHUB_ACTIONS = 'false';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI=true e GA=false deve rejeitar');
+
+    process.env.CI = 'false';
+    process.env.GITHUB_ACTIONS = 'false';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI=false e GA=false deve rejeitar');
+
+    // Valores vazios ('')
+    process.env.CI = '';
+    process.env.GITHUB_ACTIONS = 'true';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI vazio e GA=true deve rejeitar (não usar Boolean)');
+
+    process.env.CI = 'true';
+    process.env.GITHUB_ACTIONS = '';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI=true e GA vazio deve rejeitar (não usar Boolean)');
+
+    process.env.CI = '';
+    process.env.GITHUB_ACTIONS = '';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI vazio e GA vazio deve rejeitar');
+
+    // Valores ausentes (undefined)
+    delete process.env.CI;
+    process.env.GITHUB_ACTIONS = 'true';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI ausente e GA=true deve rejeitar');
+
+    process.env.CI = 'true';
+    delete process.env.GITHUB_ACTIONS;
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI=true e GA ausente deve rejeitar');
+
+    delete process.env.CI;
+    delete process.env.GITHUB_ACTIONS;
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'Ambos ausentes deve rejeitar');
+
+    // Valores truthy arbitrários não estritos (rejeitados pela comparação estrita === 'true')
+    process.env.CI = '1';
+    process.env.GITHUB_ACTIONS = '1';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI=1 e GA=1 deve rejeitar (não é string true)');
+
+    process.env.CI = 'yes';
+    process.env.GITHUB_ACTIONS = 'yes';
+    assert.equal(isPrivilegedSandboxConfigurationAllowed(), false, 'CI=yes e GA=yes deve rejeitar (não é string true)');
   } finally {
     if (savedCI !== undefined) process.env.CI = savedCI; else delete process.env.CI;
     if (savedGA !== undefined) process.env.GITHUB_ACTIONS = savedGA; else delete process.env.GITHUB_ACTIONS;

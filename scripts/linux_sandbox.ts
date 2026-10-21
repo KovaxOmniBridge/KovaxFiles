@@ -72,8 +72,7 @@ export function isPrivilegedSandboxConfigurationAllowed(): boolean {
   if (process.env.KOVAX_ALLOW_SANDBOX_ELEVATION === 'false') {
     return false;
   }
-  // No CI GitHub Actions oficial
-  return Boolean(process.env.CI && process.env.GITHUB_ACTIONS);
+  return process.env.CI === 'true' && process.env.GITHUB_ACTIONS === 'true';
 }
 
 /**
@@ -114,7 +113,7 @@ export function ensureLinuxSandboxConfigured(
   const sandboxHelper = path.join(path.dirname(executablePath), 'chrome-sandbox');
   if (!fs.existsSync(sandboxHelper)) return;
 
-  const isCI = Boolean(process.env.CI);
+  const isCI = process.env.CI === 'true';
   const status = inspectLinuxSandboxHelper(sandboxHelper);
   if (status.valid) return;
 
