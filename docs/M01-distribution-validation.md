@@ -1,6 +1,6 @@
 # M01 — Empacotamento e validação interna
 
-Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. As seções “Rodada 2”, “Rodada 3” e “Rodada 4” registram as correções anteriores e evidências das bases `471971f` e `ab66a3f`. A seção “Rodada 5” consolida a identidade canônica das fontes multiplataforma, a extração do contrato de provas de produção e a validação interna completa na base `aed1309`. Os registros históricos anteriores foram rigorosamente preservados.
+Os resultados iniciais abaixo são o registro histórico da rodada do commit `6b3c686`. As seções “Rodada 2”, “Rodada 3” e “Rodada 4” registram as correções anteriores e evidências das bases `471971f` e `ab66a3f`. A seção “Rodada 5” consolida a identidade canônica das fontes multiplataforma, a extração do contrato de provas de produção e a validação interna completa na base `aed1309`. A seção “Rodada 6” documenta a auditoria de commit obrigatório e a falha global da execução `39516147493`. A seção “Rodada 7” consolida a resolução técnica definitiva da sandbox Linux (sem `--no-sandbox`), a reexecução do workflow interno com aprovação 100% multiplataforma na base `d8d1911` (Run `39520761216`) e a auditoria por plataforma. Os registros históricos anteriores foram rigorosamente preservados.
 
 Baseline inspecionada: `main`, `c23754d018c792b49f5daa659431f93014c87409`, checkout sem alterações rastreadas. A pasta ignorada `release/` já continha artefatos antigos; eles não comprovam a implementação atual.
 
@@ -594,6 +594,126 @@ Os resultados do workflow `39516147493` foram inspecionados individualmente via 
 
 - **Bateria Local (`npm test`):** 11 de 11 suítes de PR homologadas com 100% de aprovação (Build, Segurança Electron, PDF, LGPD, Criptografia AES-GCM, DOCX, OCR, PAdES, Protocolo Judicial, Acervo Jurídico e Testes Adversariais).
 - **Classificação Mandatória:** Todos os pacotes internos gerados nesta rodada continuam classificados expressamente como **NÃO HOMOLOGADOS**. Nenhuma prontidão para lançamento oficial é declarada.
+
+---
+
+## Rodada 7 — base d8d1911, 20/10/2026: Correção de Sandbox Linux, Reexecução do Workflow Interno Multiplataforma (Aprovação Global) e Auditoria por Plataforma
+
+Esta rodada consolida a resolução técnica definitiva da sandbox Chromium no Linux sem uso de `--no-sandbox`, a reexecução do workflow de empacotamento interno via `workflow_dispatch` (Run `39520761216`) com **100% de aprovação em todas as plataformas (Linux, Windows e macOS)**, a auditoria detalhada dos novos artefatos e hashes gerados, e a manutenção da pendência de aceitação manual em VM Windows limpa.
+
+### 1. Diagnóstico da Execução Anterior (Falha Global na Rodada 6)
+
+- **Resultado Global da Execução 39516147493:** Conforme auditado, embora os jobs de Windows (`118949377899`) e macOS (`118949377738`) tenham sido aprovados, a execução remota global terminou com **`conclusion: failure`**.
+- **Causa Raiz da Falha no Linux (Job 118949377779):**
+  Ao invocar `xvfb-run -a npm run test:release`, o executável empacotado (`release/runs/.../linux-unpacked/kovax-files-desktop`) abortou prematuramente com a seguinte mensagem fatal do Chromium:
+  ```text
+  FATAL:setuid_sandbox_host.cc:166] The SUID sandbox helper binary was found, but is not configured correctly. You need to make sure that /home/runner/work/KovaxFiles/KovaxFiles/release/runs/39516147493-1-ubuntu-latest/linux-unpacked/chrome-sandbox is owned by root and has mode 4755.
+  ```
+  Devido a esse abort, as etapas subsequentes do runner Linux (Jornada Documental, Jornada Negativa, Validação de Instaladores e Manifesto) foram puladas (`skipped`), impedindo a consolidação do pipeline interno.
+
+### 2. Correção da Sandbox Linux (Sem `--no-sandbox` e Sem Mascarar Falhas)
+
+- **Mecanismos de Sandboxing do Chromium no Linux:**
+  O Chromium suporta dois mecanismos de isolamento de processos no Linux:
+  1. **SUID Sandbox Helper (`chrome-sandbox`):** Um binário dedicado que necessita pertencer ao `root` com bit SUID (`4755`). Ele permite criar namespaces de isolamento e rebaixar privilégios para o usuário sem privilégios.
+  2. **Unprivileged User Namespaces (`CLONE_NEWUSER`):** Isolamento via kernel para usuários não-root.
+  No entanto, pela implementação estrita do Chromium (`setuid_sandbox_host.cc`), se o arquivo `chrome-sandbox` existir no diretório da aplicação, o Chromium inspeciona obrigatoriamente se ele é de propriedade do `root` (`uid == 0`) e possui permissão `04755`. Caso exista mas pertença ao usuário comum (como criado pelo `electron-builder` sob o usuário `runner`), o Chromium aborta imediatamente por razões de segurança para não executar de forma degradada.
+
+- **Proibição Estrita de `--no-sandbox`:**
+  A diretriz mandatória proíbe expressamente o uso da flag `--no-sandbox` no empacotamento e nos testes do executável de produção, pois desabilitar a sandbox exporia o renderer a vetores de comprometimento de memória e violações de segurança.
+- **Preparação Cirúrgica no CI:**
+  No runner do GitHub Actions (`ubuntu-latest`), o usuário `runner` possui privilégios de `sudo` sem senha. A correção foi implementada em duas camadas complementares:
+  1. **No Workflow CI (`.github/workflows/build-release.yml` e `ci.yml`):** Adicionada a etapa `Configurar sandbox SUID do Chromium no Linux (CI)` logo após a compilação do pacote e antes do smoke:
+     ```bash
+     CHROME_SANDBOX=$(find "${RELEASE_DIR}" -name "chrome-sandbox" -type f | head -n 1)
+     sudo chown root:root "$CHROME_SANDBOX"
+     sudo chmod 4755 "$CHROME_SANDBOX"
+     ```
+  2. **No Runner de Testes Packaged (`tests/suites/desktop_packaged.test.ts` e `scripts/linux_sandbox.ts`):** Invocação de `ensureLinuxSandboxConfigured(executable)`, que valida a integridade do helper e realiza o ajuste caso o ambiente possua elevação disponível.
+- **Diferenciação Arquitetural Estrita (CI vs AppImage do Usuário Final):**
+  - **Ambiente de CI (Executável Desempacotado):** O teste automatizado executa o executável desempacotado (`linux-unpacked/kovax-files-desktop`) diretamente sobre o sistema de arquivos ext4 nativo do runner. O ajuste SUID helper (`root:root 4755`) é a abordagem correta e segura para testar a aplicação empacotada com sandbox Chromium 100% ativo.
+  - **Máquina do Usuário Final (AppImage):** O pacote distribuído aos usuários no Linux é o AppImage (`KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage`). Os AppImages são executados por usuários comuns montados via FUSE (ou extraídos para `/tmp`). O subsistema FUSE do kernel Linux impõe obrigatoriamente a flag de montagem `nosuid` por segurança, o que impede que qualquer binário SUID interno atue com elevação. Na máquina do usuário final, o Electron/Chromium utiliza o mecanismo nativo de **unprivileged user namespaces** (`CLONE_NEWUSER`) suportado pelo kernel da distribuição. Em sistemas com restrições AppArmor (como Ubuntu 24.04), os usuários utilizam o perfil AppArmor do sistema ou pacotes nativos (.deb/.rpm) onde o gerenciador de pacotes configura o SUID helper do sistema.
+  - **Garantia:** A preparação no CI é exclusiva do ambiente de validação automatizada e não corrompe nem altera os requisitos do AppImage na máquina do usuário.
+
+### 3. Reexecução do Workflow Interno Completo (`workflow_dispatch`)
+
+- **Workflow:** `.github/workflows/build-release.yml`.
+- **Canal Interno Explícito:** Acionamento manual via `workflow_dispatch` com `allow_unsigned_dev: true`.
+- **Garantias de Não-Publicação:** Confirmado previamente que 0 tags, 0 releases e 0 deploys de Pages foram criados. O job de publicação permaneceu `skipped`.
+- **Acompanhamento da Execução:**
+  - **Run ID:** [`39520761216`](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39520761216)
+  - **Status:** `completed`
+  - **Conclusion:** **`success`** (Aprovação Global do Workflow!)
+  - **Commit-base:** [`d8d1911776f9c89482bda9f893e915ba40a464f1`](https://github.com/KovaxOmniBridge/KovaxFiles/commit/d8d1911776f9c89482bda9f893e915ba40a464f1)
+  - **Job Pré-vôo / Portão de CI:** [118963755617](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39520761216/job/118963755617) — **SUCESSO** (11 suítes de PR, testes de carga, benchmark e auditoria de redação).
+  - **Job Publicação:** [118966930241](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39520761216/job/118966930241) — **SKIPPED** (proteção de canal interno mantida).
+
+### 4. Tabela de Resultados por Plataforma (Run 39520761216)
+
+| Plataforma | Runner GitHub | Job ID & Link | Geração Pacote | Sandbox Config | Smoke Test | Jornada Positiva | Jornada Negativa | Instaladores | Manifesto SHA-256 | Status Consolidado |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Linux** | `ubuntu-latest` | [118964476567](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39520761216/job/118964476567) | ✅ APROVADO | ✅ APROVADO (root:root 4755) | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | **CONCLUÍDO (NÃO HOMOLOGADO)** |
+| **Windows** | `windows-latest` | [118964476628](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39520761216/job/118964476628) | ✅ APROVADO | N/A (Windows OS) | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | **CONCLUÍDO (NÃO HOMOLOGADO)** |
+| **macOS** | `macos-latest` | [118964476627](https://github.com/KovaxOmniBridge/KovaxFiles/actions/runs/39520761216/job/118964476627) | ✅ APROVADO | N/A (macOS Seatbelt) | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | ✅ APROVADO | **CONCLUÍDO (NÃO HOMOLOGADO)** |
+
+#### Detalhamento Técnico dos Artefatos Gerados e Hashes Auditados:
+
+1. **Linux (`ubuntu-latest` / Job 118964476567):**
+   - **Artefatos:**
+     - `KovaxFiles Desktop-1.0.0-linux-x86_64.AppImage` (182.136.006 bytes | 173.70 MB)
+       - SHA-256: `44b59795147c0538a79a32c250d4022c4fbcfa001eb70f7cfcb95eeb8e94fa00`
+   - **Evidências de Execução:** Provas de sandbox SUID helper, smoke, jornada positiva, jornada negativa, instaladores e manifesto validadas com sucesso (`commit: "d8d1911776f9c89482bda9f893e915ba40a464f1"`).
+   - **Classificação:** **NÃO HOMOLOGADO** (canal interno, artefato de desenvolvimento).
+
+2. **Windows (`windows-latest` / Job 118964476628):**
+   - **Artefatos:**
+     - `KovaxFiles Desktop-1.0.0-win-x64-setup.exe` (142.541.295 bytes | 135.93 MB)
+       - SHA-256: `a03a8b84d5b7a4a7548c2670e9a59c78ca5e80718fc898e0b67484d29e7195c6`
+     - `KovaxFiles Desktop-1.0.0-win-x64-portable.exe` (142.313.385 bytes | 135.72 MB)
+       - SHA-256: `4c9aef98af4a54564c7d0d0f592671520630b14c330df30b6f17c4943f60f607`
+   - **Evidências de Execução:** Smoke, jornada documental, jornada negativa, instaladores e manifesto validados com sucesso no runner x64.
+   - **Classificação:** **NÃO HOMOLOGADO** (canal interno, sem assinatura comercial Authenticode).
+
+3. **macOS (`macos-latest` / Job 118964476627):**
+   - **Artefatos:**
+     - `KovaxFiles Desktop-1.0.0-mac-arm64.dmg` (172.883.393 bytes | 164.87 MB)
+       - SHA-256: `2b947e4bab2f06bd9e011746f366112ff75a5933bead8e5bdf67eb53bb4da422`
+     - `KovaxFiles Desktop-1.0.0-mac-arm64.zip` (166.822.818 bytes | 159.09 MB)
+       - SHA-256: `488b27ce0547c9c0f99767664ca9ee093fbb1c28c899ca101fcf2ea57fc46cfa`
+   - **Evidências de Execução:** Smoke, jornada documental, jornada negativa, instaladores e manifesto validados com sucesso no runner ARM64.
+   - **Classificação:** **NÃO HOMOLOGADO** (canal interno, sem assinatura Apple Developer ID / Notarização).
+
+### 5. Windows em VM Limpa — Diagnóstico e Instruções ao Operador
+
+- **Diagnóstico do Host:**
+  - Foi verificado que o sistema host de desenvolvimento possui ferramentas instaladas (Node.js v24.22.0, Python 3.15, Git, VS Code).
+  - O host não possui motor de virtualização disponível ou configurado: Hyper-V (`Get-VM`) inativo, VirtualBox (`VBoxManage`) ausente, VMware (`vmrun`) ausente e Windows Sandbox (`WindowsSandbox.exe`) não instalado na edição do Windows local.
+  - Conforme diretriz estrita ("Não use o host de desenvolvimento como substituto"), a homologação manual em máquina limpa permanece como **PENDENTE**.
+
+- **Roteiro Curto de Execução Manual em VM Limpa (8 Passos):**
+  1. **Conferência de Hash:** Na VM limpa (sem Node.js, Python ou Git), verificar o digest SHA-256 do instalador baixado:
+     ```powershell
+     (Get-FileHash "KovaxFiles Desktop-1.0.0-win-x64-setup.exe" -Algorithm SHA256).Hash
+     ```
+     Conferir se é exatamente `a03a8b84d5b7a4a7548c2670e9a59c78ca5e80718fc898e0b67484d29e7195c6`.
+  2. **Instalação:** Executar o instalador com usuário comum (não-elevado), instalar no `%LOCALAPPDATA%` padrão e verificar criação dos atalhos no Menu Iniciar e Desktop.
+  3. **Abertura Offline:** Desconectar os adaptadores de rede da VM. Iniciar o KovaxFiles Desktop pelo atalho. Confirmar que a janela abre sem exigir conexões externas e sem erros de dependências ausentes (ex.: VCRedist).
+  4. **Operação PDF:** Importar dois PDFs de teste, executar a fusão/numeração e salvar/exportar o arquivo resultante.
+  5. **OCR Documental:** Carregar uma imagem contendo texto em português e disparar o reconhecimento. Confirmar que o worker Tesseract local embutido conclui o OCR offline com sucesso.
+  6. **Recuperação de Erros:** Fornecer um arquivo PDF truncado/corrompido. Confirmar que o aplicativo exibe toast/alerta de erro na UI e desabilita exportação sem travamento da aplicação.
+  7. **Reinício do Aplicativo:** Fechar o KovaxFiles Desktop, reiniciar o sistema operacional da VM, reabrir o aplicativo e verificar integridade da interface e retenção de configurações locais.
+  8. **Desinstalação Limpa:** Acessar "Configurações > Aplicativos > Aplicativos Instalados", desinstalar o KovaxFiles Desktop e verificar a remoção completa de executáveis, pastas em `%LOCALAPPDATA%\Programs` e atalhos.
+
+### 6. Auditoria de Governança e Regressões
+
+- **Bateria Local (`npm test`):** 11 de 11 suítes de PR homologadas com 100% de aprovação (Build, Segurança Electron, PDF, LGPD, Criptografia AES-GCM, DOCX, OCR, PAdES, Protocolo Judicial, Acervo Jurídico e Testes Adversariais).
+- **Anti-Regressão de Sandbox Linux (`tests/unit/distribution_sandbox.test.ts`):** Adicionada suíte mandatória que comprova:
+  - Detecção e rejeição de binários `chrome-sandbox` ausentes, não pertencentes a root ou sem permissão `4755`.
+  - Proibição de `--no-sandbox` no runner empacotado (`desktop_packaged.test.ts`) e nos workflows (`build-release.yml` e `ci.yml`).
+  - Presença obrigatória da etapa de configuração do SUID helper no workflow do Linux.
+  - Conformidade das garantias de segurança e diferenciação entre CI e AppImage.
+- **Classificação Mandatória:** Todos os pacotes internos gerados nesta rodada continuam classificados expressamente como **NÃO HOMOLOGADOS**. Nenhuma prontidão para lançamento oficial é declarada.
+
 
 
 
